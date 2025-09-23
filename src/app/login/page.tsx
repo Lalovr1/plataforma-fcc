@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import Link from "next/link"; // 👈 agregado
 
 export default function LoginPage() {
   const [correo, setCorreo] = useState("");
@@ -64,41 +65,49 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex justify-center items-center h-screen bg-gray-100">
+    <div className="flex justify-center items-center min-h-screen bg-gray-950 text-white">
       <form
         onSubmit={handleLogin}
-        className="bg-white p-6 rounded-xl shadow-md w-96"
+        className="bg-gray-900 p-6 rounded-xl shadow-md w-96 space-y-4"
       >
-        <h1 className="text-2xl font-bold mb-4 text-center">Iniciar Sesión</h1>
+        <h1 className="text-2xl font-bold text-center">Iniciar Sesión</h1>
 
-        <label className="block mb-2">Correo BUAP</label>
         <input
           type="email"
+          placeholder="Correo BUAP"
           value={correo}
           onChange={(e) => setCorreo(e.target.value)}
-          className="w-full p-2 border rounded mb-4"
+          className="w-full p-2 rounded bg-gray-800"
           required
         />
 
-        <label className="block mb-2">Contraseña</label>
         <input
           type="password"
+          placeholder="Contraseña"
           value={contrasena}
           onChange={(e) => setContrasena(e.target.value)}
-          className="w-full p-2 border rounded mb-4"
+          className="w-full p-2 rounded bg-gray-800"
           required
         />
 
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold"
         >
           Ingresar
         </button>
 
         {mensaje && (
-          <p className="mt-4 text-center text-red-600 font-medium">{mensaje}</p>
+          <p className="text-sm text-center text-red-400">{mensaje}</p>
         )}
+
+        {/* 👇 Nuevo: enlace a registro */}
+        <p className="text-sm text-center text-gray-400">
+          ¿No tienes cuenta?{" "}
+          <Link href="/register" className="text-blue-400 hover:underline">
+            Regístrate aquí
+          </Link>
+        </p>
       </form>
     </div>
   );

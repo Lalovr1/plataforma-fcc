@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import Link from "next/link"; // 👈 agregado
 
 export default function RegisterPage() {
   const [nombre, setNombre] = useState("");
@@ -168,6 +169,14 @@ export default function RegisterPage() {
             {mensaje}
           </p>
         )}
+
+        {/* 👇 Nuevo: enlace a login */}
+        <p className="text-sm text-center text-gray-400">
+          ¿Ya tienes cuenta?{" "}
+          <Link href="/login" className="text-blue-400 hover:underline">
+            Inicia sesión aquí
+          </Link>
+        </p>
       </form>
     </div>
   );
