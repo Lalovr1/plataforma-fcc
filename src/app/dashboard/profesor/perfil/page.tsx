@@ -48,12 +48,12 @@ export default function PerfilProfesorPage() {
   const config: AvatarConfig =
     usuario?.avatar_config ?? {
       skin: "default.png",
-      eyes: "default.png",
-      mouth: "default.png",
-      eyebrow: "default.png",
-      hair: "default.png",
-      clothes: "default.png",
-      accessory: null,
+      eyes: "none",
+      mouth: "none",
+      eyebrow: "none",
+      hair: "none",
+      clothes: "none",
+      accessory: "none",
     };
 
   const handleSave = async (newConfig: AvatarConfig, frameUrl: string | null) => {

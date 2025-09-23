@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import Link from "next/link"; // 👈 agregado
+import Link from "next/link";
 
 export default function RegisterPage() {
   const [nombre, setNombre] = useState("");
