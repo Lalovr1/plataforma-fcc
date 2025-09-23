@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 🎨 Estilos globales personalizados */
+body {
+  @apply bg-gray-950 text-gray-100 antialiased;
+}
+
+h1, h2, h3, h4 {
+  @apply font-bold text-gray-100;
+}
+
+button {
+  @apply transition duration-200 ease-in-out;
+}
+
+/* 📖 Markdown renderizado con Tailwind Typography */
+.prose {
+  @apply text-gray-100;
+}
+
+.prose h1 {
+  @apply text-3xl font-bold mt-4 mb-2 text-gray-100;
+}
+
+.prose h2 {
+  @apply text-2xl font-semibold mt-3 mb-2 text-gray-200;
+}
+
+.prose h3 {
+  @apply text-xl font-semibold mt-2 mb-1 text-gray-300;
+}
+
+.prose h4 {
+  @apply text-lg font-semibold mt-2 mb-1 text-gray-400;
+}
+
+.prose p {
+  @apply text-gray-300 leading-relaxed mb-2;
+}
+
+.prose ul {
+  @apply list-disc list-inside mb-2;
+}
+
+.prose ol {
+  @apply list-decimal list-inside mb-2;
+}
+
+.prose li {
+  @apply mb-1;
+}
+
+.prose strong {
+  @apply text-white;
+}
+
+/* ➗ KaTeX (fórmulas matemáticas) */
+.katex {
+  @apply text-lg text-blue-300;
+}
