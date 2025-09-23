@@ -48,11 +48,11 @@ export default function PerfilEstudiantePage() {
   const config: AvatarConfig =
     usuario?.avatar_config ?? {
       skin: "default.png",
-      eyes: "default.png",
-      mouth: "default.png",
-      eyebrow: "default.png",
-      hair: "default.png",
-      clothes: "default.png",
+      eyes: null,
+      mouth: null,
+      eyebrow: null,
+      hair: null,
+      clothes: null,
       accessory: null,
     };
 
