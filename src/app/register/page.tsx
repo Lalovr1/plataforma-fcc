@@ -49,7 +49,7 @@ export default function RegisterPage() {
         email: correo,
         password: contrasena,
         options: {
-          emailRedirectTo: "http://localhost:3000/login",
+          emailRedirectTo: `${window.location.origin}/login`,
           data: {
             nombre: nombre.trim(),
             rol: rolDetectado,
