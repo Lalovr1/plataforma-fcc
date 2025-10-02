@@ -102,6 +102,7 @@ export default function ProfesoresPage() {
       `
       )
       .eq("profesor_id", p.id)
+      .eq("visible", true)
       .order("nombre", { ascending: true });
 
     let inscritos: Record<string, { exists: boolean; visible: boolean }> = {};
@@ -206,6 +207,7 @@ export default function ProfesoresPage() {
           materia_id: selectedCurso.id,
           progreso: 0,
           visible: true,
+          carrera_id: visitante ? null : selectedCarrera,
           periodo_id: visitante ? null : selectedPeriodo,
           seccion_id: visitante ? null : selectedSeccion,
           es_visitante: visitante,
@@ -221,6 +223,7 @@ export default function ProfesoresPage() {
         .from("progreso")
         .update({
           visible: true,
+          carrera_id: visitante ? null : selectedCarrera,
           periodo_id: visitante ? null : selectedPeriodo,
           seccion_id: visitante ? null : selectedSeccion,
           es_visitante: visitante,
@@ -408,9 +411,11 @@ export default function ProfesoresPage() {
                           ) : (
                             <button
                               className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white"
-                              onClick={() => pickCurso(m)}
+                              onClick={() =>
+                                selectedCurso?.id === m.id ? inscribirse() : pickCurso(m)
+                              }
                             >
-                              Inscribirme
+                              {selectedCurso?.id === m.id ? "Confirmar inscripción" : "Inscribirme"}
                             </button>
                           )}
                         </div>
@@ -498,6 +503,25 @@ export default function ProfesoresPage() {
                               </div>
                               
                             )}
+
+                            <div className="flex items-center gap-2 mt-3">
+                              <input
+                                type="checkbox"
+                                checked={visitante}
+                                onChange={(e) => {
+                                  setVisitante(e.target.checked);
+                                  if (e.target.checked) {
+                                    setSelectedCarrera(null);
+                                    setSelectedPeriodo(null);
+                                    setSelectedSeccion(null);
+                                  }
+                                }}
+                              />
+                              <label className="text-sm" style={{ color: "var(--color-muted)" }}>
+                                Tomar curso como visitante
+                              </label>
+                            </div>
+
                           </div>
                         )}
                       </div>

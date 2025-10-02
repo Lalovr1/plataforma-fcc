@@ -1,7 +1,3 @@
-/**
- * Filtros para listar/consultar cursos por semestre, área, carrera, periodo y agrupación.
- */
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,13 +7,11 @@ interface Carrera {
   id: number;
   nombre: string;
 }
-
 interface Periodo {
-  id: string;
+  id?: string;
   nombre: string;
   anio: number;
 }
-
 interface Props {
   filters: {
     semestre_id: number | null;
@@ -27,24 +21,69 @@ interface Props {
     groupBy: string;
   };
   setFilters: (filters: any) => void;
+  materias?: any[]; // opcional → estudiantes lo pasan, profesores no
 }
 
-export default function FiltrosCursos({ filters, setFilters }: Props) {
+export default function FiltrosCursos({ filters, setFilters, materias }: Props) {
   const [carreras, setCarreras] = useState<Carrera[]>([]);
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
+  const [areas, setAreas] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: cData } = await supabase.from("carreras").select("id, nombre");
-      if (cData) setCarreras(cData);
+      // Si recibimos materias → sacar todo de ahí (modo estudiante)
+      if (materias && materias.length > 0) {
+        const carrerasLocal: Carrera[] = Array.from(
+          new Map(
+            materias
+              .flatMap((m) => m.curso_carreras?.map((cc: any) => cc.carrera).filter(Boolean) || [])
+              .map((c: any) => [c.id, c])
+          ).values()
+        );
+        setCarreras(carrerasLocal);
 
-      const { data: pData } = await supabase
-        .from("curso_periodos")
-        .select("id, nombre, anio");
-      if (pData) setPeriodos(pData);
+        const periodosLocal: Periodo[] = Array.from(
+          new Map(
+            materias
+              .flatMap((m) => m.curso_carreras?.flatMap((cc: any) => cc.curso_periodos || []) || [])
+              .map((p: any) => [`${p.nombre}-${p.anio}`, p])
+          ).values()
+        );
+        setPeriodos(periodosLocal);
+
+        const areasLocal: string[] = Array.from(
+          new Set(
+            materias.flatMap(
+              (m) => m.curso_carreras?.map((cc: any) => cc.area).filter(Boolean) || []
+            )
+          )
+        );
+        setAreas(areasLocal);
+      } else {
+        // Si no recibimos materias → pedir a Supabase (modo profesor)
+        const { data: cData } = await supabase.from("carreras").select("id, nombre");
+        if (cData) setCarreras(cData);
+
+        const { data: pData } = await supabase.from("curso_periodos").select("id, nombre, anio");
+        if (pData) {
+          const unique = Array.from(
+            new Map(pData.map((p) => [`${p.nombre}-${p.anio}`, p])).values()
+          );
+          setPeriodos(unique);
+        }
+
+        const { data: aData } = await supabase.from("curso_carreras").select("area");
+        if (aData) {
+          const uniqueAreas = Array.from(
+            new Set(aData.map((a) => a.area).filter(Boolean))
+          );
+          setAreas(uniqueAreas);
+        }
+      }
     };
+
     fetchData();
-  }, []);
+  }, [materias]);
 
   const selectStyle: React.CSSProperties = {
     backgroundColor: "var(--color-card)",
@@ -55,11 +94,9 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
   return (
     <div
       className="p-4 rounded-xl flex gap-4 flex-wrap"
-      style={{
-        backgroundColor: "var(--color-card)",
-        color: "var(--color-text)",
-      }}
+      style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
     >
+      {/* Semestres */}
       <select
         className="p-2 rounded"
         style={selectStyle}
@@ -79,6 +116,7 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
         ))}
       </select>
 
+      {/* Áreas */}
       <select
         className="p-2 rounded"
         style={selectStyle}
@@ -86,10 +124,14 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
         onChange={(e) => setFilters({ ...filters, area: e.target.value || null })}
       >
         <option value="">Todas las áreas</option>
-        <option value="Ciencias Básicas">Ciencias Básicas</option>
-        <option value="Computación">Computación</option>
+        {areas.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
       </select>
 
+      {/* Carreras */}
       <select
         className="p-2 rounded"
         style={selectStyle}
@@ -102,32 +144,29 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
         }
       >
         <option value="">Todas las carreras</option>
-        {carreras.map((carrera) => (
-          <option key={carrera.id} value={carrera.id}>
-            {carrera.nombre}
+        {carreras.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.nombre}
           </option>
         ))}
       </select>
 
+      {/* Periodos */}
       <select
         className="p-2 rounded"
         style={selectStyle}
         value={filters.periodo || ""}
-        onChange={(e) =>
-          setFilters({
-            ...filters,
-            periodo: e.target.value || null,
-          })
-        }
+        onChange={(e) => setFilters({ ...filters, periodo: e.target.value || null })}
       >
         <option value="">Todos los periodos</option>
-        {periodos.map((p) => (
-          <option key={p.id} value={`${p.nombre} ${p.anio}`}>
+        {periodos.map((p, i) => (
+          <option key={i} value={`${p.nombre} ${p.anio}`}>
             {p.nombre} {p.anio}
           </option>
         ))}
       </select>
 
+      {/* Agrupación */}
       <select
         className="p-2 rounded"
         style={selectStyle}

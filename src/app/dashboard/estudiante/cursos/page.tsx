@@ -28,6 +28,7 @@ interface CursoCarrera {
 interface Materia {
   id: string;
   nombre: string;
+  visible: boolean;
   profesor: { id: string; nombre: string } | null;
   curso_carreras: CursoCarrera[];
   yaInscrito?: boolean;
@@ -42,8 +43,8 @@ export default function CursosPage() {
     periodo: null as string | null,
     groupBy: "none",
   });
-  const [userId, setUserId] = useState<string | null>(null);
 
+  const [userId, setUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -56,6 +57,7 @@ export default function CursosPage() {
         `
         id,
         nombre,
+        visible,
         profesor:usuarios (id, nombre),
         curso_carreras (
           id,
@@ -111,34 +113,35 @@ export default function CursosPage() {
     fetchMaterias();
   }, [userId]);
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchMaterias(searchTerm.trim());
+  };
+
+  // === Filtros en memoria, igual que en profesor ===
   const filtered = materias.filter((m) => {
     const bySemestre = filters.semestre_id
-      ? m.curso_carreras?.some((cc) => cc.semestre === filters.semestre_id)
-      : true;
-
-    const byArea = filters.area
-      ? m.curso_carreras?.some((cc) => cc.area === filters.area)
+      ? m.curso_carreras?.some((cc) => Number(cc.semestre) === Number(filters.semestre_id))
       : true;
 
     const byCarrera = filters.carrera_id
-      ? m.curso_carreras?.some((cc) => cc.carrera?.id === filters.carrera_id)
+      ? m.curso_carreras?.some((cc) => Number(cc.carrera?.id) === Number(filters.carrera_id))
       : true;
 
     const byPeriodo = filters.periodo
       ? m.curso_carreras?.some((cc) =>
           cc.curso_periodos?.some(
-            (p) => `${p.nombre} ${p.anio}` === filters.periodo
+            (p) => `${p.nombre} ${p.anio}` === String(filters.periodo)
           )
         )
       : true;
 
-    return bySemestre && byArea && byCarrera && byPeriodo;
-  });
+    const byArea = filters.area
+      ? m.curso_carreras?.some((cc) => String(cc.area) === String(filters.area))
+      : true;
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchMaterias(searchTerm.trim());
-  };
+    return bySemestre && byCarrera && byPeriodo && byArea;
+  });
 
   return (
     <LayoutGeneral>
@@ -171,16 +174,18 @@ export default function CursosPage() {
           </button>
         </form>
 
-        <FiltrosCursos filters={filters} setFilters={setFilters} />
+        <FiltrosCursos filters={filters} setFilters={setFilters} materias={materias} />
 
         {loading ? (
           <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+        ) : filtered.length === 0 ? (
+          <p style={{ color: "var(--color-muted)" }}>No hay cursos para los filtros seleccionados</p>
         ) : (
           <CuadriculaCursos
             materias={filtered}
             groupBy={filters.groupBy}
             userId={userId ?? ""}
-          />
+        />
         )}
       </div>
     </LayoutGeneral>

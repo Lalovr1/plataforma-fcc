@@ -79,7 +79,7 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
   const cargarInscritos = async () => {
     const { data: prog } = await supabase
       .from("progreso")
-      .select("usuario_id, periodo_id, seccion_id")
+      .select("usuario_id, periodo_id, seccion_id, carrera_id")
       .eq("materia_id", materiaId);
 
     const userIds = (prog || []).map((r: any) => r.usuario_id);
@@ -119,7 +119,7 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
     const parsed: Inscrito[] = (prog || [])
       .map((r: any) => ({
         usuario_id: r.usuario_id,
-        carrera_id: usersById[r.usuario_id]?.carrera_id ?? null, 
+        carrera_id: r.carrera_id ?? null,
         periodo_id: r.periodo_id ?? null,
         seccion_id: r.seccion_id ?? null,
         nombre: usersById[r.usuario_id]?.nombre ?? "Sin nombre",
@@ -150,7 +150,7 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
   const cargarIntentos = async () => {
     const { data } = await supabase
       .from("intentos_quiz")
-      .select("quiz_id, usuario_id, puntaje, quizzes(id, materia_id)")
+      .select("quiz_id, usuario_id, puntaje, quizzes(id, materia_id, xp)")
       .eq("quizzes.materia_id", materiaId);
 
     const acc: Record<string, Record<string, IntentoStats>> = {};
@@ -160,11 +160,14 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
       const score = Number(row.puntaje ?? 0);
 
       if (!acc[qid]) acc[qid] = {};
-      if (!acc[qid][uid]) acc[qid][uid] = { best: score, total: score, tries: 1 };
+      const xpQuiz = row.quizzes?.xp ?? 0;
+      const puntos = Math.round((xpQuiz * score) / 100);
+
+      if (!acc[qid][uid]) acc[qid][uid] = { best: puntos, total: puntos, tries: 1 };
       else {
         acc[qid][uid].tries += 1;
-        acc[qid][uid].total += score;
-        if (score > acc[qid][uid].best) acc[qid][uid].best = score;
+        acc[qid][uid].total += puntos;
+        if (puntos > acc[qid][uid].best) acc[qid][uid].best = puntos;
       }
     });
 

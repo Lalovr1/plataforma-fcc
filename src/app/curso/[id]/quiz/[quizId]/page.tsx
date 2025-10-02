@@ -141,7 +141,7 @@ export default function ResolverQuizPage() {
       return;
     }
 
-    if (intentosRealizados >= (quizInfo?.intentos_max ?? 1)) {
+    if (intentosRealizados >= (quizInfo?.intentos_max ?? 1) || mejorPuntaje === 100) {
       alert("❌ Ya alcanzaste el número máximo de intentos para este quiz.");
       return;
     }
@@ -193,15 +193,6 @@ export default function ResolverQuizPage() {
 
     const puntaje = Math.round((correctas / total) * 100);
 
-    await supabase.from("intentos_quiz").insert({
-      quiz_id: quizId,
-      usuario_id: userId,
-      puntaje,
-      completado: true,
-    });
-
-    setIntentosRealizados((prev) => prev + 1);
-
     const { data: bestPrev } = await supabase
       .from("intentos_quiz")
       .select("puntaje")
@@ -211,13 +202,32 @@ export default function ResolverQuizPage() {
       .limit(1);
 
     const prevBest = bestPrev?.[0]?.puntaje || 0;
+
+    await supabase.from("intentos_quiz").insert({
+      quiz_id: quizId,
+      usuario_id: userId,
+      puntaje,
+      completado: true,
+    });
+
+    setIntentosRealizados((prev) => prev + 1);
+
     const xpQuiz = quizInfo.xp ?? 0;
     const xpNuevo = Math.round((xpQuiz * puntaje) / 100);
     const xpPrev = Math.round((xpQuiz * prevBest) / 100);
     const delta = Math.max(xpNuevo - xpPrev, 0);
 
     if (delta > 0) {
-      await supabase.rpc("sumar_xp", { user_id: userId, xp_extra: delta });
+      const { data, error } = await supabase.rpc("sumar_xp", { 
+        user_id: userId, 
+        xp_extra: delta 
+      });
+
+      if (error) {
+        console.error("Error al sumar XP:", error);
+      } else {
+        console.log("XP actualizado:", data);
+      }
     }
 
     setXpGanado(Math.max(xpNuevo, xpPrev));
@@ -268,7 +278,7 @@ export default function ResolverQuizPage() {
   }
 
   const intentosMax = quizInfo?.intentos_max ?? 1;
-  const sinMasIntentos = !esPreview && intentosRealizados >= intentosMax;
+  const sinMasIntentos = !esPreview && (intentosRealizados >= intentosMax || mejorPuntaje === 100);
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: "var(--color-card)",
@@ -415,9 +425,18 @@ export default function ResolverQuizPage() {
             {!esPreview && (
               <>
                 {sinMasIntentos || resultado.correctas === resultado.total ? (
-                  <p style={{ color: "var(--color-primary)" }}>
-                    XP ganado: <span className="font-bold">{xpGanado}</span>
-                  </p>
+                  <div className="space-y-2">
+                    <p style={{ color: "var(--color-primary)" }}>
+                      XP ganado: <span className="font-bold">{xpGanado}</span>
+                    </p>
+                    <button
+                      onClick={() => router.push(`/curso/${materiaId}`)}
+                      className="mt-3 px-4 py-2 rounded text-white hover:opacity-90"
+                      style={{ backgroundColor: "var(--color-secondary)" }}
+                    >
+                      Regresar al curso
+                    </button>
+                  </div>
                 ) : (
                   <p style={{ color: "var(--color-primary)" }}>
                     Puedes volver a intentarlo para mejorar tu puntaje y XP.

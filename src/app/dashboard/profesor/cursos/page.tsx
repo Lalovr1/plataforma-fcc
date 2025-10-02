@@ -57,6 +57,7 @@ export default function ProfesorCursosPage() {
         curso_carreras (
           id,
           semestre,
+          area,
           carrera:carreras (id, nombre),
           curso_periodos (
             id,
@@ -79,7 +80,7 @@ export default function ProfesorCursosPage() {
 
   useEffect(() => {
     fetchCursos();
-  }, [filters]);
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +104,11 @@ export default function ProfesorCursosPage() {
         )
       : true;
 
-    return bySemestre && byCarrera && byPeriodo;
+    const byArea = filters.area
+      ? m.curso_carreras?.some((cc) => cc.area === filters.area)
+      : true;
+
+    return bySemestre && byCarrera && byPeriodo && byArea;
   });
 
   const grouped: Record<string, Materia[]> = {};
@@ -119,6 +124,13 @@ export default function ProfesorCursosPage() {
       if (filters.groupBy === "carrera") {
         c.curso_carreras.forEach((cc) => {
           const key = `🎓 ${cc.carrera?.nombre ?? "Carrera desconocida"}`;
+          if (!grouped[key]) grouped[key] = [];
+          if (!grouped[key].some((x) => x.id === c.id)) grouped[key].push(c);
+        });
+      }
+      if (filters.groupBy === "area") {
+        c.curso_carreras.forEach((cc) => {
+          const key = `📂 ${cc.area ?? "Área desconocida"}`;
           if (!grouped[key]) grouped[key] = [];
           if (!grouped[key].some((x) => x.id === c.id)) grouped[key].push(c);
         });
@@ -170,119 +182,126 @@ export default function ProfesorCursosPage() {
 
         {loading ? (
           <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
-        ) : filters.groupBy === "none" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...filtered]
-              .sort((a, b) => a.nombre.localeCompare(b.nombre))
-              .map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/curso/${c.id}`}
-                  className="block p-4 rounded-xl shadow transition"
-                  style={{
-                    backgroundColor: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  <h2
-                    className="text-lg font-semibold"
-                    style={{ color: "var(--color-heading)" }}
-                  >
-                    {c.nombre}
-                  </h2>
-                  {c.curso_carreras && c.curso_carreras.length > 0 ? (
-                    c.curso_carreras.map((cc) => (
+        ) : (
+          filters.groupBy === "none" ? (
+            filtered.length === 0 ? (
+              <p style={{ color: "var(--color-muted)" }}>
+                No hay cursos para los filtros seleccionados
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...filtered]
+                  .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                  .map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/curso/${c.id}`}
+                      className="block p-4 rounded-xl shadow transition"
+                      style={{
+                        backgroundColor: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      <h2
+                        className="text-lg font-semibold"
+                        style={{ color: "var(--color-heading)" }}
+                      >
+                        {c.nombre}
+                      </h2>
+                      {c.curso_carreras && c.curso_carreras.length > 0 ? (
+                        c.curso_carreras.map((cc) => (
+                          <p
+                            key={cc.id}
+                            className="text-sm"
+                            style={{ color: "var(--color-muted)" }}
+                          >
+                            Carrera: {cc.carrera?.nombre ?? "Desconocida"} — Semestre:{" "}
+                            {cc.semestre ?? "N/A"}
+                          </p>
+                        ))
+                      ) : (
+                        <p
+                          className="text-sm"
+                          style={{ color: "var(--color-muted)" }}
+                        >
+                          Sin carreras ligadas
+                        </p>
+                      )}
                       <p
-                        key={cc.id}
                         className="text-sm"
                         style={{ color: "var(--color-muted)" }}
                       >
-                        Carrera: {cc.carrera?.nombre ?? "Desconocida"} — Semestre:{" "}
-                        {cc.semestre ?? "N/A"}
+                        Profesor: {c.profesor?.nombre ?? "Aún no hay profesor asignado"}
                       </p>
-                    ))
-                  ) : (
-                    <p
-                      className="text-sm"
-                      style={{ color: "var(--color-muted)" }}
+                    </Link>
+                  ))}
+              </div>
+            )
+          ) : (
+            <div className="space-y-8">
+              {Object.keys(grouped)
+                .sort()
+                .map((k) => (
+                  <div key={k}>
+                    <h2
+                      className="text-xl font-bold mb-4"
+                      style={{ color: "var(--color-heading)" }}
                     >
-                      Sin carreras ligadas
-                    </p>
-                  )}
-                  <p
-                    className="text-sm"
-                    style={{ color: "var(--color-muted)" }}
-                  >
-                    Profesor: {c.profesor?.nombre ?? "Aún no hay profesor asignado"}
-                  </p>
-                </Link>
-              ))}
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {Object.keys(grouped)
-              .sort()
-              .map((k) => (
-                <div key={k}>
-                  <h2
-                    className="text-xl font-bold mb-4"
-                    style={{ color: "var(--color-heading)" }}
-                  >
-                    {k}
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {grouped[k]
-                      .sort((a, b) => a.nombre.localeCompare(b.nombre))
-                      .map((c) => (
-                        <Link
-                          key={c.id}
-                          href={`/curso/${c.id}`}
-                          className="block p-4 rounded-xl shadow transition"
-                          style={{
-                            backgroundColor: "var(--color-card)",
-                            border: "1px solid var(--color-border)",
-                            color: "var(--color-text)",
-                          }}
-                        >
-                          <h2
-                            className="text-lg font-semibold"
-                            style={{ color: "var(--color-heading)" }}
+                      {k}
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {grouped[k]
+                        .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                        .map((c) => (
+                          <Link
+                            key={c.id}
+                            href={`/curso/${c.id}`}
+                            className="block p-4 rounded-xl shadow transition"
+                            style={{
+                              backgroundColor: "var(--color-card)",
+                              border: "1px solid var(--color-border)",
+                              color: "var(--color-text)",
+                            }}
                           >
-                            {c.nombre}
-                          </h2>
-                          {c.curso_carreras && c.curso_carreras.length > 0 ? (
-                            c.curso_carreras.map((cc) => (
+                            <h2
+                              className="text-lg font-semibold"
+                              style={{ color: "var(--color-heading)" }}
+                            >
+                              {c.nombre}
+                            </h2>
+                            {c.curso_carreras && c.curso_carreras.length > 0 ? (
+                              c.curso_carreras.map((cc) => (
+                                <p
+                                  key={cc.id}
+                                  className="text-sm"
+                                  style={{ color: "var(--color-muted)" }}
+                                >
+                                  Carrera: {cc.carrera?.nombre ?? "Desconocida"} — Semestre:{" "}
+                                  {cc.semestre ?? "N/A"}
+                                </p>
+                              ))
+                            ) : (
                               <p
-                                key={cc.id}
                                 className="text-sm"
                                 style={{ color: "var(--color-muted)" }}
                               >
-                                Carrera: {cc.carrera?.nombre ?? "Desconocida"} — Semestre:{" "}
-                                {cc.semestre ?? "N/A"}
+                                Sin carreras ligadas
                               </p>
-                            ))
-                          ) : (
+                            )}
                             <p
                               className="text-sm"
                               style={{ color: "var(--color-muted)" }}
                             >
-                              Sin carreras ligadas
+                              Profesor: {c.profesor?.nombre ?? "Aún no hay profesor asignado"}
                             </p>
-                          )}
-                          <p
-                            className="text-sm"
-                            style={{ color: "var(--color-muted)" }}
-                          >
-                            Profesor:{" "}
-                            {c.profesor?.nombre ?? "Aún no hay profesor asignado"}
-                          </p>
-                        </Link>
-                      ))}
+                          </Link>
+                        ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-          </div>
+                ))}
+            </div>
+          )
         )}
       </div>
     </LayoutGeneral>

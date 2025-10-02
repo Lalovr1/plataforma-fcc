@@ -26,13 +26,15 @@ export default function BarraXP({ xp = 0 }: BarraXPProps) {
         className="w-full h-4 rounded-full overflow-hidden"
         style={{ backgroundColor: "var(--color-border)" }}
       >
-        <div
-          className="h-4 transition-all"
-          style={{
-            width: `${progress}%`,
-            backgroundColor: "var(--color-accent)",
-          }}
-        />
+      <div
+        className="h-4 transition-all"
+        style={{
+          width: `${progress}%`,
+          minWidth: progress > 0 ? "4px" : "0",
+          backgroundColor: "#00bcd4",
+        }}
+      />
+
       </div>
 
       <p className="text-sm mt-2" style={{ color: "var(--color-muted)" }}>

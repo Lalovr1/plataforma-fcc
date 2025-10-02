@@ -201,15 +201,31 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       if (!m.curso_carreras || m.curso_carreras.length === 0) {
         const key = "Sin clasificación";
         if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(m);
+        if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
       } else {
         m.curso_carreras.forEach((cc: any) => {
-          let key = "";
-          if (groupBy === "semestre") key = `Semestre ${cc.semestre ?? "N/A"}`;
-          if (groupBy === "carrera") key = cc.carrera?.nombre ?? "Carrera desconocida";
-          if (groupBy === "area") key = cc.area ?? "Área desconocida";
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(m);
+          if (groupBy === "periodo") {
+            cc.curso_periodos?.forEach((p: any) => {
+              const key = `🗓️ ${p.nombre} ${p.anio}`;
+              if (!grouped[key]) grouped[key] = [];
+              if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
+            });
+          } 
+          if (groupBy === "semestre") {
+            const key = `📘 Semestre ${cc.semestre ?? "N/A"}`;
+            if (!grouped[key]) grouped[key] = [];
+            if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
+          }
+          if (groupBy === "carrera") {
+            const key = `🎓 ${cc.carrera?.nombre ?? "Carrera desconocida"}`;
+            if (!grouped[key]) grouped[key] = [];
+            if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
+          }
+          if (groupBy === "area") {
+            const key = `📂 ${cc.area ?? "Área desconocida"}`;
+            if (!grouped[key]) grouped[key] = [];
+            if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
+          }
         });
       }
     });
@@ -233,7 +249,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                   className="text-xl font-bold mb-4"
                   style={{ color: "var(--color-heading)" }}
                 >
-                  📘 {k}
+                  {k}
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {grouped[k]
@@ -435,8 +451,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                     Volver
                   </button>
                   <button
-                    className="px-4 py-2 rounded text-white"
-                    style={{ backgroundColor: "var(--color-accent)" }}
+                    className="px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
                     onClick={inscribirse}
                     disabled={loading}
                   >

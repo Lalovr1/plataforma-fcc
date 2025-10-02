@@ -130,7 +130,7 @@ export default async function EstudianteDashboard() {
     });
   }
 
-  const level = usuario?.nivel ?? Math.floor((usuario?.puntos ?? 0) / 1000);
+  const level = usuario?.nivel ?? 0;
   const nextLevelXP = (level + 1) * 1000;
 
   return (
@@ -154,10 +154,7 @@ export default async function EstudianteDashboard() {
             className="p-4 rounded-xl shadow"
             style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}
           >
-            <BarraXP
-              currentXP={usuario?.puntos ?? 0}
-              nextLevelXP={nextLevelXP}
-            />
+            <BarraXP xp={usuario?.puntos ?? 0} />
           </div>
           {/* 📌 Tarjeta Logros */}
           <div

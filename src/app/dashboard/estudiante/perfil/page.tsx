@@ -193,7 +193,7 @@ export default function PerfilEstudiantePage() {
             style={{ backgroundColor: "var(--color-card)" }}
           >
             {/* BarraXP directo, sin contenedor extra */}
-            <BarraXP currentXP={usuario.puntos ?? 0} nextLevelXP={nextLevelXP} />
+            <BarraXP xp={usuario.puntos ?? 0} />
           </div>
 
           {/* Logros */}
