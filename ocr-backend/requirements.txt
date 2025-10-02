@@ -1,0 +1,4 @@
+flask
+flask-cors
+pillow
+pix2tex

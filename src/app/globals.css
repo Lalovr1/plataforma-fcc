@@ -2,42 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🎨 Estilos globales personalizados */
-body {
-  @apply bg-gray-950 text-gray-100 antialiased;
+/* Variables de tema */
+.theme-oscuro {
+  --color-bg: #0f172a;      
+  --color-text: #f1f5f9;   
+  --color-heading: #ffffff; 
+  --color-card: #1e293b;   
+  --color-border: #334155; 
+  --color-muted: #94a3b8;   
+  --color-primary: #3b82f6;  
+  --color-success: #16a34a;  
+  --color-danger: #dc2626;   
+  --color-secondary: #475569;
+}
+
+.theme-claro {
+  --color-bg: #f8fafc;      
+  --color-text: #1e293b;    
+  --color-heading: #0f172a;
+  --color-card: #ffffff;     
+  --color-border: #cbd5e1;  
+  --color-muted: #475569;   
+  --color-primary: #2563eb;  
+  --color-success: #15803d;   
+  --color-danger: #b91c1c;    
+  --color-secondary: #64748b; 
+}
+
+/*  Estilos globales */
+html,
+body,
+#__next {
+  min-height: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; 
+  color: var(--color-text);
+  @apply antialiased;
+}
+
+/* Fondo condicionado por tema */
+html.theme-oscuro,
+body.theme-oscuro {
+  background-color: var(--color-bg);
+}
+
+html.theme-claro,
+body.theme-claro {
+  background-color: var(--color-bg);
 }
 
 h1, h2, h3, h4 {
-  @apply font-bold text-gray-100;
+  color: var(--color-heading);
+  @apply font-bold;
 }
 
 button {
   @apply transition duration-200 ease-in-out;
 }
 
-/* 📖 Markdown renderizado con Tailwind Typography */
+/*  Markdown renderizado con Tailwind Typography */
 .prose {
-  @apply text-gray-100;
+  color: var(--color-text);
 }
 
 .prose h1 {
-  @apply text-3xl font-bold mt-4 mb-2 text-gray-100;
+  @apply text-3xl font-bold mt-4 mb-2;
+  color: var(--color-heading);
 }
 
 .prose h2 {
-  @apply text-2xl font-semibold mt-3 mb-2 text-gray-200;
+  @apply text-2xl font-semibold mt-3 mb-2;
+  color: var(--color-heading);
 }
 
 .prose h3 {
-  @apply text-xl font-semibold mt-2 mb-1 text-gray-300;
+  @apply text-xl font-semibold mt-2 mb-1;
+  color: var(--color-heading);
 }
 
 .prose h4 {
-  @apply text-lg font-semibold mt-2 mb-1 text-gray-400;
+  @apply text-lg font-semibold mt-2 mb-1;
+  color: var(--color-muted);
 }
 
 .prose p {
-  @apply text-gray-300 leading-relaxed mb-2;
+  color: var(--color-text);
+  @apply leading-relaxed mb-2;
 }
 
 .prose ul {
@@ -53,10 +105,11 @@ button {
 }
 
 .prose strong {
-  @apply text-white;
+  color: var(--color-heading);
 }
 
-/* ➗ KaTeX (fórmulas matemáticas) */
+/*  KaTeX (fórmulas matemáticas) */
 .katex {
-  @apply text-lg text-blue-300;
+  @apply text-lg;
+  color: #38bdf8; 
 }

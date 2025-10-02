@@ -17,7 +17,6 @@ export default async function EstudianteDashboard() {
   const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Obtener usuario autenticado
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -30,7 +29,6 @@ export default async function EstudianteDashboard() {
     );
   }
 
-  // Traer datos del usuario en tabla `usuarios`
   const { data: usuario } = await supabase
     .from("usuarios")
     .select(
@@ -39,26 +37,24 @@ export default async function EstudianteDashboard() {
     .eq("id", user.id)
     .single();
 
-  // Revisar si ya tiene progreso registrado
   const { data: progresoExistente } = await supabase
     .from("progreso")
     .select("materia_id")
     .eq("usuario_id", user.id);
 
-  // Si no tiene progreso → insertar materias iniciales
   if (!progresoExistente || progresoExistente.length === 0) {
     if (usuario?.carrera_id && usuario?.semestre_id) {
-      const { data: materias } = await supabase
-        .from("materias")
-        .select("id, nombre")
+      const { data: cursoCarreras } = await supabase
+        .from("curso_carreras")
+        .select("curso_id, cursos ( id, nombre )")
         .eq("carrera_id", usuario.carrera_id)
-        .eq("semestre_id", usuario.semestre_id);
+        .eq("semestre", usuario.semestre_id);
 
-      if (materias && materias.length > 0) {
+      if (cursoCarreras && cursoCarreras.length > 0) {
         await supabase.from("progreso").insert(
-          materias.map((m) => ({
+          cursoCarreras.map((cc) => ({
             usuario_id: usuario.id,
-            materia_id: m.id,
+            materia_id: cc.curso_id,
             progreso: 0,
             visible: true,
           }))
@@ -67,7 +63,6 @@ export default async function EstudianteDashboard() {
     }
   }
 
-  // Traer cursos visibles para mostrar en el dashboard
   const { data: cursos } = await supabase
     .from("progreso")
     .select(
@@ -81,15 +76,60 @@ export default async function EstudianteDashboard() {
     .eq("usuario_id", user.id)
     .eq("visible", true);
 
-  const mappedCourses =
-    cursos?.map((c) => ({
-      id: c.materia.id,
-      name: c.materia.nombre,
-      progress: c.progreso,
-      progresoId: c.id,
-    })) ?? [];
+  const { data: quizzesMateria } = await supabase
+    .from("quizzes")
+    .select("id, materia_id");
 
-  // Calcular nivel y XP
+  const { data: intentosUsuario } = await supabase
+    .from("intentos_quiz")
+    .select("quiz_id, usuario_id")
+    .eq("usuario_id", user.id)
+    .eq("completado", true);
+
+  let mappedCourses: any[] = [];
+
+  if (cursos && cursos.length > 0) {
+    mappedCourses = await Promise.all(
+      cursos.map(async (c) => {
+        const quizzesCurso = (quizzesMateria || []).filter(
+          (q) => q.materia_id === c.materia.id
+        );
+
+        const intentosCurso = (intentosUsuario || []).filter((i) =>
+          quizzesCurso.map((q) => q.id).includes(i.quiz_id)
+        );
+
+        const completadosUnicos = new Set(
+          intentosCurso.map((i) => i.quiz_id)
+        ).size;
+
+        const progresoReal =
+          quizzesCurso.length > 0
+            ? Math.round((completadosUnicos / quizzesCurso.length) * 100)
+            : 0;
+
+        await supabase
+          .from("progreso")
+          .update({ progreso: progresoReal })
+          .eq("id", c.id);
+
+        return {
+          id: c.materia.id,
+          name: c.materia.nombre,
+          progress: progresoReal,
+          progresoId: c.id,
+        };
+      })
+    );
+
+    mappedCourses.sort((a, b) => {
+      if (b.progress !== a.progress) {
+        return b.progress - a.progress;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }
+
   const level = usuario?.nivel ?? Math.floor((usuario?.puntos ?? 0) / 1000);
   const nextLevelXP = (level + 1) * 1000;
 
@@ -104,17 +144,30 @@ export default async function EstudianteDashboard() {
             frameUrl={usuario?.frame_url}
             rol="estudiante"
           />
-          <SeccionCursos initialCourses={mappedCourses} />
+          <SeccionCursos initialCourses={mappedCourses} userId={usuario?.id} />
         </div>
 
         <div className="space-y-6">
           <WidgetRanking />
-          <div className="bg-gray-900 p-4 rounded-xl shadow">
-            <BarraXP currentXP={usuario?.puntos ?? 0} nextLevelXP={nextLevelXP} />
+          {/* 📌 Tarjeta XP */}
+          <div
+            className="p-4 rounded-xl shadow"
+            style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}
+          >
+            <BarraXP
+              currentXP={usuario?.puntos ?? 0}
+              nextLevelXP={nextLevelXP}
+            />
           </div>
-          <div className="bg-gray-900 p-4 rounded-xl shadow">
-            <h3 className="font-bold mb-2">Logros</h3>
-            <p className="text-gray-400 text-sm">
+          {/* 📌 Tarjeta Logros */}
+          <div
+            className="p-4 rounded-xl shadow"
+            style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}
+          >
+            <h3 className="font-bold mb-2" style={{ color: "var(--color-heading)" }}>
+              Logros
+            </h3>
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               Aún no has desbloqueado logros. ¡Sigue participando!
             </p>
           </div>

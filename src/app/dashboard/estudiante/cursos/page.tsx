@@ -8,15 +8,38 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import FiltrosCursos from "@/components/FiltrosCursos";
-import CuadriculaCursos from "@/components/CuadriculaCursos";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import CuadriculaCursos from "@/components/CuadriculaCursos";
+
+interface CursoPeriodo {
+  id: string;
+  nombre: string;
+  anio: number;
+}
+
+interface CursoCarrera {
+  id: string;
+  semestre: number;
+  area: string;
+  carrera: { id: number; nombre: string } | null;
+  curso_periodos: CursoPeriodo[];
+}
+
+interface Materia {
+  id: string;
+  nombre: string;
+  profesor: { id: string; nombre: string } | null;
+  curso_carreras: CursoCarrera[];
+  yaInscrito?: boolean;
+}
 
 export default function CursosPage() {
-  const [materias, setMaterias] = useState<any[]>([]);
+  const [materias, setMaterias] = useState<Materia[]>([]);
   const [filters, setFilters] = useState({
-    semestre_id: null,
-    area: null,
-    carrera_id: null,
+    semestre_id: null as number | null,
+    area: null as string | null,
+    carrera_id: null as number | null,
+    periodo: null as string | null,
     groupBy: "none",
   });
   const [userId, setUserId] = useState<string | null>(null);
@@ -26,15 +49,27 @@ export default function CursosPage() {
 
   const fetchMaterias = async (nombre?: string) => {
     setLoading(true);
+
     let query = supabase
       .from("materias")
-      .select(`
+      .select(
+        `
         id,
         nombre,
-        semestre_id,
-        carrera:carreras (id, nombre),
-        profesor:usuarios (id, nombre)
-      `)
+        profesor:usuarios (id, nombre),
+        curso_carreras (
+          id,
+          semestre,
+          area,
+          carrera:carreras (id, nombre),
+          curso_periodos (
+            id,
+            nombre,
+            anio
+          )
+        )
+      `
+      )
       .eq("visible", true);
 
     if (nombre) {
@@ -42,7 +77,25 @@ export default function CursosPage() {
     }
 
     const { data, error } = await query;
-    if (!error && data) setMaterias(data);
+
+    let inscritosIds = new Set<string>();
+    if (userId) {
+      const { data: progresoRows } = await supabase
+        .from("progreso")
+        .select("materia_id")
+        .eq("usuario_id", userId);
+
+      inscritosIds = new Set(progresoRows?.map((r) => r.materia_id));
+    }
+
+    if (!error && data) {
+      const conFlag = (data as Materia[]).map((m) => ({
+        ...m,
+        yaInscrito: inscritosIds.has(m.id),
+      }));
+      setMaterias(conFlag);
+    }
+
     setLoading(false);
   };
 
@@ -56,17 +109,30 @@ export default function CursosPage() {
 
     fetchUser();
     fetchMaterias();
-  }, []);
+  }, [userId]);
 
   const filtered = materias.filter((m) => {
     const bySemestre = filters.semestre_id
-      ? m.semestre_id === filters.semestre_id
+      ? m.curso_carreras?.some((cc) => cc.semestre === filters.semestre_id)
       : true;
-    const byArea = filters.area ? m.area === filters.area : true;
+
+    const byArea = filters.area
+      ? m.curso_carreras?.some((cc) => cc.area === filters.area)
+      : true;
+
     const byCarrera = filters.carrera_id
-      ? m.carrera?.id === filters.carrera_id
+      ? m.curso_carreras?.some((cc) => cc.carrera?.id === filters.carrera_id)
       : true;
-    return bySemestre && byArea && byCarrera;
+
+    const byPeriodo = filters.periodo
+      ? m.curso_carreras?.some((cc) =>
+          cc.curso_periodos?.some(
+            (p) => `${p.nombre} ${p.anio}` === filters.periodo
+          )
+        )
+      : true;
+
+    return bySemestre && byArea && byCarrera && byPeriodo;
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -77,7 +143,12 @@ export default function CursosPage() {
   return (
     <LayoutGeneral>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Explorar Cursos</h1>
+        <h1
+          className="text-2xl font-bold"
+          style={{ color: "var(--color-heading)" }}
+        >
+          Explorar Cursos
+        </h1>
 
         <form onSubmit={handleSearch} className="flex gap-2">
           <input
@@ -85,11 +156,16 @@ export default function CursosPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar curso por nombre"
-            className="flex-1 p-2 rounded bg-gray-800 text-white"
+            className="flex-1 p-2 rounded"
+            style={{
+              backgroundColor: "var(--color-card)",
+              color: "var(--color-text)",
+              border: "1px solid var(--color-border)",
+            }}
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+            className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition"
           >
             Buscar
           </button>
@@ -98,15 +174,13 @@ export default function CursosPage() {
         <FiltrosCursos filters={filters} setFilters={setFilters} />
 
         {loading ? (
-          <p className="text-gray-400">Cargando...</p>
-        ) : userId ? (
+          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+        ) : (
           <CuadriculaCursos
             materias={filtered}
             groupBy={filters.groupBy}
-            userId={userId}
+            userId={userId ?? ""}
           />
-        ) : (
-          <p className="text-gray-400">Cargando usuario...</p>
         )}
       </div>
     </LayoutGeneral>

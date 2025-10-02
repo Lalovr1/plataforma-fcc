@@ -1,6 +1,5 @@
 /**
- * Página de ranking global para profesores: muestra el top 20 de usuarios
- * ordenados por puntos con sus avatares y posición.
+ * Página de ranking global para profesores: muestra el top 20 de estudiantes.
  */
 
 "use client";
@@ -26,6 +25,7 @@ export default function ProfesorRanking() {
       const { data: ranking } = await supabase
         .from("usuarios")
         .select("id, nombre, puntos, avatar_config, frame_url")
+        .eq("rol", "estudiante") 
         .order("puntos", { ascending: false })
         .limit(20);
 
@@ -38,27 +38,44 @@ export default function ProfesorRanking() {
   return (
     <LayoutGeneral rol="profesor">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">🏆 Ranking Global</h1>
+        <h1
+          className="text-2xl font-bold"
+          style={{ color: "var(--color-heading)" }}
+        >
+          🏆 Ranking Global
+        </h1>
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow space-y-4">
+        <div
+          className="p-6 rounded-xl shadow space-y-4"
+          style={{
+            backgroundColor: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
           {usuarios.map((user, index) => (
             <div
               key={user.id}
-              className={`flex items-center justify-between rounded-lg ${
-                index === 0
-                  ? "bg-yellow-900/40 p-5 text-xl"
-                  : index === 1
-                  ? "bg-gray-700/40 p-5 text-lg"
-                  : index === 2
-                  ? "bg-orange-900/40 p-5 text-lg"
-                  : "bg-gray-800/40 p-3"
-              }`}
+              className="flex items-center justify-between rounded-lg"
+              style={{
+                backgroundColor:
+                  index === 0
+                    ? "rgba(234,179,8,0.15)" 
+                    : index === 1
+                    ? "rgba(156,163,175,0.15)" 
+                    : index === 2
+                    ? "rgba(249,115,22,0.15)" 
+                    : "var(--color-bg)",
+                padding: "1.25rem",
+              }}
             >
               <div className="flex items-center gap-4">
                 <span
-                  className={`font-bold ${
-                    index < 3 ? "text-2xl w-10" : "text-lg w-6"
-                  }`}
+                  className="font-bold flex-shrink-0 text-center"
+                  style={{
+                    width: index < 3 ? "2.5rem" : "1.5rem",
+                    fontSize: index < 3 ? "2rem" : "1.25rem",
+                    color: "var(--color-heading)",
+                  }}
                 >
                   {index === 0
                     ? "🥇"
@@ -71,20 +88,24 @@ export default function ProfesorRanking() {
                 <RenderizadorAvatar
                   config={user.avatar_config}
                   frameUrl={user.frame_url}
-                  size={index < 3 ? 48 : 32}
+                  size={index < 3 ? 100 : 80}
                 />
                 <span
-                  className={`font-semibold ${
-                    index < 3 ? "text-lg" : "text-base"
-                  }`}
+                  className="font-semibold"
+                  style={{
+                    fontSize: index < 3 ? "1.5rem" : "1.25rem",
+                    color: "var(--color-text)",
+                  }}
                 >
                   {user.nombre}
                 </span>
               </div>
               <span
-                className={`font-bold ${
-                  index < 3 ? "text-blue-300 text-xl" : "text-blue-400"
-                }`}
+                className="font-bold"
+                style={{
+                  fontSize: index < 3 ? "1.75rem" : "1.25rem",
+                  color: "#38bdf8", 
+                }}
               >
                 {user.puntos} pts
               </span>

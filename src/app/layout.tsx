@@ -22,8 +22,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
-      <body className={`${inter.className} bg-gray-950 text-gray-100`}>
+    <html
+      lang="es"
+      className="theme-claro" // 🚀 Arranca siempre en tema claro por defecto
+      suppressHydrationWarning
+    >
+      <body
+        className={`${inter.className} bg-[#f8fafc] text-gray-900`} // 🚀 Fondo claro inicial
+      >
         {children}
         <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       </body>

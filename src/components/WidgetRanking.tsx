@@ -25,6 +25,7 @@ export default function WidgetRanking() {
       const { data, error } = await supabase
         .from("usuarios")
         .select("id, nombre, puntos, avatar_config, frame_url")
+        .eq("rol", "estudiante")
         .order("puntos", { ascending: false })
         .limit(5);
 
@@ -48,54 +49,90 @@ export default function WidgetRanking() {
 
   if (usuarios.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4 shadow-lg text-center">
-        <h2 className="text-lg font-bold text-cyan-400 mb-4">🏆 TOP 5 GLOBAL</h2>
-        <p className="text-gray-400">Aún no hay jugadores en el ranking.</p>
+      <div
+        className="rounded-lg p-4 shadow-lg text-center"
+        style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+      >
+        <h2
+          className="text-lg font-bold mb-4"
+          style={{ color: "var(--color-accent)" }}
+        >
+          🏆 TOP 5 GLOBAL
+        </h2>
+        <p style={{ color: "var(--color-muted)" }}>
+          Aún no hay jugadores en el ranking.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 shadow-lg text-center">
-      <h2 className="text-xl font-bold text-cyan-400 mb-6">🏆 TOP 5 GLOBAL</h2>
+    <div
+      className="rounded-lg p-6 shadow-lg text-center"
+      style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+    >
+      <h2
+        className="text-xl font-bold mb-6"
+        style={{ color: "var(--color-accent)" }}
+      >
+        🏆 TOP 5 GLOBAL
+      </h2>
 
       <div className="flex justify-center items-end gap-8 mb-6">
         {usuarios[1] && (
           <div className="flex flex-col items-center">
             <RenderizadorAvatar
-              size={64}
+              size={100}
               config={usuarios[1].avatar_config ?? defaultConfig}
               frameUrl={usuarios[1].frame_url}
             />
-            <p className="text-gray-300 mt-2">{usuarios[1].nombre}</p>
-            <span className="text-sm text-gray-400">{usuarios[1].puntos} pts</span>
-            <span className="text-gray-400 font-bold">🥈 #2</span>
+            <p className="mt-2" style={{ color: "var(--color-text)" }}>
+              {usuarios[1].nombre}
+            </p>
+            <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+              {usuarios[1].puntos} pts
+            </span>
+            <span className="font-bold" style={{ color: "var(--color-muted)" }}>
+              🥈 #2
+            </span>
           </div>
         )}
 
         {usuarios[0] && (
           <div className="flex flex-col items-center">
             <RenderizadorAvatar
-              size={80}
+              size={180}
               config={usuarios[0].avatar_config ?? defaultConfig}
               frameUrl={usuarios[0].frame_url}
             />
-            <p className="text-yellow-400 font-bold mt-2">{usuarios[0].nombre}</p>
-            <span className="text-sm text-gray-400">{usuarios[0].puntos} pts</span>
-            <span className="text-yellow-400 font-bold">🥇 #1</span>
+            <p className="text-xl font-bold mt-2" style={{ color: "var(--color-heading)" }}>
+              {usuarios[0].nombre}
+            </p>
+            <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+              {usuarios[0].puntos} pts
+            </span>
+            <span className="font-bold" style={{ color: "var(--color-accent)" }}>
+              🥇 #1
+            </span>
           </div>
         )}
 
         {usuarios[2] && (
           <div className="flex flex-col items-center">
             <RenderizadorAvatar
-              size={56}
+              size={100}
               config={usuarios[2].avatar_config ?? defaultConfig}
               frameUrl={usuarios[2].frame_url}
             />
-            <p className="text-gray-300 mt-2">{usuarios[2].nombre}</p>
-            <span className="text-sm text-gray-400">{usuarios[2].puntos} pts</span>
-            <span className="text-orange-500 font-bold">🥉 #3</span>
+            <p className="mt-2" style={{ color: "var(--color-text)" }}>
+              {usuarios[2].nombre}
+            </p>
+            <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+              {usuarios[2].puntos} pts
+            </span>
+            <span className="font-bold" style={{ color: "var(--color-muted)" }}>
+              🥉 #3
+            </span>
           </div>
         )}
       </div>
@@ -104,18 +141,30 @@ export default function WidgetRanking() {
         {usuarios.slice(3).map((user, idx) => (
           <li
             key={user.id}
-            className="flex items-center justify-between bg-gray-700 px-4 py-2 rounded hover:bg-gray-600"
+            className="flex items-center justify-between px-4 py-2 rounded transition"
+            style={{
+              backgroundColor: "var(--color-bg)",
+              color: "var(--color-text)",
+              border: "1px solid var(--color-border)",
+            }}
           >
             <div className="flex items-center space-x-3">
-              <span className="font-bold text-gray-400">#{idx + 4}</span>
+              <span
+                className="font-bold"
+                style={{ color: "var(--color-muted)" }}
+              >
+                #{idx + 4}
+              </span>
               <RenderizadorAvatar
-                size={32}
+                size={60}
                 config={user.avatar_config ?? defaultConfig}
                 frameUrl={user.frame_url}
               />
               <p>{user.nombre}</p>
             </div>
-            <span className="text-sm text-gray-300">{user.puntos} pts</span>
+            <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+              {user.puntos} pts
+            </span>
           </li>
         ))}
       </ul>

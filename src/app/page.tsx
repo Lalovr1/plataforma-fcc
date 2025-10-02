@@ -20,8 +20,10 @@ export default async function Home() {
   if (!user) {
     redirect("/login");
   }
-
-  const rol = user.email?.endsWith("@alumno.buap.mx") ? "estudiante" : "profesor";
+  const rol =
+    user?.email?.endsWith("@alumno.buap.mx") || user?.email?.endsWith("@alm.buap.mx")
+      ? "estudiante"
+      : "profesor";
 
   if (rol === "profesor") {
     redirect("/dashboard/profesor");

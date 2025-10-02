@@ -1,6 +1,5 @@
 /**
- * Página de ranking global de estudiantes.
- * Muestra el top 20 por puntos, así como la posición actual del usuario logueado.
+ * Ranking global de estudiantes con soporte de temas.
  */
 
 "use client";
@@ -25,14 +24,13 @@ export default function EstudianteRanking() {
 
   useEffect(() => {
     const fetchRanking = async () => {
-      // Top 20 global
       const { data: ranking } = await supabase
         .from("usuarios")
         .select("id, nombre, puntos, avatar_config, frame_url")
+        .eq("rol", "estudiante")
         .order("puntos", { ascending: false })
         .limit(20);
 
-      // Usuario actual
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -50,10 +48,10 @@ export default function EstudianteRanking() {
         if (misDatos) {
           miUsuarioData = misDatos;
 
-          // Ranking completo para calcular posición real
           const { data: todos } = await supabase
             .from("usuarios")
             .select("id")
+            .eq("rol", "estudiante")
             .order("puntos", { ascending: false });
 
           miPos = todos?.findIndex((u) => u.id === user.id) ?? null;
@@ -72,11 +70,19 @@ export default function EstudianteRanking() {
   return (
     <LayoutGeneral rol="estudiante">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">🏆 Ranking Global</h1>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+          🏆 Ranking Global
+        </h1>
 
         {miUsuario && miPosicion && (
-          <div className="bg-gray-800 p-5 rounded-xl shadow border border-blue-500">
-            <h2 className="text-lg font-bold mb-2 text-blue-400">
+          <div
+            className="p-5 rounded-xl shadow border"
+            style={{
+              backgroundColor: "var(--color-card)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            <h2 className="text-lg font-bold mb-2 text-cyan-500">
               Tu posición
             </h2>
             <div className="flex items-center justify-between">
@@ -85,37 +91,49 @@ export default function EstudianteRanking() {
                 <RenderizadorAvatar
                   config={miUsuario.avatar_config}
                   frameUrl={miUsuario.frame_url}
-                  size={40}
+                  size={60}
                 />
-                <span className="font-semibold text-lg">
+                <span
+                  className="font-semibold text-lg"
+                  style={{ color: "var(--color-text)" }}
+                >
                   {miUsuario.nombre}
                 </span>
               </div>
-              <span className="text-blue-400 font-bold text-lg">
+              <span className="text-cyan-500 font-bold text-lg">
                 {miUsuario.puntos} pts
               </span>
             </div>
           </div>
         )}
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow space-y-4">
+        <div
+          className="p-6 rounded-xl shadow space-y-4"
+          style={{
+            backgroundColor: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
           {usuarios.map((user, index) => (
             <div
               key={user.id}
-              className={`flex items-center justify-between rounded-lg ${
-                index === 0
-                  ? "bg-yellow-900/40 p-5 text-xl"
-                  : index === 1
-                  ? "bg-gray-700/40 p-5 text-lg"
-                  : index === 2
-                  ? "bg-orange-900/40 p-5 text-lg"
-                  : "bg-gray-800/40 p-3"
-              }`}
+              className={`flex items-center justify-between rounded-lg transition`}
+              style={{
+                backgroundColor:
+                  index === 0
+                    ? "rgba(250, 204, 21, 0.15)"
+                    : index === 1
+                    ? "rgba(148, 163, 184, 0.15)"
+                    : index === 2
+                    ? "rgba(251, 146, 60, 0.15)"
+                    : "var(--color-bg)",
+                padding: "1.25rem",
+              }}
             >
               <div className="flex items-center gap-4">
                 <span
                   className={`font-bold ${
-                    index < 3 ? "text-2xl w-10" : "text-lg w-6"
+                    index < 3 ? "text-3xl w-12" : "text-lg w-8"
                   }`}
                 >
                   {index === 0
@@ -129,19 +147,20 @@ export default function EstudianteRanking() {
                 <RenderizadorAvatar
                   config={user.avatar_config}
                   frameUrl={user.frame_url}
-                  size={index < 3 ? 48 : 32}
+                  size={index < 3 ? 100 : 80}
                 />
                 <span
                   className={`font-semibold ${
-                    index < 3 ? "text-lg" : "text-base"
+                    index < 3 ? "text-xl" : "text-base"
                   }`}
+                  style={{ color: "var(--color-text)" }}
                 >
                   {user.nombre}
                 </span>
               </div>
               <span
                 className={`font-bold ${
-                  index < 3 ? "text-blue-300 text-xl" : "text-blue-400"
+                  index < 3 ? "text-cyan-600 text-2xl" : "text-cyan-500 text-base"
                 }`}
               >
                 {user.puntos} pts

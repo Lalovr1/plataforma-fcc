@@ -1,10 +1,10 @@
 /**
  * Página de registro:
  * - Detecta rol dinámicamente según correo BUAP:
- *   @alumno.buap.mx → estudiante
+ *   @alumno.buap.mx o @alm.buap.mx → estudiante
  *   @correo.buap.mx → profesor
  * - Estudiantes deben seleccionar carrera y semestre.
- * - Registra usuario en Supabase con metadata inicial.
+ * - Crea el usuario en Supabase Auth y luego lo inserta en la tabla `usuarios`.
  */
 
 "use client";
@@ -21,9 +21,8 @@ export default function RegisterPage() {
   const [semestreId, setSemestreId] = useState<number | null>(null);
   const [mensaje, setMensaje] = useState("");
 
-  // Detección automática del rol según correo
   const rolDetectado =
-    correo.endsWith("@alumno.buap.mx")
+    correo.endsWith("@alumno.buap.mx") || correo.endsWith("@alm.buap.mx")
       ? "estudiante"
       : correo.endsWith("@correo.buap.mx")
       ? "profesor"
@@ -44,22 +43,9 @@ export default function RegisterPage() {
         return;
       }
 
-      // Crear usuario con metadata
       const { data, error } = await supabase.auth.signUp({
         email: correo,
         password: contrasena,
-        options: {
-          emailRedirectTo: `${window.location.origin}/login`,
-          data: {
-            nombre: nombre.trim(),
-            rol: rolDetectado,
-            carrera_id: rolDetectado === "estudiante" ? carreraId : null,
-            semestre_id: rolDetectado === "estudiante" ? semestreId : null,
-            nivel: 0,
-            puntos: 0,
-            avatar_url: "/avatars/default/avatar.png",
-          },
-        },
       });
 
       if (error) {
@@ -72,6 +58,35 @@ export default function RegisterPage() {
         return;
       }
 
+      if (data.user) {
+        const { error: insertError } = await supabase.from("usuarios").insert({
+          id: data.user.id,
+          email: data.user.email,
+          nombre: nombre.trim(),
+          rol: rolDetectado,
+          carrera_id: rolDetectado === "estudiante" ? carreraId : null,
+          semestre_id: rolDetectado === "estudiante" ? semestreId : null,
+          nivel: rolDetectado === "estudiante" ? 0 : null,  
+          puntos: rolDetectado === "estudiante" ? 0 : null, 
+          avatar_config: {
+            skin: "Piel1.png",
+            eyes: "Ojos1.png",
+            hair: "none",
+            mouth: "Boca1.png",
+            nose: "Nariz1.png",
+            glasses: "none",
+            clothes: "none",
+            accessory: "none",
+          },
+          frame_url: null,
+        });
+
+        if (insertError) {
+          setMensaje(`❌ Error guardando en usuarios: ${insertError.message}`);
+          return;
+        }
+      }
+
       setMensaje("✅ Registro exitoso. Revisa tu correo para confirmar tu cuenta.");
     } catch (err) {
       console.error(err);
@@ -80,10 +95,10 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-950 text-white">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900">
       <form
         onSubmit={handleRegister}
-        className="bg-gray-900 p-6 rounded-xl shadow-md w-96 space-y-4"
+        className="bg-white p-6 rounded-xl shadow-md w-96 space-y-4 border border-gray-200"
       >
         <h2 className="text-2xl font-bold text-center">Registro</h2>
 
@@ -92,7 +107,7 @@ export default function RegisterPage() {
           placeholder="Nombre"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800"
+          className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
 
@@ -101,7 +116,7 @@ export default function RegisterPage() {
           placeholder="Correo BUAP"
           value={correo}
           onChange={(e) => setCorreo(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800"
+          className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
 
@@ -110,7 +125,7 @@ export default function RegisterPage() {
           placeholder="Contraseña"
           value={contrasena}
           onChange={(e) => setContrasena(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800"
+          className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
 
@@ -123,7 +138,7 @@ export default function RegisterPage() {
                 const value = e.target.value;
                 setCarreraId(value ? Number(value) : null);
               }}
-              className="w-full p-2 rounded bg-gray-800"
+              className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
               <option value="">Selecciona tu carrera</option>
@@ -140,7 +155,7 @@ export default function RegisterPage() {
                 const value = e.target.value;
                 setSemestreId(value ? Number(value) : null);
               }}
-              className="w-full p-2 rounded bg-gray-800"
+              className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
               <option value="">Selecciona tu semestre</option>
@@ -155,7 +170,7 @@ export default function RegisterPage() {
 
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold"
+          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold text-white"
         >
           Registrarse
         </button>
@@ -163,17 +178,16 @@ export default function RegisterPage() {
         {mensaje && (
           <p
             className={`text-sm text-center ${
-              mensaje.startsWith("✅") ? "text-green-400" : "text-red-400"
+              mensaje.startsWith("✅") ? "text-green-600" : "text-red-600"
             }`}
           >
             {mensaje}
           </p>
         )}
 
-        {/* 👇 Nuevo: enlace a login */}
-        <p className="text-sm text-center text-gray-400">
+        <p className="text-sm text-center text-gray-600">
           ¿Ya tienes cuenta?{" "}
-          <Link href="/login" className="text-blue-400 hover:underline">
+          <Link href="/login" className="text-blue-600 hover:underline">
             Inicia sesión aquí
           </Link>
         </p>

@@ -13,7 +13,6 @@ export default async function DashboardRoot() {
   const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Usuario autenticado
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -21,9 +20,10 @@ export default async function DashboardRoot() {
   if (!user) {
     redirect("/login");
   }
-
-  // Determinar rol según correo
-  const rol = user.email?.endsWith("@alumno.buap.mx") ? "estudiante" : "profesor";
+  const rol =
+    user?.email?.endsWith("@alumno.buap.mx") || user?.email?.endsWith("@alm.buap.mx")
+      ? "estudiante"
+      : "profesor";
 
   if (rol === "profesor") {
     redirect("/dashboard/profesor");

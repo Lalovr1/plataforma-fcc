@@ -27,9 +27,17 @@ export default async function CursoPage({ params }: { params: Params }) {
     );
   }
 
+  const { data: perfil } = await supabase
+    .from("usuarios")
+    .select("rol")
+    .eq("id", user.id)
+    .single();
+
+  const rol = perfil?.rol === "profesor" ? "profesor" : "estudiante";
+
   return (
-    <LayoutGeneral>
-      <VisualizadorCurso materiaId={params.id} userId={user.id} />
+    <LayoutGeneral rol={rol}>
+      <VisualizadorCurso materiaId={params.id} userId={user.id} rol={rol} />
     </LayoutGeneral>
   );
 }

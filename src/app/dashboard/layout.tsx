@@ -16,15 +16,17 @@ export default async function DashboardLayout({
   const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Usuario autenticado
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Rol por defecto → estudiante
   let rol: "estudiante" | "profesor" = "estudiante";
   if (user) {
-    rol = user.email?.endsWith("@alumno.buap.mx") ? "estudiante" : "profesor";
+    if (user?.email?.endsWith("@alumno.buap.mx") || user?.email?.endsWith("@alm.buap.mx")) {
+      rol = "estudiante";
+    } else {
+      rol = "profesor";
+    }
   }
 
   return (

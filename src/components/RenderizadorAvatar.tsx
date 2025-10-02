@@ -1,7 +1,6 @@
 /**
  * Renderiza el avatar del usuario en base a una configuración de capas.
  * Cada capa corresponde a una parte del avatar (piel, ojos, ropa, etc.)
- * y puede incluir un marco opcional encima.
  */
 
 "use client";
@@ -10,10 +9,11 @@ export type AvatarConfig = {
   skin: string;
   eyes?: string | null;
   mouth?: string | null;
-  eyebrow?: string | null;
   hair?: string | null;
   clothes?: string | null;
   accessory?: string | null;
+  nose?: string | null;
+  glasses?: string | null;
 };
 
 interface Props {
@@ -24,24 +24,37 @@ interface Props {
 
 export default function RenderizadorAvatar({ config, frameUrl, size = 150 }: Props) {
   const defaultConfig: AvatarConfig = {
-    skin: "default.png",
+    skin: "Piel1.png",
     eyes: "none",
     mouth: "none",
-    eyebrow: "none",
     hair: "none",
     clothes: "none",
-    accessory: null,
+    accessory: "none",
+    nose: "none",
+    glasses: "none",
   };
 
   const safeConfig = config ?? defaultConfig;
 
-  const layers: Array<[string, string | undefined | null]> = [
+  const folderMap: Record<string, string> = {
+    skin: "Pieles",
+    eyes: "Ojos",
+    mouth: "Boca",
+    clothes: "Ropa",
+    hair: "Cabello",
+    nose: "Nariz",
+    glasses: "Lentes",
+    accessory: "AtuendosEspeciales",
+  };
+
+  const layers: Array<[keyof AvatarConfig, string | undefined | null]> = [
     ["skin", safeConfig.skin],
     ["eyes", safeConfig.eyes],
     ["mouth", safeConfig.mouth],
-    ["eyebrow", safeConfig.eyebrow],
-    ["hair", safeConfig.hair],
     ["clothes", safeConfig.clothes],
+    ["hair", safeConfig.hair],
+    ["nose", safeConfig.nose],
+    ["glasses", safeConfig.glasses],
     ["accessory", safeConfig.accessory],
   ];
 
@@ -51,7 +64,7 @@ export default function RenderizadorAvatar({ config, frameUrl, size = 150 }: Pro
         file && file !== "none" ? (
           <img
             key={`${folder}-${file}`}
-            src={`/avatars/base/${folder}/${file}`}
+            src={`/ElementosAvatar/${folderMap[folder]}/${file}`}
             className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
             alt={folder}
             draggable={false}

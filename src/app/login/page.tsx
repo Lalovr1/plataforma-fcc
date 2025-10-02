@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import Link from "next/link"; // 👈 agregado
+import Link from "next/link";
 
 export default function LoginPage() {
   const [correo, setCorreo] = useState("");
@@ -37,7 +37,6 @@ export default function LoginPage() {
 
       console.log("✅ Sesión iniciada:", data.session);
 
-      // Buscar rol en tabla `usuarios`
       const { data: usuario, error: usuarioError } = await supabase
         .from("usuarios")
         .select("rol")
@@ -50,7 +49,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Redirigir según rol
       if (usuario.rol === "estudiante") {
         window.location.href = "/dashboard/estudiante";
       } else if (usuario.rol === "profesor") {
@@ -65,10 +63,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-950 text-white">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900">
       <form
         onSubmit={handleLogin}
-        className="bg-gray-900 p-6 rounded-xl shadow-md w-96 space-y-4"
+        className="bg-white p-6 rounded-xl shadow-md w-96 space-y-4 border border-gray-200"
       >
         <h1 className="text-2xl font-bold text-center">Iniciar Sesión</h1>
 
@@ -77,7 +75,7 @@ export default function LoginPage() {
           placeholder="Correo BUAP"
           value={correo}
           onChange={(e) => setCorreo(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800"
+          className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
 
@@ -86,25 +84,24 @@ export default function LoginPage() {
           placeholder="Contraseña"
           value={contrasena}
           onChange={(e) => setContrasena(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800"
+          className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
 
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold"
+          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold text-white"
         >
           Ingresar
         </button>
 
         {mensaje && (
-          <p className="text-sm text-center text-red-400">{mensaje}</p>
+          <p className="text-sm text-center text-red-600">{mensaje}</p>
         )}
 
-        {/* 👇 Nuevo: enlace a registro */}
-        <p className="text-sm text-center text-gray-400">
+        <p className="text-sm text-center text-gray-600">
           ¿No tienes cuenta?{" "}
-          <Link href="/register" className="text-blue-400 hover:underline">
+          <Link href="/register" className="text-blue-600 hover:underline">
             Regístrate aquí
           </Link>
         </p>

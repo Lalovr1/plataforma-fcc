@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -20,11 +20,52 @@ interface Curso {
 
 interface Props {
   initialCourses: Curso[];
+  userId: string; 
 }
 
-export default function SeccionCursos({ initialCourses }: Props) {
+export default function SeccionCursos({ initialCourses, userId }: Props) {
   const [misCursos, setMisCursos] = useState<Curso[]>(initialCourses);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const fetchCursos = async () => {
+    const { data: cursos, error } = await supabase
+      .from("progreso")
+      .select(`
+        id,
+        progreso,
+        visible,
+        materia: materias ( id, nombre )
+      `)
+      .eq("usuario_id", userId)
+      .eq("visible", true);
+
+    if (error) {
+      console.error("Error al traer cursos:", error.message);
+      return;
+    }
+
+    if (!cursos) return;
+
+    const mapped = cursos.map((c: any) => ({
+      id: c.materia.id,
+      name: c.materia.nombre,
+      progress: c.progreso,
+      progresoId: c.id,
+    }));
+
+    mapped.sort((a, b) => {
+      if (b.progress !== a.progress) {
+        return b.progress - a.progress;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    setMisCursos(mapped);
+  };
+
+  useEffect(() => {
+    fetchCursos();
+  }, [userId]);
 
   const removeCourse = async (progresoId: string) => {
     setLoadingId(progresoId);
@@ -44,22 +85,41 @@ export default function SeccionCursos({ initialCourses }: Props) {
 
   return (
     <div className="mt-6">
-      <h3 className="text-2xl font-bold mb-4 text-white">Cursos</h3>
+      <h3
+        className="text-2xl font-bold mb-4"
+        style={{ color: "var(--color-heading)" }}
+      >
+        Cursos
+      </h3>
 
       {misCursos.length === 0 ? (
-        <p className="text-gray-400">Aún no tienes cursos asignados</p>
+        <p style={{ color: "var(--color-muted)" }}>
+          Aún no tienes cursos asignados
+        </p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {misCursos.map((curso) => (
             <div
               key={curso.id}
-              className="bg-[#B8C3CA] rounded-xl p-6 shadow flex items-center gap-6 relative"
+              className="rounded-xl p-6 shadow flex items-center gap-6 relative"
+              style={{
+                backgroundColor: "var(--color-card)",
+                color: "var(--color-text)",
+              }}
             >
               <CirculoProgreso progress={curso.progress} size={80} />
 
               <div className="flex-1">
-                <p className="text-lg font-semibold text-black">{curso.name}</p>
-                <p className="text-sm text-gray-800 mt-1">
+                <p
+                  className="text-lg font-semibold"
+                  style={{ color: "var(--color-heading)" }}
+                >
+                  {curso.name}
+                </p>
+                <p
+                  className="text-sm mt-1"
+                  style={{ color: "var(--color-muted)" }}
+                >
                   Progreso: {curso.progress}%
                 </p>
 

@@ -1,6 +1,5 @@
 /**
- * Filtros para listar/consultar cursos por semestre, área, carrera y criterio de agrupación.
- * Recibe y actualiza el estado externo mediante las props `filters` y `setFilters`.
+ * Filtros para listar/consultar cursos por semestre, área, carrera, periodo y agrupación.
  */
 
 "use client";
@@ -13,11 +12,18 @@ interface Carrera {
   nombre: string;
 }
 
+interface Periodo {
+  id: string;
+  nombre: string;
+  anio: number;
+}
+
 interface Props {
   filters: {
     semestre_id: number | null;
     area: string | null;
     carrera_id: number | null;
+    periodo: string | null;
     groupBy: string;
   };
   setFilters: (filters: any) => void;
@@ -25,21 +31,38 @@ interface Props {
 
 export default function FiltrosCursos({ filters, setFilters }: Props) {
   const [carreras, setCarreras] = useState<Carrera[]>([]);
+  const [periodos, setPeriodos] = useState<Periodo[]>([]);
 
   useEffect(() => {
-    const fetchCarreras = async () => {
-      const { data, error } = await supabase.from("carreras").select("id, nombre");
-      if (!error && data) {
-        setCarreras(data);
-      }
+    const fetchData = async () => {
+      const { data: cData } = await supabase.from("carreras").select("id, nombre");
+      if (cData) setCarreras(cData);
+
+      const { data: pData } = await supabase
+        .from("curso_periodos")
+        .select("id, nombre, anio");
+      if (pData) setPeriodos(pData);
     };
-    fetchCarreras();
+    fetchData();
   }, []);
 
+  const selectStyle: React.CSSProperties = {
+    backgroundColor: "var(--color-card)",
+    color: "var(--color-text)",
+    border: "1px solid var(--color-border)",
+  };
+
   return (
-    <div className="bg-gray-900 p-4 rounded-xl flex gap-4 flex-wrap">
+    <div
+      className="p-4 rounded-xl flex gap-4 flex-wrap"
+      style={{
+        backgroundColor: "var(--color-card)",
+        color: "var(--color-text)",
+      }}
+    >
       <select
-        className="bg-gray-800 p-2 rounded"
+        className="p-2 rounded"
+        style={selectStyle}
         value={filters.semestre_id || ""}
         onChange={(e) =>
           setFilters({
@@ -57,7 +80,8 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
       </select>
 
       <select
-        className="bg-gray-800 p-2 rounded"
+        className="p-2 rounded"
+        style={selectStyle}
         value={filters.area || ""}
         onChange={(e) => setFilters({ ...filters, area: e.target.value || null })}
       >
@@ -67,7 +91,8 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
       </select>
 
       <select
-        className="bg-gray-800 p-2 rounded"
+        className="p-2 rounded"
+        style={selectStyle}
         value={filters.carrera_id || ""}
         onChange={(e) =>
           setFilters({
@@ -85,14 +110,35 @@ export default function FiltrosCursos({ filters, setFilters }: Props) {
       </select>
 
       <select
-        className="bg-gray-800 p-2 rounded"
+        className="p-2 rounded"
+        style={selectStyle}
+        value={filters.periodo || ""}
+        onChange={(e) =>
+          setFilters({
+            ...filters,
+            periodo: e.target.value || null,
+          })
+        }
+      >
+        <option value="">Todos los periodos</option>
+        {periodos.map((p) => (
+          <option key={p.id} value={`${p.nombre} ${p.anio}`}>
+            {p.nombre} {p.anio}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className="p-2 rounded"
+        style={selectStyle}
         value={filters.groupBy}
         onChange={(e) => setFilters({ ...filters, groupBy: e.target.value })}
       >
         <option value="none">Sin agrupación</option>
-        <option value="semestre">Agrupar por semestre</option>
-        <option value="carrera">Agrupar por carrera</option>
-        <option value="area">Agrupar por área</option>
+        <option value="semestre">📘 Agrupar por semestre</option>
+        <option value="carrera">🎓 Agrupar por carrera</option>
+        <option value="area">📂 Agrupar por área</option>
+        <option value="periodo">🗓️ Agrupar por periodo</option>
       </select>
     </div>
   );

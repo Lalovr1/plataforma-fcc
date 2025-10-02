@@ -15,7 +15,6 @@ import Link from "next/link";
 export default async function ProfesorDashboard() {
   const supabase = createServerComponentClient({ cookies });
 
-  // Usuario autenticado
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -28,25 +27,23 @@ export default async function ProfesorDashboard() {
     );
   }
 
-  // Datos del profesor
   const { data: profesor } = await supabase
     .from("usuarios")
     .select("id, nombre, avatar_config, frame_url")
     .eq("id", user.id)
     .single();
 
-  // Cursos creados por el profesor
   const { data: cursos } = await supabase
     .from("materias")
-    .select(
-      `
+    .select(`
       id,
       nombre,
-      area,
-      semestre_id,
-      carrera:carreras (id, nombre)
-    `
-    )
+      curso_carreras (
+        id,
+        semestre,
+        carrera:carreras (id, nombre)
+      )
+    `)
     .eq("profesor_id", user.id);
 
   return (
@@ -63,38 +60,85 @@ export default async function ProfesorDashboard() {
           />
 
           {/* Cursos creados */}
-          <div className="bg-gray-900 p-6 rounded-xl shadow">
-            <h2 className="text-xl font-bold mb-4 text-white">Mis Cursos</h2>
+          <div
+            className="p-6 rounded-xl shadow"
+            style={{
+              backgroundColor: "var(--color-card)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text)",
+            }}
+          >
+            <h2
+              className="text-xl font-bold mb-4"
+              style={{ color: "var(--color-heading)" }}
+            >
+              Mis Cursos
+            </h2>
             {cursos && cursos.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {cursos.map((c) => (
                   <div
                     key={c.id}
-                    className="bg-gray-800 p-4 rounded-lg shadow text-gray-200 flex flex-col justify-between"
+                    className="p-4 rounded-lg shadow flex flex-col justify-between"
+                    style={{
+                      backgroundColor: "var(--color-card)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
                   >
                     <div>
-                      <h3 className="text-lg font-semibold">{c.nombre}</h3>
-                      <p className="text-sm text-gray-400">Área: {c.area}</p>
-                      <p className="text-sm text-gray-400">
-                        Semestre: {c.semestre_id ?? "N/A"}
-                      </p>
-                      <p className="text-sm text-gray-400">
-                        Carrera: {c.carrera?.nombre ?? "N/A"}
-                      </p>
+                      <h3
+                        className="text-lg font-semibold"
+                        style={{ color: "var(--color-heading)" }}
+                      >
+                        {c.nombre}
+                      </h3>
+
+                      {c.curso_carreras && c.curso_carreras.length > 0 ? (
+                        c.curso_carreras.map((cc: any) => (
+                          <p
+                            key={cc.id}
+                            className="text-sm"
+                            style={{ color: "var(--color-muted)" }}
+                          >
+                            Carrera: {cc.carrera?.nombre ?? "Desconocida"} —{" "}
+                            Semestre: {cc.semestre ?? "N/A"}
+                          </p>
+                        ))
+                      ) : (
+                        <p
+                          className="text-sm"
+                          style={{ color: "var(--color-muted)" }}
+                        >
+                          Sin carreras asignadas
+                        </p>
+                      )}
                     </div>
 
-                    <Link
-                      href={`/dashboard/profesor/cursos/${c.id}/editar`}
-                      className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm text-center"
-                    >
-                      Editar curso
-                    </Link>
+                    <div className="flex gap-2 mt-3">
+                      <Link
+                        href={`/dashboard/profesor/cursos/${c.id}/editar`}
+                        className="flex-1 text-white px-3 py-1 rounded-lg text-sm text-center"
+                        style={{ backgroundColor: "#2563eb" }}
+                      >
+                        Editar curso
+                      </Link>
+
+                      <Link
+                        href={`/curso/${c.id}`}
+                        className="flex-1 text-white px-3 py-1 rounded-lg text-sm text-center"
+                        style={{ backgroundColor: "#16a34a" }}
+                      >
+                        Previsualizar
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-400">
-                Aún no has creado cursos. Usa la opción “Agregar curso” en el menú lateral.
+              <p style={{ color: "var(--color-muted)" }}>
+                Aún no has creado cursos. Usa la opción “Agregar curso” en el
+                menú lateral.
               </p>
             )}
           </div>

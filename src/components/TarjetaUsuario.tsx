@@ -24,13 +24,14 @@ export default function TarjetaUsuario({
   rol = "estudiante",
 }: TarjetaUsuarioProps) {
   const defaultConfig: AvatarConfig = {
-    skin: "default.png",
-    eyes: "none",
-    mouth: "none",
-    eyebrow: "none",
+    skin: "Piel1.png",
+    eyes: "Ojos1.png",
     hair: "none",
+    mouth: "Boca1.png",
+    nose: "Nariz1.png",
+    glasses: "none",
     clothes: "none",
-    accessory: null,
+    accessory: "none",
   };
 
   const perfilUrl =
@@ -41,27 +42,40 @@ export default function TarjetaUsuario({
   return (
     <div
       className="
-        rounded-xl px-8 py-10 flex items-center gap-10
+        rounded-xl px-10 py-3 flex items-center gap-12
         shadow-md
       "
-      style={{ backgroundColor: "#B8C3CA", minHeight: "180px" }}
+      style={{
+        backgroundColor: "var(--color-card)",
+        color: "var(--color-text)",
+        minHeight: "250px",
+      }}
     >
       <div className="shrink-0">
         <RenderizadorAvatar
           config={avatarConfig ?? defaultConfig}
           frameUrl={frameUrl}
-          size={130}
+          size={300} 
         />
       </div>
 
       <div className="flex-1 min-w-0">
-        <h2 className="text-3xl font-bold leading-tight truncate text-black">
-          Bienvenido, {name}
+        <h2
+          className="text-4xl font-bold leading-tight truncate" 
+          style={{ color: "var(--color-heading)" }}
+        >
+          {rol === "profesor"
+          ? `Bienvenido, profesor ${name}`
+          : `Bienvenido, ${name}`}
         </h2>
-        <p className="text-lg text-gray-800 mt-1">Nivel {level}</p>
+        {rol === "estudiante" && (
+          <p className="text-xl mt-2" style={{ color: "var(--color-muted)" }}>
+            Nivel {level}
+          </p>
+        )}
 
         <Link href={perfilUrl}>
-          <button className="mt-4 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">
+          <button className="mt-5 px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition">
             Ver perfil
           </button>
         </Link>
