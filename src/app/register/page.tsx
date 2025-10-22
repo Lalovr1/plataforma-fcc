@@ -19,6 +19,7 @@ export default function RegisterPage() {
   const [contrasena, setContrasena] = useState("");
   const [carreraId, setCarreraId] = useState<number | null>(null);
   const [semestreId, setSemestreId] = useState<number | null>(null);
+  const [matricula, setMatricula] = useState("");
   const [mensaje, setMensaje] = useState("");
 
   const rolDetectado =
@@ -66,24 +67,23 @@ export default function RegisterPage() {
           rol: rolDetectado,
           carrera_id: rolDetectado === "estudiante" ? carreraId : null,
           semestre_id: rolDetectado === "estudiante" ? semestreId : null,
-          nivel: rolDetectado === "estudiante" ? 0 : null,  
-          puntos: rolDetectado === "estudiante" ? 0 : null, 
-          avatar_config: {
-            skin: "Piel1.png",
-            eyes: "Ojos1.png",
-            hair: "none",
-            mouth: "Boca1.png",
-            nose: "Nariz1.png",
-            glasses: "none",
-            clothes: "none",
-            accessory: "none",
-          },
-          frame_url: null,
+          matricula: rolDetectado === "estudiante" ? matricula.trim() : null,
+          nivel: rolDetectado === "estudiante" ? 0 : null,
+          puntos: rolDetectado === "estudiante" ? 0 : null,
+          avatar_config: null,
         });
 
         if (insertError) {
           setMensaje(`❌ Error guardando en usuarios: ${insertError.message}`);
           return;
+        }
+
+        if (rolDetectado === "estudiante") {
+          await fetch("/api/insertRecompensas", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: data.user.id }),
+          });
         }
       }
 
@@ -132,6 +132,14 @@ export default function RegisterPage() {
         {/* Campos extras solo para estudiantes */}
         {rolDetectado === "estudiante" && (
           <>
+            <input
+              type="text"
+              placeholder="Matrícula"
+              value={matricula}
+              onChange={(e) => setMatricula(e.target.value)}
+              className="w-full p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
             <select
               value={carreraId ?? ""}
               onChange={(e) => {

@@ -13,6 +13,7 @@ import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import toast from "react-hot-toast";
+import GridLogros from "@/components/GridLogros";
 
 type Usuario = {
   id: string;
@@ -21,7 +22,6 @@ type Usuario = {
   nivel: number | null;
   puntos: number | null;
   avatar_config: AvatarConfig | null;
-  frame_url: string | null;
 };
 
 type Solicitud = {
@@ -43,7 +43,9 @@ export default function AmigosPage() {
   const [results, setResults] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAmigo, setSelectedAmigo] = useState<Usuario | null>(null);
-  const [logros, setLogros] = useState<{ id: string; titulo: string; icono_url: string }[]>([]);
+  const [logros, setLogros] = useState<
+    { id: string; titulo: string; descripcion?: string; icono_url: string }[]
+  >([]);
 
   useEffect(() => {
     const init = async () => {
@@ -58,7 +60,7 @@ export default function AmigosPage() {
 
       const { data: meRow } = await supabase
         .from("usuarios")
-        .select("id,nombre,rol,nivel,puntos,avatar_config,frame_url")
+        .select("id,nombre,rol,nivel,puntos,avatar_config")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -79,28 +81,45 @@ export default function AmigosPage() {
     ]);
   };
 
+  let logrosRevisados = false; 
+
   const loadFriends = async (myId: string) => {
-    const { data: rows1 } = await supabase
+    const { data, error } = await supabase
       .from("amistades")
-      .select(
-        `id,usuario_id,amigo_id,
-         amigo:amigo_id (id,nombre,rol,nivel,puntos,avatar_config,frame_url)`
-      )
-      .eq("usuario_id", myId);
+      .select(`
+        id, usuario_id, amigo_id,
+        usuario:usuario_id (id,nombre,rol,nivel,puntos,avatar_config),
+        amigo:amigo_id (id,nombre,rol,nivel,puntos,avatar_config)
+      `)
+      .or(`usuario_id.eq.${myId},amigo_id.eq.${myId}`);
 
-    const { data: rows2 } = await supabase
-      .from("amistades")
-      .select(
-        `id,usuario_id,amigo_id,
-         amigo:usuario_id (id,nombre,rol,nivel,puntos,avatar_config,frame_url)`
-      )
-      .eq("amigo_id", myId);
+    if (error) {
+      console.error("Error cargando amigos:", error);
+      return;
+    }
 
-    const amigos: Usuario[] = [
-      ...(rows1?.map((r: any) => r.amigo) ?? []),
-      ...(rows2?.map((r: any) => r.amigo) ?? []),
-    ];
+    const amigos = (data ?? []).map((r) =>
+      r.usuario_id === myId ? r.amigo : r.usuario
+    );
     setFriends(amigos);
+
+    // Verificar logros solo una vez (para evitar duplicados al refrescar)
+    if (logrosRevisados) return;
+    logrosRevisados = true;
+
+    setTimeout(async () => {
+      try {
+        const { count } = await supabase
+          .from("amistades")
+          .select("*", { count: "exact" })
+          .or(`usuario_id.eq.${myId},amigo_id.eq.${myId}`);
+
+        const { verificarLogros } = await import("@/utils/verificarLogros");
+        await verificarLogros(myId, "amistades", count ?? 0);
+      } catch (e) {
+        console.error("Error verificando logros iniciales:", e);
+      }
+    }, 1500);
   };
 
   const loadPending = async (myId: string) => {
@@ -108,7 +127,7 @@ export default function AmigosPage() {
       .from("solicitudes_amistad")
       .select(
         `id,solicitante_id,destinatario_id,estado,created_at,
-         solicitante:solicitante_id (id,nombre,rol,nivel,puntos,avatar_config,frame_url)`
+         solicitante:solicitante_id (id,nombre,rol,nivel,puntos,avatar_config)`
       )
       .eq("destinatario_id", myId)
       .eq("estado", "pendiente")
@@ -131,7 +150,7 @@ export default function AmigosPage() {
   const loadDefaultResults = async (myId: string) => {
     const { data } = await supabase
       .from("usuarios")
-      .select("id,nombre,rol,nivel,puntos,avatar_config,frame_url")
+      .select("id,nombre,rol,nivel,puntos,avatar_config")
       .eq("rol", "estudiante")
       .neq("id", myId)
       .order("puntos", { ascending: false })
@@ -150,7 +169,7 @@ export default function AmigosPage() {
 
     const { data } = await supabase
       .from("usuarios")
-      .select("id,nombre,rol,nivel,puntos,avatar_config,frame_url")
+      .select("id,nombre,rol,nivel,puntos,avatar_config")
       .eq("rol", "estudiante")
       .neq("id", me.id)
       .ilike("nombre", `%${term}%`)
@@ -178,19 +197,62 @@ export default function AmigosPage() {
   const acceptRequest = async (req: Solicitud) => {
     if (!me) return;
 
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from("solicitudes_amistad")
       .update({ estado: "aceptada" })
       .eq("id", req.id);
 
-    if (error) {
+    if (updateError) {
       toast.error("No se pudo aceptar.");
       return;
     }
 
-    await supabase.from("amistades").insert([
-      { usuario_id: req.solicitante_id, amigo_id: req.destinatario_id },
-    ]);
+    const { data: insertData, error: insertError } = await supabase
+      .from("amistades")
+      .insert([{ usuario_id: req.solicitante_id, amigo_id: req.destinatario_id }])
+      .select();
+
+    if (insertError) {
+      console.error("Error insertando amistad:", insertError);
+      toast.error("Error al crear la amistad.");
+      return;
+    }
+
+    // Verificar logros de ambos usuarios
+    try {
+      const { verificarLogros } = await import("@/utils/verificarLogros");
+
+      // Verificar logros para quien aceptó
+      const { count: countAceptante } = await supabase
+        .from("amistades")
+        .select("*", { count: "exact" })
+        .or(`usuario_id.eq.${me.id},amigo_id.eq.${me.id}`);
+      const nuevosAceptante = await verificarLogros(
+        me.id,
+        "amistades",
+        countAceptante ?? 0
+      );
+      if (nuevosAceptante.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("logrosDesbloqueados", { detail: nuevosAceptante })
+        );
+      }
+
+      // Verificar logros para quien envió la solicitud
+      const { count: countSolicitante } = await supabase
+        .from("amistades")
+        .select("*", { count: "exact" })
+        .or(
+          `usuario_id.eq.${req.solicitante_id},amigo_id.eq.${req.solicitante_id}`
+        );
+      await verificarLogros(
+        req.solicitante_id,
+        "amistades",
+        countSolicitante ?? 0
+      );
+    } catch (err) {
+      console.error("Error verificando logros de amistad:", err);
+    }
 
     toast.success("Ahora son amigos 🎉");
     await refreshAll(me.id);
@@ -216,26 +278,51 @@ export default function AmigosPage() {
     setSelectedAmigo(u);
     setLogros([]);
 
-    const { data } = await supabase
+    const { data: relaciones, error: errorRelaciones } = await supabase
       .from("logros_usuarios")
-      .select("id, logro:logros (id, titulo, icono_url)")
+      .select("logro_id")
       .eq("usuario_id", u.id);
 
+    if (errorRelaciones) {
+      console.error("Error obteniendo relaciones:", errorRelaciones);
+      return;
+    }
+
+    if (!relaciones || relaciones.length === 0) {
+      setLogros([]);
+      return;
+    }
+
+    const logroIds = relaciones.map((r: any) => r.logro_id);
+
+    const { data: logrosData, error: errorLogros } = await supabase
+      .from("logros")
+      .select("id, nombre, descripcion, icono_url")
+      .in("id", logroIds);
+
+    if (errorLogros) {
+      console.error("Error obteniendo logros:", errorLogros);
+      return;
+    }
+
     setLogros(
-      (data ?? []).map((r: any) => ({
-        id: r.logro.id,
-        titulo: r.logro.titulo,
-        icono_url: r.logro.icono_url,
+      (logrosData ?? []).map((l: any) => ({
+        id: l.id,
+        titulo: l.nombre,
+        descripcion: l.descripcion,
+        icono_url: l.icono_url,
       }))
     );
   };
 
   const defaultAvatar: AvatarConfig = {
-    skin: "Piel1.png",
-    eyes: "Ojos1.png",
+    bodyType: "male",
+    skin: "PielBase.png",
+    skinColor: "#f1c27d",
     hair: "none",
-    mouth: "Boca1.png",
-    nose: "Nariz1.png",
+    eyes: "none",
+    mouth: "none",
+    nose: "none",
     glasses: "none",
     clothes: "none",
     accessory: "none",
@@ -276,7 +363,6 @@ export default function AmigosPage() {
                   >
                     <RenderizadorAvatar
                       config={u.avatar_config ?? defaultAvatar}
-                      frameUrl={u.frame_url}
                       size={100}
                     />
                     <div>
@@ -314,7 +400,6 @@ export default function AmigosPage() {
                     <div className="flex items-center gap-3">
                       <RenderizadorAvatar
                         config={req.solicitante?.avatar_config ?? defaultAvatar}
-                        frameUrl={req.solicitante?.frame_url ?? null}
                         size={50}
                       />
                       <div>
@@ -404,7 +489,6 @@ export default function AmigosPage() {
                   <div className="flex items-center gap-3">
                     <RenderizadorAvatar
                       config={u.avatar_config ?? defaultAvatar}
-                      frameUrl={u.frame_url}
                       size={100}
                     />
                     <div>
@@ -458,7 +542,6 @@ export default function AmigosPage() {
             <div className="flex items-center gap-4">
               <RenderizadorAvatar
                 config={selectedAmigo.avatar_config ?? defaultAvatar}
-                frameUrl={selectedAmigo.frame_url}
                 size={250}
               />
               <div>
@@ -478,18 +561,14 @@ export default function AmigosPage() {
               {logros.length === 0 ? (
                 <p style={{ color: "var(--color-muted)" }}>Este usuario aún no tiene logros.</p>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {logros.map((l) => (
-                    <div
-                      key={l.id}
-                      className="flex flex-col items-center p-3 rounded-lg"
-                      style={{ backgroundColor: "var(--color-bg)" }}
-                    >
-                      <img src={l.icono_url} alt={l.titulo} className="w-16 h-16 object-contain" />
-                      <span className="mt-2 text-sm text-center">{l.titulo}</span>
-                    </div>
-                  ))}
-                </div>
+                <GridLogros
+                  logros={logros.map((l) => ({
+                    ...l,
+                    descripcion: l.descripcion ?? "",
+                    desbloqueado: true,
+                  }))}
+                  mostrarBloqueados={false}
+                />
               )}
             </div>
           </div>

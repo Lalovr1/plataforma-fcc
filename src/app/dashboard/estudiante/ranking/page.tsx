@@ -14,7 +14,6 @@ interface Usuario {
   nombre: string;
   puntos: number;
   avatar_config: AvatarConfig | null;
-  frame_url: string | null;
 }
 
 export default function EstudianteRanking() {
@@ -26,7 +25,7 @@ export default function EstudianteRanking() {
     const fetchRanking = async () => {
       const { data: ranking } = await supabase
         .from("usuarios")
-        .select("id, nombre, puntos, avatar_config, frame_url")
+        .select("id, nombre, puntos, avatar_config")
         .eq("rol", "estudiante")
         .order("puntos", { ascending: false })
         .limit(20);
@@ -41,7 +40,7 @@ export default function EstudianteRanking() {
       if (user) {
         const { data: misDatos } = await supabase
           .from("usuarios")
-          .select("id, nombre, puntos, avatar_config, frame_url")
+          .select("id, nombre, puntos, avatar_config")
           .eq("id", user.id)
           .single();
 
@@ -90,7 +89,6 @@ export default function EstudianteRanking() {
                 <span className="text-xl font-bold w-12">#{miPosicion}</span>
                 <RenderizadorAvatar
                   config={miUsuario.avatar_config}
-                  frameUrl={miUsuario.frame_url}
                   size={60}
                 />
                 <span
@@ -146,7 +144,6 @@ export default function EstudianteRanking() {
                 </span>
                 <RenderizadorAvatar
                   config={user.avatar_config}
-                  frameUrl={user.frame_url}
                   size={index < 3 ? 100 : 80}
                 />
                 <span

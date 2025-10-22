@@ -1,0 +1,22 @@
+[
+  {
+    "nombre": "Cabello11",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello11.png"
+  },
+  {
+    "nombre": "Cabello12",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello12.png"
+  },
+  {
+    "nombre": "PlayeraNeon",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/PlayeraNeon.png"
+  },
+  {
+    "nombre": "ArmaduraNegra",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/ArmaduraNegra.png"
+  }
+]

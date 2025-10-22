@@ -1,0 +1,27 @@
+[
+  {
+    "nombre": "Cabello13",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello13.png"
+  },
+  {
+    "nombre": "Cabello14",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello14.png"
+  },
+  {
+    "nombre": "Playera4",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/playeras/previews/Playera4.png"
+  },
+  {
+    "nombre": "SudaderaBuap",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/SudaderaBuap.png"
+  },
+  {
+    "nombre": "SudaderaBuap2",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/SudaderaBuap2.png"
+  }
+]

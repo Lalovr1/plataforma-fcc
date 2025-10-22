@@ -19,7 +19,6 @@ type Usuario = {
   nombre: string;
   rol: "estudiante" | "profesor";
   avatar_config: AvatarConfig | null;
-  frame_url: string | null;
 };
 
 type Materia = {
@@ -69,7 +68,7 @@ export default function ProfesoresPage() {
   const loadProfesores = async (term: string) => {
     let q = supabase
       .from("usuarios")
-      .select("id,nombre,rol,avatar_config,frame_url")
+      .select("id,nombre,rol,avatar_config")
       .eq("rol", "profesor");
 
     if (term.trim()) {
@@ -77,7 +76,18 @@ export default function ProfesoresPage() {
     }
 
     const { data } = await q.order("nombre", { ascending: true });
-    setProfesores((data as any[]) ?? []);
+
+    const parsed = (data as any[])?.map((p) => ({
+      ...p,
+      avatar_config:
+        typeof p.avatar_config === "string"
+          ? JSON.parse(p.avatar_config)
+          : p.avatar_config,
+    }));
+
+    console.log("✅ Profesores cargados:", parsed);
+
+    setProfesores(parsed ?? []);
   };
 
   const doSearch = async () => {
@@ -249,13 +259,18 @@ export default function ProfesoresPage() {
   };
 
   const defaultAvatar: AvatarConfig = {
-    skin: "Piel1.png",
-    eyes: "Ojos1.png",
-    hair: "none",
-    mouth: "Boca1.png",
-    nose: "Nariz1.png",
+    gender: "masculino",
+    skin: "base/masculino/piel.png",
+    skinColor: "#f1c27d",
+    eyes: "cara/ojos/masculino/Ojos1.png",
+    mouth: "cara/bocas/Boca1.png",
+    nose: "cara/narices/Nariz1.png",
     glasses: "none",
-    clothes: "none",
+    hair: "cabello/masculino/Cabello1.png",
+    playera: "Playera1",
+    sueter: "Sueter1",
+    collar: "none",
+    pulsera: "none",
     accessory: "none",
   };
 
@@ -311,7 +326,6 @@ export default function ProfesoresPage() {
             >
               <RenderizadorAvatar
                 config={p.avatar_config ?? defaultAvatar}
-                frameUrl={p.frame_url}
                 size={150}
               />
               <div className="overflow-hidden">
@@ -353,7 +367,6 @@ export default function ProfesoresPage() {
               <div className="flex items-center gap-4">
                 <RenderizadorAvatar
                   config={selectedProfesor.avatar_config ?? defaultAvatar}
-                  frameUrl={selectedProfesor.frame_url}
                   size={250}
                 />
                 <div>

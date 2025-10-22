@@ -80,10 +80,16 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         .eq("materia_id", selected.id);
 
       toast.success(`${selected.nombre} movido a inicio`);
-      setSelected({
-        ...selected,
-        progresoEstado: { exists: true, visible: true },
-      });
+
+      setMateriasConEstado((prev) =>
+        prev.map((m) =>
+          m.id === selected.id
+            ? { ...m, progresoEstado: { exists: true, visible: true } }
+            : m
+        )
+      );
+
+      setSelected(null);
       return;
     }
 
@@ -118,10 +124,16 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       toast.error("Error al inscribirse");
     } else {
       toast.success(`${selected.nombre} inscrito correctamente`);
-      setSelected({
-        ...selected,
-        progresoEstado: { exists: true, visible: true },
-      });
+
+      setMateriasConEstado((prev) =>
+        prev.map((m) =>
+          m.id === selected.id
+            ? { ...m, progresoEstado: { exists: true, visible: true } }
+            : m
+        )
+      );
+
+      setSelected(null);
     }
 
     setLoading(false);
@@ -317,8 +329,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                   Volver
                 </button>
                 <button
-                  className="px-4 py-2 rounded text-white"
-                  style={{ backgroundColor: "var(--color-accent)" }}
+                  className="px-3 py-1 rounded bg-yellow-600 hover:bg-yellow-500 text-white"
                   onClick={inscribirse}
                   disabled={loading}
                 >

@@ -36,6 +36,7 @@ export default function LoginPage() {
       }
 
       console.log("✅ Sesión iniciada:", data.session);
+      localStorage.setItem("user_id", data.user.id);
 
       const { data: usuario, error: usuarioError } = await supabase
         .from("usuarios")
@@ -48,6 +49,8 @@ export default function LoginPage() {
         setMensaje("❌ No se pudo determinar el rol del usuario.");
         return;
       }
+
+      localStorage.setItem("rol_usuario", usuario.rol);
 
       if (usuario.rol === "estudiante") {
         window.location.href = "/dashboard/estudiante";

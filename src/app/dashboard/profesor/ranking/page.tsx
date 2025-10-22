@@ -14,7 +14,6 @@ interface Usuario {
   nombre: string;
   puntos: number;
   avatar_config: AvatarConfig | null;
-  frame_url: string | null;
 }
 
 export default function ProfesorRanking() {
@@ -24,7 +23,7 @@ export default function ProfesorRanking() {
     const fetchRanking = async () => {
       const { data: ranking } = await supabase
         .from("usuarios")
-        .select("id, nombre, puntos, avatar_config, frame_url")
+        .select("id, nombre, puntos, avatar_config")
         .eq("rol", "estudiante") 
         .order("puntos", { ascending: false })
         .limit(20);
@@ -87,7 +86,6 @@ export default function ProfesorRanking() {
                 </span>
                 <RenderizadorAvatar
                   config={user.avatar_config}
-                  frameUrl={user.frame_url}
                   size={index < 3 ? 100 : 80}
                 />
                 <span

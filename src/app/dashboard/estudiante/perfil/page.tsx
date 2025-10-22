@@ -1,6 +1,7 @@
 /**
  * Página de perfil del estudiante: muestra avatar, nivel, barra de XP,
- * logros y permite editar la configuración del avatar.
+ * logros (divididos en desbloqueados y bloqueados)
+ * y permite editar la configuración del avatar.
  */
 
 "use client";
@@ -12,8 +13,9 @@ import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import ModalEditorAvatar from "@/components/ModalEditorAvatar";
 import toast from "react-hot-toast";
+import GridLogros from "@/components/GridLogros";
 
-// 🔹 Modal para editar nombre (igual que en profesor)
+// Modal para editar nombre
 function ModalEditarNombre({
   open,
   onClose,
@@ -28,9 +30,7 @@ function ModalEditarNombre({
   const [nombreLocal, setNombreLocal] = useState(usuario?.nombre ?? "");
 
   useEffect(() => {
-    if (open) {
-      setNombreLocal(usuario?.nombre ?? "");
-    }
+    if (open) setNombreLocal(usuario?.nombre ?? "");
   }, [open, usuario]);
 
   if (!open) return null;
@@ -66,7 +66,12 @@ function ModalEditarNombre({
           type="text"
           value={nombreLocal}
           onChange={(e) => setNombreLocal(e.target.value)}
-          className="w-full p-2 rounded-lg border border-gray-600 bg-transparent text-white"
+          className="w-full p-2 rounded-lg border"
+          style={{
+            borderColor: "var(--color-border)",
+            backgroundColor: "var(--color-bg)",
+            color: "var(--color-text)",
+          }}
           placeholder="Ingresa tu nombre"
         />
         <div className="flex justify-end mt-4 space-x-2">
@@ -100,13 +105,50 @@ export default function PerfilEstudiantePage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
+      const { data: userData } = await supabase
         .from("usuarios")
-        .select("id, nombre, puntos, nivel, avatar_config, frame_url")
+        .select("id, nombre, puntos, nivel, avatar_config")
         .eq("id", user.id)
         .single();
 
-      setUsuario(data);
+      if (!userData) return;
+
+      const { data: desbloqueados } = await supabase
+        .from("logros_usuarios")
+        .select("logro_id")
+        .eq("usuario_id", user.id);
+
+      const idsDesbloqueados = new Set(desbloqueados?.map((l) => l.logro_id));
+
+      const { data: todosLogros } = await supabase
+        .from("logros")
+        .select("id,nombre,descripcion,icono_url");
+
+      const logrosDesbloqueados = (todosLogros ?? [])
+        .filter((l) => idsDesbloqueados.has(l.id))
+        .map((l) => ({
+          id: l.id,
+          titulo: l.nombre,
+          descripcion: l.descripcion,
+          icono_url: l.icono_url,
+          desbloqueado: true,
+        }));
+
+      const logrosBloqueados = (todosLogros ?? [])
+        .filter((l) => !idsDesbloqueados.has(l.id))
+        .map((l) => ({
+          id: l.id,
+          titulo: l.nombre,
+          descripcion: l.descripcion,
+          icono_url: l.icono_url,
+          desbloqueado: false,
+        }));
+
+      setUsuario({
+        ...userData,
+        logrosDesbloqueados,
+        logrosBloqueados,
+      });
     };
     run();
   }, []);
@@ -119,28 +161,45 @@ export default function PerfilEstudiantePage() {
     );
   }
 
-  const level = usuario.nivel ?? Math.floor((usuario.puntos ?? 0) / 1000);
-  const nextLevelXP = (level + 1) * 1000;
+  const level = usuario.nivel ?? Math.floor((usuario.puntos ?? 0) / 500);
 
   const config: AvatarConfig =
-    usuario?.avatar_config ?? {
-      skin: "default.png",
-      eyes: "none",
-      mouth: "none",
-      eyebrow: "none",
-      hair: "none",
-      clothes: "none",
-      accessory: "none",
-    };
+    usuario.avatar_config ??
+    {
+      gender: "masculino",
 
-  const handleSaveAvatar = async (newConfig: AvatarConfig, frameUrl: string | null) => {
-    await supabase
+      skin: "base/masculino/piel.png",
+      skinColor: "#f1c27d",
+      eyes: "cara/ojos/masculino/Ojos1.png",
+      mouth: "cara/bocas/Boca1.png",
+      nose: "cara/narices/Nariz1.png",
+      glasses: "none",
+      hair: "cabello/masculino/Cabello1.png",
+      playera: "ropa/masculino/playeras/Playera1_Relleno.png",
+      sueter: "ropa/masculino/sueteres/Sueter1_Relleno.png",
+      collar: "none",
+      pulsera: "none",
+      accessory: "none",
+    }
+
+  const handleSaveAvatar = async (newConfig: AvatarConfig) => {
+    if (!newConfig.gender || !newConfig.skin) {
+      toast.error("Debes seleccionar un tipo de cuerpo antes de guardar.");
+      return;
+    }
+
+    const { error } = await supabase
       .from("usuarios")
-      .update({ avatar_config: newConfig, frame_url: frameUrl })
+      .update({ avatar_config: newConfig })
       .eq("id", usuario.id);
 
-    setUsuario((u: any) => ({ ...u, avatar_config: newConfig, frame_url: frameUrl }));
-    setOpenAvatar(false);
+    if (error) {
+      toast.error("Error al guardar el avatar");
+    } else {
+      setUsuario((u: any) => ({ ...u, avatar_config: newConfig }));
+      toast.success("Avatar actualizado correctamente");
+      setOpenAvatar(false);
+    }
   };
 
   return (
@@ -153,7 +212,7 @@ export default function PerfilEstudiantePage() {
             className="flex flex-col items-center rounded-xl p-8 shadow"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
-            <RenderizadorAvatar config={config} frameUrl={usuario.frame_url} size={350} />
+            <RenderizadorAvatar config={config} size={350} />
             <h1 className="text-3xl font-bold mt-4">{usuario.nombre}</h1>
             <p style={{ color: "var(--color-muted)" }}>Nivel {level}</p>
 
@@ -192,24 +251,54 @@ export default function PerfilEstudiantePage() {
             className="text-2xl p-6 rounded-xl shadow"
             style={{ backgroundColor: "var(--color-card)" }}
           >
-            {/* BarraXP directo, sin contenedor extra */}
             <BarraXP xp={usuario.puntos ?? 0} />
           </div>
 
           {/* Logros */}
           <div
-            className="p-6 rounded-xl shadow"
+            className="p-6 rounded-xl shadow space-y-8"
             style={{ backgroundColor: "var(--color-card)" }}
           >
             <h2
-              className="text-2xl font-bold mb-4"
+              className="text-2xl font-bold"
               style={{ color: "var(--color-heading)" }}
             >
               Logros
             </h2>
-            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-              Aún no has desbloqueado logros. ¡Sigue participando!
-            </p>
+
+            {/* Desbloqueados */}
+            <div>
+              <h3
+                className="font-semibold mb-3 text-lg"
+                style={{ color: "var(--color-heading)" }}
+              >
+                Desbloqueados
+              </h3>
+              {usuario.logrosDesbloqueados.length === 0 ? (
+                <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                  Aún no has desbloqueado logros.
+                </p>
+              ) : (
+                <GridLogros logros={usuario.logrosDesbloqueados} />
+              )}
+            </div>
+
+            {/* Bloqueados */}
+            <div>
+              <h3
+                className="font-semibold mb-3 text-lg"
+                style={{ color: "var(--color-heading)" }}
+              >
+                Bloqueados
+              </h3>
+              {usuario.logrosBloqueados.length === 0 ? (
+                <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                  ¡Has desbloqueado todos los logros disponibles!
+                </p>
+              ) : (
+                <GridLogros logros={usuario.logrosBloqueados} />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -219,7 +308,6 @@ export default function PerfilEstudiantePage() {
         open={openAvatar}
         onClose={() => setOpenAvatar(false)}
         initialConfig={config}
-        initialFrameUrl={usuario.frame_url}
         onSave={handleSaveAvatar}
       />
 

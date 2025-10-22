@@ -1,0 +1,152 @@
+[
+  {
+    "nombre": "Cabello1",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello1.png"
+  },
+  {
+    "nombre": "Cabello2",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello2.png"
+  },
+  {
+    "nombre": "Cabello3",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello3.png"
+  },
+  {
+    "nombre": "Cabello4",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello4.png"
+  },
+  {
+    "nombre": "Cabello5",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello5.png"
+  },
+  {
+    "nombre": "Cabello6",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello6.png"
+  },
+  {
+    "nombre": "Cabello7",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello7.png"
+  },
+  {
+    "nombre": "Ojos1",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/masculino/previews/Ojos1.png"
+  },
+  {
+    "nombre": "Ojos2",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/masculino/previews/Ojos2.png"
+  },
+  {
+    "nombre": "Ojos3",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/masculino/previews/Ojos3.png"
+  },
+  {
+    "nombre": "Ojos4",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/masculino/previews/Ojos4.png"
+  },
+  {
+    "nombre": "Ojos5",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/previews/Ojos5.png"
+  },
+  {
+    "nombre": "Ojos6",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/previews/Ojos6.png"
+  },
+  {
+    "nombre": "Nariz1",
+    "tipo": "nariz",
+    "preview": "/elementos_avatar/cara/narices/previews/Nariz1.png"
+  },
+  {
+    "nombre": "Nariz2",
+    "tipo": "nariz",
+    "preview": "/elementos_avatar/cara/narices/previews/Nariz2.png"
+  },
+  {
+    "nombre": "Nariz3",
+    "tipo": "nariz",
+    "preview": "/elementos_avatar/cara/narices/previews/Nariz3.png"
+  },
+  {
+    "nombre": "Nariz4",
+    "tipo": "nariz",
+    "preview": "/elementos_avatar/cara/narices/previews/Nariz4.png"
+  },
+  {
+    "nombre": "Boca1",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca1.png"
+  },
+  {
+    "nombre": "Boca2",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca2.png"
+  },
+  {
+    "nombre": "Boca3",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca3.png"
+  },
+  {
+    "nombre": "Boca4",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca4.png"
+  },
+  {
+    "nombre": "Boca5",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca5.png"
+  },
+  {
+    "nombre": "Boca6",
+    "tipo": "boca",
+    "preview": "/elementos_avatar/cara/bocas/previews/Boca6.png"
+  },
+  {
+    "nombre": "Playera1",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/playeras/previews/Playera1.png"
+  },
+  {
+    "nombre": "Playera2",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/playeras/previews/Playera2.png"
+  },
+  {
+    "nombre": "Playera3",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/playeras/previews/Playera3.png"
+  },
+  {
+    "nombre": "Sueter1",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/Sueter1.png"
+  },
+  {
+    "nombre": "Sueter2",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/Sueter2.png"
+  },
+  {
+    "nombre": "Lentes1",
+    "tipo": "accesorios",
+    "preview": "/elementos_avatar/cara/lentes/previews/Lentes1.png"
+  },
+  {
+    "nombre": "Lentes2",
+    "tipo": "accesorios",
+    "preview": "/elementos_avatar/cara/lentes/previews/Lentes2.png"
+  }
+]

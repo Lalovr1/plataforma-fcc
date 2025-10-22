@@ -1,0 +1,65 @@
+{
+  "cabello": {
+    "Cabello1.png": "comun",
+    "Cabello2.png": "comun",
+    "Cabello3.png": "comun",
+    "Cabello4.png": "comun",
+    "Cabello5.png": "comun",
+    "Cabello6.png": "comun",
+    "Cabello7.png": "comun",
+    "Cabello8.png": "raro",
+    "Cabello9.png": "raro",
+    "Cabello10.png": "raro",
+    "Cabello11.png": "epico",
+    "Cabello12.png": "epico",
+    "Cabello13.png": "legendario",
+    "Cabello14.png": "legendario"
+  },
+
+  "ojos": {
+    "Ojos1.png": "comun",
+    "Ojos2.png": "comun",
+    "Ojos3.png": "comun",
+    "Ojos4.png": "comun",
+    "Ojos5.png": "comun",
+    "Ojos6.png": "comun",
+    "Ojos7.png": "raro"
+  },
+
+  "nariz": {
+    "Nariz1.png": "comun",
+    "Nariz2.png": "comun",
+    "Nariz3.png": "comun",
+    "Nariz4.png": "comun"
+  },
+
+  "boca": {
+    "Boca1.png": "comun",
+    "Boca2.png": "comun",
+    "Boca3.png": "comun",
+    "Boca4.png": "comun",
+    "Boca5.png": "comun",
+    "Boca6.png": "comun"
+  },
+
+  "ropa": {
+    "Playera1": "comun",
+    "Playera2": "comun",
+    "Playera3": "comun",
+    "Playera4": "legendario",
+    "Sueter1": "comun",
+    "Sueter2": "comun",
+    "Sueter3": "raro",
+    "PlayeraNeon": "epico",
+    "SudaderaBuap": "legendario",
+    "SudaderaBuap2": "legendario",
+    "ChaquetaNegra": "raro",
+    "ArmaduraNegra": "epico"
+  },
+
+  "accesorios": {
+    "Lentes1.png": "comun",
+    "Lentes2.png": "comun",
+    "Lentes3.png": "raro"
+  }
+}

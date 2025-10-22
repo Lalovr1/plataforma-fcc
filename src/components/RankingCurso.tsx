@@ -19,17 +19,24 @@ type Inscrito = {
   usuario_id: string;
   nombre: string;
   avatar_config: AvatarConfig | null;
-  frame_url: string | null;
   carrera_id: number | null; 
   periodo_id: string | null;
   seccion_id: string | null;
   rol: string;
+  matricula?: string | null;
 };
 
 type Quiz = { id: string; titulo: string };
 type IntentoStats = { best: number; total: number; tries: number };
 
-export default function RankingCurso({ materiaId }: { materiaId: string }) {
+export default function RankingCurso({
+  materiaId,
+  filtroMatricula,
+}: {
+  materiaId: string;
+  filtroMatricula?: string | null;
+}) {
+
   const [cargando, setCargando] = useState(true);
 
   const [periodos, setPeriodos] = useState<PeriodoOpt[]>([]);
@@ -88,16 +95,16 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
       {
         nombre: string;
         avatar_config: AvatarConfig | null;
-        frame_url: string | null;
         rol: string;
         carrera_id: number | null;
+        matricula: string | null;
       }
     > = {};
 
     if (userIds.length) {
       const { data: us } = await supabase
         .from("usuarios")
-        .select("id, nombre, avatar_config, frame_url, rol, carrera_id")
+        .select("id, nombre, avatar_config, rol, carrera_id, matricula")
         .in("id", userIds);
 
       if (us) {
@@ -107,9 +114,9 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
             {
               nombre: u.nombre ?? "Sin nombre",
               avatar_config: u.avatar_config ?? null,
-              frame_url: u.frame_url ?? null,
               rol: u.rol ?? "estudiante",
               carrera_id: u.carrera_id ?? null,
+              matricula: u.matricula ?? null,
             },
           ])
         );
@@ -124,8 +131,8 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
         seccion_id: r.seccion_id ?? null,
         nombre: usersById[r.usuario_id]?.nombre ?? "Sin nombre",
         avatar_config: usersById[r.usuario_id]?.avatar_config ?? null,
-        frame_url: usersById[r.usuario_id]?.frame_url ?? null,
         rol: usersById[r.usuario_id]?.rol ?? "estudiante",
+        matricula: usersById[r.usuario_id]?.matricula ?? null,
       }))
       .filter((r) => r.rol === "estudiante");
 
@@ -240,6 +247,11 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
       });
     }
   }, [inscritosFiltrados, intentosMap, quizSel]);
+
+  const rankingFiltrado = useMemo(() => {
+    if (!filtroMatricula) return ranking;
+    return ranking.filter((r: any) => r.matricula === filtroMatricula);
+  }, [ranking, filtroMatricula]);
 
   return (
     <div className="space-y-6">
@@ -395,9 +407,13 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
           <p style={{ color: "var(--color-muted)" }}>
             No hay datos para estos filtros.
           </p>
+        ) : rankingFiltrado.length === 0 && filtroMatricula ? (
+          <p style={{ color: "var(--color-muted)" }}>
+            No se encontró ningún alumno con la matrícula <b>{filtroMatricula}</b>.
+          </p>
         ) : (
           <div className="space-y-2">
-            {ranking.map((user: any, index: number) => (
+            {rankingFiltrado.map((user: any, index: number) => (
               <div
                 key={user.usuario_id}
                 className="flex items-center justify-between rounded-lg p-3"
@@ -430,7 +446,6 @@ export default function RankingCurso({ materiaId }: { materiaId: string }) {
                   </span>
                   <RenderizadorAvatar
                     config={user.avatar_config}
-                    frameUrl={user.frame_url}
                     size={index < 3 ? 48 : 32}
                   />
                   <div className="flex flex-col">

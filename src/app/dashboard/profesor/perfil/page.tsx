@@ -25,7 +25,6 @@ function ModalEditarNombre({
 }) {
   const [nombreLocal, setNombreLocal] = useState(usuario?.nombre ?? "");
 
-  // Reinicia el nombre local cada vez que abra el modal
   useEffect(() => {
     if (open) {
       setNombreLocal(usuario?.nombre ?? "");
@@ -101,7 +100,7 @@ export default function PerfilProfesorPage() {
 
       const { data } = await supabase
         .from("usuarios")
-        .select("id, nombre, puntos, nivel, avatar_config, frame_url")
+        .select("id, nombre, puntos, nivel, avatar_config")
         .eq("id", user.id)
         .single();
 
@@ -118,25 +117,16 @@ export default function PerfilProfesorPage() {
     );
   }
 
-  const level = usuario.nivel ?? Math.floor((usuario.puntos ?? 0) / 1000);
-  const config: AvatarConfig =
-    usuario?.avatar_config ?? {
-      skin: "default.png",
-      eyes: "none",
-      mouth: "none",
-      eyebrow: "none",
-      hair: "none",
-      clothes: "none",
-      accessory: "none",
-    };
+  const level = usuario.nivel ?? Math.floor((usuario.puntos ?? 0) / 500);
+  const config: AvatarConfig = usuario.avatar_config;
 
-  const handleSave = async (newConfig: AvatarConfig, frameUrl: string | null) => {
+  const handleSave = async (newConfig: AvatarConfig) => {
     await supabase
       .from("usuarios")
-      .update({ avatar_config: newConfig, frame_url: frameUrl })
+      .update({ avatar_config: newConfig })
       .eq("id", usuario.id);
 
-    setUsuario((u: any) => ({ ...u, avatar_config: newConfig, frame_url: frameUrl }));
+    setUsuario((u: any) => ({ ...u, avatar_config: newConfig }));
     setOpen(false);
   };
 
@@ -147,7 +137,7 @@ export default function PerfilProfesorPage() {
           className="flex flex-col items-center rounded-xl p-8 shadow"
           style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
         >
-          <RenderizadorAvatar config={config} frameUrl={usuario.frame_url} size={350} />
+          <RenderizadorAvatar config={config} size={350} />
           <h1 className="text-3xl font-bold mt-4">{usuario.nombre}</h1>
 
           <button
@@ -181,7 +171,6 @@ export default function PerfilProfesorPage() {
         open={open}
         onClose={() => setOpen(false)}
         initialConfig={config}
-        initialFrameUrl={usuario.frame_url}
         onSave={handleSave}
       />
 

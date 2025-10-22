@@ -1,0 +1,37 @@
+[
+  {
+    "nombre": "Cabello8",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello8.png"
+  },
+  {
+    "nombre": "Cabello9",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello9.png"
+  },
+  {
+    "nombre": "Cabello10",
+    "tipo": "cabello",
+    "preview": "/elementos_avatar/cabello/masculino/previews/Cabello10.png"
+  },
+  {
+    "nombre": "Ojos7",
+    "tipo": "ojos",
+    "preview": "/elementos_avatar/cara/ojos/previews/Ojos7.png"
+  },
+  {
+    "nombre": "Sueter3",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/Sueter3.png"
+  },
+  {
+    "nombre": "ChaquetaNegra",
+    "tipo": "ropa",
+    "preview": "/elementos_avatar/ropa/masculino/sueteres/previews/ChaquetaNegra.png"
+  },
+  {
+    "nombre": "Lentes3",
+    "tipo": "accesorios",
+    "preview": "/elementos_avatar/cara/lentes/previews/Lentes3.png"
+  }
+]

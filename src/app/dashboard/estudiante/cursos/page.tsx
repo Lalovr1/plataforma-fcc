@@ -118,7 +118,6 @@ export default function CursosPage() {
     fetchMaterias(searchTerm.trim());
   };
 
-  // === Filtros en memoria, igual que en profesor ===
   const filtered = materias.filter((m) => {
     const bySemestre = filters.semestre_id
       ? m.curso_carreras?.some((cc) => Number(cc.semestre) === Number(filters.semestre_id))
@@ -185,6 +184,7 @@ export default function CursosPage() {
             materias={filtered}
             groupBy={filters.groupBy}
             userId={userId ?? ""}
+            onCambioInscripcion={fetchMaterias} 
         />
         )}
       </div>

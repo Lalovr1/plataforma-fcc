@@ -14,7 +14,6 @@ interface Usuario {
   nombre: string;
   puntos: number;
   avatar_config?: AvatarConfig | null;
-  frame_url?: string | null;
 }
 
 export default function WidgetRanking() {
@@ -24,7 +23,7 @@ export default function WidgetRanking() {
     const fetchRanking = async () => {
       const { data, error } = await supabase
         .from("usuarios")
-        .select("id, nombre, puntos, avatar_config, frame_url")
+        .select("id, nombre, puntos, avatar_config")
         .eq("rol", "estudiante")
         .order("puntos", { ascending: false })
         .limit(5);
@@ -38,13 +37,19 @@ export default function WidgetRanking() {
   }, []);
 
   const defaultConfig: AvatarConfig = {
-    skin: "default.png",
-    eyes: "none",
-    mouth: "none",
-    eyebrow: "none",
-    hair: "none",
-    clothes: "none",
-    accessory: null,
+    gender: "masculino",
+    skin: "base/masculino/piel.png",
+    skinColor: "#f1c27d",
+    eyes: "cara/ojos/masculino/Ojos1.png",
+    mouth: "cara/bocas/Boca1.png",
+    nose: "cara/narices/Nariz1.png",
+    glasses: "none",
+    hair: "cabello/masculino/Cabello1.png",
+    playera: "Playera1",
+    sueter: "Sueter1",
+    collar: "none",
+    pulsera: "none",
+    accessory: "none",
   };
 
   if (usuarios.length === 0) {
@@ -84,7 +89,6 @@ export default function WidgetRanking() {
             <RenderizadorAvatar
               size={100}
               config={usuarios[1].avatar_config ?? defaultConfig}
-              frameUrl={usuarios[1].frame_url}
             />
             <p className="mt-2" style={{ color: "var(--color-text)" }}>
               {usuarios[1].nombre}
@@ -103,7 +107,6 @@ export default function WidgetRanking() {
             <RenderizadorAvatar
               size={180}
               config={usuarios[0].avatar_config ?? defaultConfig}
-              frameUrl={usuarios[0].frame_url}
             />
             <p className="text-xl font-bold mt-2" style={{ color: "var(--color-heading)" }}>
               {usuarios[0].nombre}
@@ -122,7 +125,6 @@ export default function WidgetRanking() {
             <RenderizadorAvatar
               size={100}
               config={usuarios[2].avatar_config ?? defaultConfig}
-              frameUrl={usuarios[2].frame_url}
             />
             <p className="mt-2" style={{ color: "var(--color-text)" }}>
               {usuarios[2].nombre}
@@ -158,7 +160,6 @@ export default function WidgetRanking() {
               <RenderizadorAvatar
                 size={60}
                 config={user.avatar_config ?? defaultConfig}
-                frameUrl={user.frame_url}
               />
               <p>{user.nombre}</p>
             </div>

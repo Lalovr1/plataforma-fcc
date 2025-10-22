@@ -6,6 +6,7 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -28,12 +29,28 @@ export default function MenuLateral({ rol }: Props) {
     color: "var(--color-text)",
   };
 
+  const [tutorialActivo, setTutorialActivo] = useState<boolean>(() =>
+    typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
+  );
+
+  useEffect(() => {
+    const handler = (e: any) => setTutorialActivo(!!e.detail?.activo);
+    window.addEventListener("tutorial:estado", handler);
+
+    setTutorialActivo(
+      typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
+    );
+
+    return () => window.removeEventListener("tutorial:estado", handler);
+  }, []);
+
   return (
     <aside
-      className="fixed top-0 left-0 h-full w-64 flex flex-col justify-between shadow-lg z-20"
+      className="menu-lateral fixed top-0 left-0 h-full w-64 flex flex-col justify-between shadow-lg z-20"
       style={{
         backgroundColor: "var(--color-card)",
         color: "var(--color-text)",
+        pointerEvents: tutorialActivo ? "none" : "auto", 
       }}
     >
       <div>
@@ -134,7 +151,7 @@ export default function MenuLateral({ rol }: Props) {
         }}
         className="flex items-center gap-3 px-4 py-3 rounded-md hover:opacity-80"
         style={{
-          color: "#f87171", // rojo
+          color: "#f87171",
         }}
       >
         <LogOut size={20} /> Cerrar sesión

@@ -227,8 +227,12 @@ export default function ResolverQuizPage() {
         console.error("Error al sumar XP:", error);
       } else {
         console.log("XP actualizado:", data);
+
+        if (data?.nuevo_nivel === true) {
+          window.dispatchEvent(new CustomEvent("nivelSubido", { detail: data.nivel_actual }));
+        }
       }
-    }
+    } 
 
     setXpGanado(Math.max(xpNuevo, xpPrev));
 
@@ -261,6 +265,78 @@ export default function ResolverQuizPage() {
       .update({ progreso })
       .eq("usuario_id", userId)
       .eq("materia_id", materiaId);
+
+          // Verificar logros de quiz
+    try {
+      const { verificarLogros } = await import("@/utils/verificarLogros");
+
+      let nuevosLogros: any[] = [];
+      const porcentaje = puntaje;
+
+      // Logros por quiz al 100%
+      if (porcentaje === 100) {
+        const { count: completados100 } = await supabase
+          .from("intentos_quiz")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("completado", true)
+          .eq("puntaje", 100);
+
+        const nuevos100 = await verificarLogros(
+          userId,
+          "quiz_100",
+          completados100 ?? 0
+        );
+        nuevosLogros.push(...nuevos100);
+      }
+
+      // Logros por quiz ≥ 75%
+      if (porcentaje >= 75) {
+        const { count: completados75 } = await supabase
+          .from("intentos_quiz")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("completado", true)
+          .gte("puntaje", 75);
+
+        const nuevos75 = await verificarLogros(
+          userId,
+          "quiz_75",
+          completados75 ?? 0
+        );
+        nuevosLogros.push(...nuevos75);
+      }
+
+      if (nuevosLogros.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("logrosDesbloqueados", { detail: nuevosLogros })
+        );
+      }
+    } catch (error) {
+      console.error("Error al verificar logros del quiz:", error);
+    }
+
+    // Verificar logros de curso
+    if (progreso === 100) {
+      try {
+        const { count: cursosCompletos } = await supabase
+          .from("progreso")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("progreso", 100);
+
+        const { verificarLogros } = await import("@/utils/verificarLogros");
+        const nuevos = await verificarLogros(userId, "curso", cursosCompletos ?? 0);
+
+        if (nuevos.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent("logrosDesbloqueados", { detail: nuevos })
+          );
+        }
+      } catch (error) {
+        console.error("Error verificando logros de curso:", error);
+      }
+    }
   };
 
   const mmss = (s: number) => {

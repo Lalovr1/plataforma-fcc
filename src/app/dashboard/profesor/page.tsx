@@ -29,7 +29,7 @@ export default async function ProfesorDashboard() {
 
   const { data: profesor } = await supabase
     .from("usuarios")
-    .select("id, nombre, avatar_config, frame_url")
+    .select("id, nombre, avatar_config")
     .eq("id", user.id)
     .single();
 
@@ -55,7 +55,6 @@ export default async function ProfesorDashboard() {
             name={profesor?.nombre ?? "Profesor"}
             level={0}
             avatarConfig={profesor?.avatar_config}
-            frameUrl={profesor?.frame_url}
             rol="profesor"
           />
 
