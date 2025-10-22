@@ -3,8 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export async function POST(req: Request) {
+   console.log("✅ insertRecompensas API llamada");
+
   try {
     const body = await req.json();
+    console.log("📦 Datos recibidos en insertRecompensas:", body);
+    
     const { userId } = body;
 
     const supabaseServer = createClient(

@@ -167,16 +167,15 @@ export default function PerfilEstudiantePage() {
     usuario.avatar_config ??
     {
       gender: "masculino",
-
       skin: "base/masculino/piel.png",
       skinColor: "#f1c27d",
-      eyes: "cara/ojos/masculino/Ojos1.png",
-      mouth: "cara/bocas/Boca1.png",
-      nose: "cara/narices/Nariz1.png",
+      eyes: "Ojos1.png",
+      mouth: "Boca1.png",
+      nose: "Nariz1.png",
       glasses: "none",
-      hair: "cabello/masculino/Cabello1.png",
-      playera: "ropa/masculino/playeras/Playera1_Relleno.png",
-      sueter: "ropa/masculino/sueteres/Sueter1_Relleno.png",
+      hair: "Cabello1.png",
+      playera: "Playera1",
+      sueter: "none",
       collar: "none",
       pulsera: "none",
       accessory: "none",
