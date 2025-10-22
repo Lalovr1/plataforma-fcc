@@ -13,6 +13,38 @@ import BarraSuperiorLogo from "./BarraSuperiorLogo";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
 
+function VerificarTutorial() {
+  const [mostrar, setMostrar] = useState(false);
+
+  useEffect(() => {
+    async function verificar() {
+      try {
+        const { supabase } = await import("@/utils/supabaseClient");
+        const { data: user } = await supabase.auth.getUser();
+        if (!user?.user) return;
+
+        const { data: logros } = await supabase
+          .from("logros_usuarios")
+          .select("logro_id")
+          .eq("usuario_id", user.user.id);
+
+        const tieneTutorial = logros?.some(
+          (l) =>
+            l.logro_id === "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
+            l.logro_id === "tutorial"
+        );
+
+        setMostrar(!tieneTutorial);
+      } catch (err) {
+        console.error("Error verificando logro tutorial:", err);
+      }
+    }
+    verificar();
+  }, []);
+
+  return mostrar ? <TutorialInicio /> : null;
+}
+
 export default function LayoutGeneral({
   children,
   rol = "estudiante",
@@ -60,10 +92,13 @@ export default function LayoutGeneral({
   useEffect(() => {
     const syncRol = async () => {
       try {
-        const { data: user } = await import("@/utils/supabaseClient").then((m) => m.supabase.auth.getUser());
+        const { data: user } = await import("@/utils/supabaseClient").then((m) =>
+          m.supabase.auth.getUser()
+        );
         if (user?.user?.id) {
-          const { data: usuario } = await import("@/utils/supabaseClient")
-            .then((m) => m.supabase.from("usuarios").select("rol").eq("id", user.user.id).single());
+          const { data: usuario } = await import("@/utils/supabaseClient").then((m) =>
+            m.supabase.from("usuarios").select("rol").eq("id", user.user.id).single()
+          );
           if (usuario?.rol) {
             localStorage.setItem("rol_usuario", usuario.rol);
           }
@@ -75,8 +110,13 @@ export default function LayoutGeneral({
 
     syncRol();
 
-    // Reaccionar a eventos de cambio de usuario
-    const handleLogout = () => localStorage.removeItem("rol_usuario");
+    // ✅ Reaccionar a eventos de cierre de sesión
+    const handleLogout = () => {
+      localStorage.removeItem("rol_usuario");
+      localStorage.removeItem("tutorial_visto");
+      localStorage.removeItem("tutorial_visto_finalizado");
+    };
+
     window.addEventListener("logout", handleLogout);
 
     return () => window.removeEventListener("logout", handleLogout);
@@ -160,11 +200,7 @@ export default function LayoutGeneral({
 
   return (
     <>
-      {typeof window !== "undefined" &&
-        localStorage.getItem("rol_usuario") === "estudiante" &&
-        localStorage.getItem("tutorial_visto") !== "true" && (
-          <TutorialInicio />
-        )}
+      {typeof window !== "undefined" && rol === "estudiante" && <VerificarTutorial />}
       <div
         className="flex app-root h-screen overflow-hidden"
         style={{
