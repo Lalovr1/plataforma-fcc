@@ -1,10 +1,9 @@
 "use client";
 import { supabase } from "@/utils/supabaseClient";
 
-// 🧠 Candado global anti ejecución simultánea
 const ejecucionesActivas = new Set<string>();
 
-// 🧩 Cache local por sesión
+//  Cache local por sesión
 function getLogrosLocales(usuarioId: string): Set<string> {
   try {
     const data = localStorage.getItem(`logros_local_${usuarioId}`);
@@ -27,11 +26,6 @@ export async function verificarLogros(
   if (!usuarioId) return [];
   const key = `${usuarioId}-${tipo}`;
 
-  // 🧩 Evita que el logro del tutorial se dispare accidentalmente al subir de nivel
-  // ❌ Quita el bloqueo general
-  // if (tipo !== "tutorial" && tipo.startsWith("nivel")) {
-
-  // ✅ Sustitúyelo por:
   if (tipo === "tutorial") {
     const { data: yaTieneTutorial } = await supabase
       .from("logros_usuarios")
@@ -46,7 +40,6 @@ export async function verificarLogros(
     }
   }
 
-  // 🚧 Si ya se está ejecutando una verificación igual, se cancela
   if (ejecucionesActivas.has(key)) {
     console.log(`⏳ Saltando verificación duplicada (${tipo})`);
     return [];
@@ -124,19 +117,24 @@ export async function verificarLogros(
       }
     }
 
-        // 💾 Guardar cache actualizada
     saveLogrosLocales(usuarioId, logrosLocales);
 
-    // 🔔 Emitir evento solo si NO es del tutorial
     if (nuevosInsertados.length > 0) {
-      if (tipo !== "tutorial") {
+      const emitidos = new Set<string>();
+      const unicos = nuevosInsertados.filter((l) => {
+        if (emitidos.has(l.id)) return false;
+        emitidos.add(l.id);
+        return true;
+      });
+
+      if (tipo !== "tutorial" && unicos.length > 0) {
         window.dispatchEvent(
-          new CustomEvent("logrosDesbloqueados", { detail: nuevosInsertados })
+          new CustomEvent("logrosDesbloqueados", { detail: unicos })
         );
       }
 
       console.table(
-        nuevosInsertados.map((l) => ({
+        unicos.map((l) => ({
           Logro: l.nombre,
           XP: l.xp_recompensa,
           Tipo: tipo,

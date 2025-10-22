@@ -146,12 +146,19 @@ export default function MenuLateral({ rol }: Props) {
       </div>
 
       <button
-        onClick={() => {
+        onClick={async () => {
+          const { supabase } = await import("@/utils/supabaseClient");
+
+          try {
+            await supabase.auth.signOut();
+          } catch (err) {
+            console.error("Error al cerrar sesión en Supabase:", err);
+          }
+
+          window.dispatchEvent(new Event("logout"));
+
+          localStorage.clear();
           window.location.href = "/login";
-        }}
-        className="flex items-center gap-3 px-4 py-3 rounded-md hover:opacity-80"
-        style={{
-          color: "#f87171",
         }}
       >
         <LogOut size={20} /> Cerrar sesión

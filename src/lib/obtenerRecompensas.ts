@@ -9,7 +9,7 @@ export async function obtenerRecompensasAleatorias(
 ) {
   let rarezaMax: Rareza = "comun";
 
-  // 👑 Forzar legendario si es cofre de bienvenida
+  // Forzar legendario si es cofre de bienvenida
   if (tipo === "bienvenida") {
     rarezaMax = "legendario";
   } else {
