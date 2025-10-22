@@ -64,7 +64,12 @@ function ModalEditarNombre({
           type="text"
           value={nombreLocal}
           onChange={(e) => setNombreLocal(e.target.value)}
-          className="w-full p-2 rounded-lg border border-gray-600 bg-transparent text-white"
+          className="w-full p-2 rounded-lg border"
+          style={{
+            borderColor: "var(--color-border)",
+            backgroundColor: "var(--color-bg)",
+            color: "var(--color-text)",
+          }}
           placeholder="Ingresa tu nombre"
         />
         <div className="flex justify-end mt-4 space-x-2">
