@@ -30,9 +30,6 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen">
-      <MenuLateral rol={rol} />
-      <div className="flex-1 p-6">{children}</div>
-    </div>
+    <div className="flex-1">{children}</div>
   );
 }
