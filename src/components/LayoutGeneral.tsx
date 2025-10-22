@@ -189,14 +189,7 @@ export default function LayoutGeneral({
       }
     }
 
-    window.addEventListener("logrosDesbloqueados", (e) => {
-      if ((window as any).__tutorialActivo) {
-        console.log("⏩ Ignorado evento logrosDesbloqueados (tutorial activo)");
-        return;
-      }
-      console.log("🔥 EVENTO logrosDesbloqueados capturado EN LayoutGeneral");
-      mostrarLogros(e);
-    });
+    window.addEventListener("logrosDesbloqueados", mostrarLogros);
     window.addEventListener("nivelSubido", handleNivelSubido);
 
     return () => {

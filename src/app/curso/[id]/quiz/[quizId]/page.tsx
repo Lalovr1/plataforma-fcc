@@ -266,14 +266,13 @@ export default function ResolverQuizPage() {
       .eq("usuario_id", userId)
       .eq("materia_id", materiaId);
 
-          // Verificar logros de quiz
+    // Verificar logros de quiz y curso en una sola emisión
     try {
       const { verificarLogros } = await import("@/utils/verificarLogros");
-
       let nuevosLogros: any[] = [];
       const porcentaje = puntaje;
 
-      // Logros por quiz al 100%
+      // Logros por quiz al 100 %
       if (porcentaje === 100) {
         const { count: completados100 } = await supabase
           .from("intentos_quiz")
@@ -290,7 +289,7 @@ export default function ResolverQuizPage() {
         nuevosLogros.push(...nuevos100);
       }
 
-      // Logros por quiz ≥ 75%
+      // Logros por quiz ≥ 75 %
       if (porcentaje >= 75) {
         const { count: completados75 } = await supabase
           .from("intentos_quiz")
@@ -307,35 +306,30 @@ export default function ResolverQuizPage() {
         nuevosLogros.push(...nuevos75);
       }
 
-      if (nuevosLogros.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent("logrosDesbloqueados", { detail: nuevosLogros })
-        );
-      }
-    } catch (error) {
-      console.error("Error al verificar logros del quiz:", error);
-    }
-
-    // Verificar logros de curso
-    if (progreso === 100) {
-      try {
+      // Logros por curso completado
+      if (progreso === 100) {
         const { count: cursosCompletos } = await supabase
           .from("progreso")
           .select("*", { count: "exact" })
           .eq("usuario_id", userId)
           .eq("progreso", 100);
 
-        const { verificarLogros } = await import("@/utils/verificarLogros");
-        const nuevos = await verificarLogros(userId, "curso", cursosCompletos ?? 0);
-
-        if (nuevos.length > 0) {
-          window.dispatchEvent(
-            new CustomEvent("logrosDesbloqueados", { detail: nuevos })
-          );
-        }
-      } catch (error) {
-        console.error("Error verificando logros de curso:", error);
+        const nuevosCurso = await verificarLogros(
+          userId,
+          "curso",
+          cursosCompletos ?? 0
+        );
+        nuevosLogros.push(...nuevosCurso);
       }
+
+      //  Emitir todos juntos una sola vez
+      if (nuevosLogros.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("logrosDesbloqueados", { detail: nuevosLogros })
+        );
+      }
+    } catch (error) {
+      console.error("Error al verificar logros del quiz o curso:", error);
     }
   };
 
