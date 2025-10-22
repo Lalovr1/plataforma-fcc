@@ -268,7 +268,7 @@ export default function ProfesoresPage() {
     glasses: "none",
     hair: "cabello/masculino/Cabello1.png",
     playera: "Playera1",
-    sueter: "Sueter1",
+    sueter: "none",
     collar: "none",
     pulsera: "none",
     accessory: "none",
