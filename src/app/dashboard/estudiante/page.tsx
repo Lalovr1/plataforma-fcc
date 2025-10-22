@@ -208,7 +208,6 @@ export default async function EstudianteDashboard() {
           </div>
         </div>
       </div>
-      {!usuario?.avatar_config && <TutorialInicio />}
     </LayoutGeneral>
   );
 }
