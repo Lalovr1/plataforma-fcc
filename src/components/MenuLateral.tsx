@@ -160,6 +160,10 @@ export default function MenuLateral({ rol }: Props) {
           localStorage.clear();
           window.location.href = "/login";
         }}
+        className="flex items-center gap-3 px-4 py-3 rounded-md hover:opacity-80"
+        style={{
+          color: "#f87171",
+        }}
       >
         <LogOut size={20} /> Cerrar sesión
       </button>
