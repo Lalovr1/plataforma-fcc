@@ -51,6 +51,11 @@ export default function LayoutGeneral({
     document.body.classList.add(`theme-${tema}`);
   }, [tema]);
 
+  useEffect(() => {
+    (window as any).__tutorialActivo = false;
+    window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
+  }, []);
+
     // Sincronizar rol_usuario con sesión activa
   useEffect(() => {
     const syncRol = async () => {
