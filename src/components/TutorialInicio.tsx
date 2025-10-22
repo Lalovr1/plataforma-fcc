@@ -11,6 +11,7 @@ import AnimacionCofre from "@/components/AnimacionCofre";
 export default function TutorialInicio() {
   const [yaVisto, setYaVisto] = useState(false);
   const [cargando, setCargando] = useState(true);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const rol = localStorage.getItem("rol_usuario");
@@ -56,6 +57,11 @@ export default function TutorialInicio() {
             .from("usuarios")
             .update({ tutorial_visto: true })
             .eq("id", user.user.id);
+
+          setVisible(true);
+        }else {
+          (window as any).__tutorialActivo = false;
+          window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
         }
 
         setCargando(false);
@@ -67,6 +73,28 @@ export default function TutorialInicio() {
 
     verificarLogroTutorial();
   }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      (window as any).__tutorialActivo = false;
+      window.dispatchEvent(
+        new CustomEvent("tutorial:estado", { detail: { activo: false } })
+      );
+      return;
+    }
+
+    (window as any).__tutorialActivo = true;
+    window.dispatchEvent(
+      new CustomEvent("tutorial:estado", { detail: { activo: true } })
+    );
+
+    return () => {
+      (window as any).__tutorialActivo = false;
+      window.dispatchEvent(
+        new CustomEvent("tutorial:estado", { detail: { activo: false } })
+      );
+    };
+  }, [visible]);
 
   useEffect(() => {
     const imagenes = [
@@ -90,10 +118,13 @@ export default function TutorialInicio() {
   }, []);
 
   const [step, setStep] = useState(0);
-  const [visible, setVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [highlightContent, setHighlightContent] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
 
   const [mostrarEditor, setMostrarEditor] = useState(false);
   const [animandoEditor, setAnimandoEditor] = useState(false);
@@ -127,23 +158,6 @@ export default function TutorialInicio() {
   const [finalizado, setFinalizado] = useState(false);
 
   const [logrosDesbloqueados, setLogrosDesbloqueados] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") setVisible(true);
-  }, []);
-
-  useEffect(() => {
-    setReady(true);
-  }, []);
-
-  useEffect(() => {
-    (window as any).__tutorialActivo = visible;
-    window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: visible } }));
-    return () => {
-      (window as any).__tutorialActivo = false;
-      window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
-    };
-  }, [visible]);
 
   const pasos = [
     {
@@ -233,6 +247,7 @@ export default function TutorialInicio() {
       setMostrarTooltip(true);
     }
   }, [step]);
+  
 
   if (cargando || yaVisto || !visible || !ready) return null;
 
