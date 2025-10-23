@@ -240,19 +240,6 @@ export default function AmigosPage() {
         "amistades",
         countAceptante ?? 0
       );
-
-      // Verificar logros para quien envió la solicitud
-      const { count: countSolicitante } = await supabase
-        .from("amistades")
-        .select("*", { count: "exact" })
-        .or(
-          `usuario_id.eq.${req.solicitante_id},amigo_id.eq.${req.solicitante_id}`
-        );
-      await verificarLogros(
-        req.solicitante_id,
-        "amistades",
-        countSolicitante ?? 0
-      );
     } catch (err) {
       console.error("Error verificando logros de amistad:", err);
     }
