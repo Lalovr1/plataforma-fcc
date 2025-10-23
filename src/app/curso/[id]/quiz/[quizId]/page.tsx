@@ -265,6 +265,50 @@ export default function ResolverQuizPage() {
       .update({ progreso })
       .eq("usuario_id", userId)
       .eq("materia_id", materiaId);
+
+    // Verificar logros de quiz y curso en una sola emisión
+    try {
+      const { verificarLogros } = await import("@/utils/verificarLogros");
+      const nuevosLogros: any[] = [];
+      const porcentaje = puntaje;
+
+      // Logros por quiz al 100 %
+      if (porcentaje === 100) {
+        const { count: completados100 } = await supabase
+          .from("intentos_quiz")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("completado", true)
+          .eq("puntaje", 100);
+
+        await verificarLogros(userId, "quiz_100", completados100 ?? 0);
+      }
+
+      // Logros por quiz ≥ 75 %
+      if (porcentaje >= 75) {
+        const { count: completados75 } = await supabase
+          .from("intentos_quiz")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("completado", true)
+          .gte("puntaje", 75);
+
+        await verificarLogros(userId, "quiz_75", completados75 ?? 0);
+      }
+
+      // Logros por curso completado
+      if (progreso === 100) {
+        const { count: cursosCompletos } = await supabase
+          .from("progreso")
+          .select("*", { count: "exact" })
+          .eq("usuario_id", userId)
+          .eq("progreso", 100);
+
+        await verificarLogros(userId, "curso", cursosCompletos ?? 0);
+      }
+    } catch (error) {
+      console.error("Error al verificar logros del quiz o curso:", error);
+    }
   };
 
   const mmss = (s: number) => {
