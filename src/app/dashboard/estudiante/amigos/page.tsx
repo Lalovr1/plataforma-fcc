@@ -109,13 +109,21 @@ export default function AmigosPage() {
 
     setTimeout(async () => {
       try {
-        const { count } = await supabase
+        const { data: amistadesUsuario } = await supabase
           .from("amistades")
-          .select("*", { count: "exact" })
-          .or(`usuario_id.eq.${myId},amigo_id.eq.${myId}`);
+          .select("id")
+          .eq("usuario_id", myId);
+
+        const { data: amistadesAmigo } = await supabase
+          .from("amistades")
+          .select("id")
+          .eq("amigo_id", myId);
+
+        // Suma total de amistades donde aparece el usuario (en cualquiera de las dos columnas)
+        const totalAmigos = (amistadesUsuario?.length ?? 0) + (amistadesAmigo?.length ?? 0);
 
         const { verificarLogros } = await import("@/utils/verificarLogros");
-        await verificarLogros(myId, "amistades", count ?? 0);
+        await verificarLogros(myId, "amistades", totalAmigos);
       } catch (e) {
         console.error("Error verificando logros iniciales:", e);
       }
@@ -232,11 +240,6 @@ export default function AmigosPage() {
         "amistades",
         countAceptante ?? 0
       );
-      if (nuevosAceptante.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent("logrosDesbloqueados", { detail: nuevosAceptante })
-        );
-      }
 
       // Verificar logros para quien envió la solicitud
       const { count: countSolicitante } = await supabase

@@ -128,9 +128,12 @@ export async function verificarLogros(
       });
 
       if (tipo !== "tutorial" && unicos.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent("logrosDesbloqueados", { detail: unicos })
-        );
+        const { data: userSession } = await supabase.auth.getUser();
+        if (userSession?.user?.id === usuarioId) {
+          window.dispatchEvent(
+            new CustomEvent("logrosDesbloqueados", { detail: unicos })
+          );
+        }
       }
 
       console.table(
