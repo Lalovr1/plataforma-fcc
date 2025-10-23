@@ -290,6 +290,7 @@ export default function ResolverQuizPage() {
   };
 
   return (
+    <LayoutGeneral rol={rol}>
       <div className="p-6 rounded-xl shadow space-y-6" style={cardStyle}>
         <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
           {quizInfo?.titulo || "Resolver Quiz"}
@@ -465,5 +466,6 @@ export default function ResolverQuizPage() {
           </div>
         )}
       </div>
+    </LayoutGeneral>
   );
 }
