@@ -73,17 +73,17 @@ export default function WidgetRanking() {
 
   return (
     <div
-      className="rounded-lg p-6 shadow-lg text-center"
+      className="rounded-lg p-4 sm:p-6 shadow-lg text-center min-w-0 overflow-hidden"
       style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
     >
       <h2
-        className="text-xl font-bold mb-6"
+        className="text-lg sm:text-xl font-bold mb-4 sm:mb-6"
         style={{ color: "var(--color-accent)" }}
       >
         🏆 TOP 5 GLOBAL
       </h2>
 
-      <div className="flex justify-center items-end gap-8 mb-6">
+      <div className="flex justify-center items-end gap-3 sm:gap-6 lg:gap-8 mb-6 overflow-hidden">
         {usuarios[1] && (
           <div className="flex flex-col items-center">
             <RenderizadorAvatar
@@ -108,7 +108,7 @@ export default function WidgetRanking() {
               size={180}
               config={usuarios[0].avatar_config ?? defaultConfig}
             />
-            <p className="text-xl font-bold mt-2" style={{ color: "var(--color-heading)" }}>
+            <p className="text-base sm:text-xl font-bold mt-2 max-w-[120px] truncate" style={{ color: "var(--color-heading)" }}>
               {usuarios[0].nombre}
             </p>
             <span className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -143,14 +143,14 @@ export default function WidgetRanking() {
         {usuarios.slice(3).map((user, idx) => (
           <li
             key={user.id}
-            className="flex items-center justify-between px-4 py-2 rounded transition"
+            className="flex items-center justify-between gap-3 px-3 sm:px-4 py-2 rounded transition min-w-0"
             style={{
               backgroundColor: "var(--color-bg)",
               color: "var(--color-text)",
               border: "1px solid var(--color-border)",
             }}
           >
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-3 min-w-0">
               <span
                 className="font-bold"
                 style={{ color: "var(--color-muted)" }}
@@ -161,9 +161,9 @@ export default function WidgetRanking() {
                 size={60}
                 config={user.avatar_config ?? defaultConfig}
               />
-              <p>{user.nombre}</p>
+              <p className="truncate">{user.nombre}</p>
             </div>
-            <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+            <span className="text-sm shrink-0" style={{ color: "var(--color-muted)" }}>
               {user.puntos} pts
             </span>
           </li>

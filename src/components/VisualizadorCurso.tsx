@@ -10,11 +10,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import CirculoProgreso from "@/components/CirculoProgreso";
-import ReactMarkdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import rehypeRaw from "rehype-raw";
 import "katex/dist/katex.min.css";
+import katex from "katex";
 
 type Rol = "estudiante" | "profesor";
 
@@ -23,8 +20,10 @@ type Bloque = {
   materia_id: string;
   tipo: "texto" | "imagen" | "video" | "documento";
   titulo?: string | null;
+  introduccion?: string | null;
   contenido: string;
   orden?: number | null;
+  unidad_id?: string | null;
   quizzes?: {
     id: string;
     titulo: string;
@@ -34,12 +33,23 @@ type Bloque = {
   }[];
 };
 
+type Unidad = {
+  id: string;
+  materia_id: string;
+  numero?: number | null;
+  nombre: string;
+  orden?: number | null;
+};
+
 type Formula = {
   id: string;
-  titulo?: string | null;
+  titulo: string | null;
   ecuacion: string;
-  bloque_id: string | null;
+  descripcion?: string | null;
+  bloque_id: string;
   publica: boolean;
+  created_at: string;
+  orden: number;
 };
 
 const preprocessMarkdown = (md: string) => {
@@ -58,6 +68,43 @@ const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
 const isVideo = (name: string) => /\.(mp4|webm|ogg|mov|mkv)$/i.test(name);
 const isDoc   = (name: string) => /\.(pdf|docx?|pptx?|xlsx)$/i.test(name);
 
+const renderFormulaHTML = (latex: string) => {
+  try {
+    // 🔥 limpiar duplicados por salto de línea
+    const cleanLatex = Array.from(
+      new Set(
+        (latex || "")
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean)
+      )
+    ).join(" ");
+
+    return katex.renderToString(cleanLatex, {
+      throwOnError: false,
+      displayMode: true,
+    });
+  } catch {
+    return latex || "";
+  }
+};
+
+const renderContenidoHTML = (html: string) => {
+  return (html || "").replace(
+    /<span[^>]*data-latex=["']([^"']+)["'][^>]*data-type=["']inline-math["'][^>]*><\/span>/g,
+    (_match, latex) => {
+      try {
+        return katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode: false,
+        });
+      } catch {
+        return latex;
+      }
+    }
+  );
+};
+
 export default function VisualizadorCurso({
   materiaId,
   userId,
@@ -70,8 +117,26 @@ export default function VisualizadorCurso({
   const [materia, setMateria] = useState<any>(null);
   const [progreso, setProgreso] = useState<number>(0);
   const [bloques, setBloques] = useState<Bloque[]>([]);
+  const [unidades, setUnidades] = useState<Unidad[]>([]);
+  const [unidadesAbiertasIds, setUnidadesAbiertasIds] = useState<string[]>([]);
   const [formulas, setFormulas] = useState<Formula[]>([]);
+  const [flippedFormulas, setFlippedFormulas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [previewMedia, setPreviewMedia] = useState<{
+    type: "image" | "video";
+    src: string;
+  } | null>(null);
+
+  const closePreviewMedia = () => {
+    document.querySelectorAll("video").forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+
+    setPreviewMedia(null);
+  };
 
   const [fileMaps, setFileMaps] = useState<Record<string, Record<string, { name: string; url: string }>>>({});
 
@@ -128,6 +193,14 @@ export default function VisualizadorCurso({
         setProgreso(0);
       }
 
+      const { data: unidadesData } = await supabase
+        .from("curso_unidades")
+        .select("id, materia_id, numero, nombre, orden")
+        .eq("materia_id", materiaId)
+        .order("orden", { ascending: true });
+
+      setUnidades((unidadesData || []) as Unidad[]);
+
       const { data: bl } = await supabase
         .from("curso_contenido_bloques")
         .select("*")
@@ -153,7 +226,7 @@ export default function VisualizadorCurso({
       const bloqueIds = (bl || []).map((b: any) => b.id);
       const { data: fm } = await supabase
         .from("curso_formulas")
-        .select("id, titulo, ecuacion, bloque_id, publica, created_at, orden")
+        .select("id, titulo, ecuacion, descripcion, bloque_id, publica, created_at, orden")
         .eq("publica", true)
         .in(
           "bloque_id",
@@ -192,6 +265,13 @@ export default function VisualizadorCurso({
 
   const tituloBloque = (b: Bloque, idx: number) =>
     b.titulo?.trim() ? b.titulo : `Bloque ${idx + 1} (${b.tipo})`;
+
+  const unidadesConBloques = unidades
+    .map((unidad) => ({
+      ...unidad,
+      bloques: bloques.filter((b) => b.unidad_id === unidad.id),
+    }))
+    .filter((unidad) => unidad.bloques.length > 0);
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: "var(--color-card)",
@@ -247,280 +327,252 @@ export default function VisualizadorCurso({
           <p style={{ color: "var(--color-muted)" }}>Aún no hay contenido.</p>
         )}
 
-        <div className="space-y-2">
-          {bloques.map((b, i) => {
-            const activo = bloquesAbiertosIds.includes(b.id);
-            const blockFileMap = fileMaps[b.id] || {};
-
-            const headerStyle: React.CSSProperties = {
-              backgroundColor: "var(--color-card)",
-              border: activo ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            };
+        <div className="space-y-4">
+          {unidadesConBloques.map((unidad) => {
+            const unidadActiva = unidadesAbiertasIds.includes(unidad.id);
 
             return (
-              <div key={b.id} className="space-y-2">
+              <div key={unidad.id} className="space-y-2">
                 <button
                   onClick={() =>
-                    setBloquesAbiertosIds((prev) =>
-                      activo ? prev.filter((id) => id !== b.id) : [...prev, b.id]
+                    setUnidadesAbiertasIds((prev) =>
+                      unidadActiva
+                        ? prev.filter((id) => id !== unidad.id)
+                        : [...prev, unidad.id]
                     )
                   }
-                  className="w-full text-left rounded-lg px-4 py-3 transition hover:shadow"
-                  style={headerStyle}
+                  className="w-full text-left rounded-xl px-5 py-4 transition hover:shadow"
+                  style={{
+                    backgroundColor: "var(--color-card)",
+                    border: unidadActiva
+                      ? "2px solid var(--color-primary)"
+                      : "1px solid var(--color-border)",
+                    color: "var(--color-text)",
+                  }}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate" style={{ color: "var(--color-heading)" }}>
-                        {tituloBloque(b, i)}
-                      </p>
-                      <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-                        {b.quizzes && b.quizzes.length > 0
-                          ? `${b.quizzes.length} quiz${b.quizzes.length > 1 ? "zes" : ""}`
-                          : "Sin quizzes"}
-                      </p>
-                    </div>
-                    <span className="text-sm" style={{ color: "var(--color-muted)" }}>
-                      {activo ? "Ocultar" : "Ver"}
-                    </span>
+                    <p className="font-bold text-lg">{`Unidad ${unidad.numero ?? ""} - ${unidad.nombre}`}</p>
+                    <span>{unidadActiva ? "Ocultar" : "Ver"}</span>
                   </div>
                 </button>
 
-                {activo && (
-                  <div className="rounded-lg p-6 space-y-4" style={cardStyle}>
-                    {b.tipo === "texto" && (
-                      <div className="prose max-w-none">
-                        {b.titulo && (
-                          <h2 className="text-2xl font-bold text-center mb-6" style={{ color: "var(--color-heading)" }}>
-                            {b.titulo}
-                          </h2>
-                        )}
-                        <ReactMarkdown
-                          remarkPlugins={[remarkMath]}
-                          rehypePlugins={[rehypeKatex, rehypeRaw]}
-                          components={{
-                            a: ({ node, ...props }) => (
-                              <a
-                                {...props}
-                                className="underline hover:opacity-90"
-                                style={{ color: "var(--color-primary)" }}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              />
-                            ),
-                            customfile: ({ node, ...props }: { node?: any; [key: string]: any }) => {
-                              if (props.data) {
-                                try {
-                                  const parsed = JSON.parse(props.data as string) as { name: string; url: string };
-                                  const fallback = (!parsed.url && blockFileMap[parsed.name]) ? blockFileMap[parsed.name] : parsed;
+                {unidadActiva && (
+                  <div className="space-y-2 pl-4">
+                    {unidad.bloques.map((b, i) => {
+                      const activo = bloquesAbiertosIds.includes(b.id);
+                      const blockFileMap = fileMaps[b.id] || {};
 
-                                  if (isImage(fallback.name)) {
+                      const headerStyle: React.CSSProperties = {
+                        backgroundColor: "var(--color-card)",
+                        border: activo ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
+                        color: "var(--color-text)",
+                      };
+
+                      return (
+                        <div key={b.id} className="space-y-2">
+                          <button
+                            onClick={() =>
+                              setBloquesAbiertosIds((prev) =>
+                                activo ? prev.filter((id) => id !== b.id) : [...prev, b.id]
+                              )
+                            }
+                            className="w-full text-left rounded-lg px-4 py-3 transition hover:shadow"
+                            style={headerStyle}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-semibold truncate" style={{ color: "var(--color-heading)" }}>
+                                  {tituloBloque(b, i)}
+                                </p>
+                                <p className="text-xs" style={{ color: "var(--color-muted)" }}>
+                                  {b.quizzes && b.quizzes.length > 0
+                                    ? `${b.quizzes.length} quiz${b.quizzes.length > 1 ? "zes" : ""}`
+                                    : "Sin quizzes"}
+                                </p>
+                              </div>
+                              <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+                                {activo ? "Ocultar" : "Ver"}
+                              </span>
+                            </div>
+                          </button>
+
+                          {activo && (
+                            <div className="rounded-lg p-6 space-y-4" style={cardStyle}>
+                              {b.tipo === "texto" && (
+                                <div className="max-w-5xl mx-auto pt-6 pb-10 px-3 sm:px-4">
+                                  {b.titulo && (
+                                    <h2
+                                      className="text-4xl font-extrabold text-center mb-4"
+                                      style={{ color: "var(--color-heading)" }}
+                                    >
+                                      {b.titulo}
+                                    </h2>
+                                  )}
+
+                                  {b.introduccion?.trim() && (
+                                    <p
+                                      className="text-center italic text-sm mb-10"
+                                      style={{ color: "var(--color-muted)" }}
+                                    >
+                                      {b.introduccion}
+                                    </p>
+                                  )}
+
+                                  <div
+                                    className="max-w-none"
+                                    onClick={(e) => {
+                                      const target = e.target as HTMLElement;
+
+                                      if (target.tagName === "IMG") {
+                                        const src = (target as HTMLImageElement).src;
+                                        setPreviewMedia({ type: "image", src });
+                                        return;
+                                      }
+
+                                      if (target.tagName === "VIDEO") {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+
+                                        const video = target as HTMLVideoElement;
+                                        const src = video.currentSrc || video.src;
+
+                                        video.pause();
+                                        video.currentTime = video.currentTime;
+
+                                        setPreviewMedia({ type: "video", src });
+                                        return;
+                                      }
+                                    }}
+                                    dangerouslySetInnerHTML={{
+                                      __html: renderContenidoHTML(b.contenido),
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {b.tipo !== "texto" && (() => {
+                                try {
+                                  const json = b.contenido.replace(/<\/?customfile[^>]*>/g, "").trim();
+                                  const parsed = JSON.parse(json) as { name: string; url: string };
+
+                                  if (isImage(parsed.name)) {
                                     return (
-                                      <img
-                                        src={fallback.url}
-                                        alt={fallback.name}
-                                        className="max-h-64 mx-auto rounded shadow"
-                                      />
+                                      <div className="text-center">
+                                        <img
+                                          src={parsed.url}
+                                          alt={parsed.name}
+                                          className="max-h-72 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in"
+                                          onClick={() => setPreviewMedia({ type: "image", src: parsed.url })}
+                                        />
+                                        <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
+                                          <a href={parsed.url} target="_blank" rel="noopener noreferrer">{parsed.name}</a>
+                                        </p>
+                                      </div>
                                     );
                                   }
-                                  if (isVideo(fallback.name)) {
+                                  if (isVideo(parsed.name)) {
                                     return (
-                                      <video
-                                        src={fallback.url}
-                                        controls
-                                        className="max-h-64 mx-auto rounded shadow"
-                                      />
+                                      <div className="text-center">
+                                        <video
+                                          src={parsed.url}
+                                          controls
+                                          className="max-h-72 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+
+                                            const video = e.currentTarget as HTMLVideoElement;
+                                            video.pause();
+
+                                            setPreviewMedia({ type: "video", src: parsed.url });
+                                          }}
+                                        />
+                                        <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
+                                          <a href={parsed.url} target="_blank" rel="noopener noreferrer">{parsed.name}</a>
+                                        </p>
+                                      </div>
                                     );
                                   }
-                                  if (isDoc(fallback.name)) {
+                                  if (isDoc(parsed.name)) {
                                     return (
-                                      <a
-                                        href={fallback.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="underline"
-                                        style={{ color: "var(--color-primary)" }}
-                                      >
-                                        📄 {fallback.name}
-                                      </a>
+                                      <div className="rounded-lg p-4 text-center" style={cardStyle}>
+                                        <p className="mb-2 font-medium" style={{ color: "var(--color-heading)" }}>
+                                          {b.titulo || parsed.name}
+                                        </p>
+                                        <a
+                                          href={parsed.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-block px-4 py-2 rounded text-white hover:opacity-90"
+                                          style={{ backgroundColor: "var(--color-primary)" }}
+                                        >
+                                          📄 Ver documento
+                                        </a>
+                                      </div>
                                     );
                                   }
                                   return (
                                     <a
-                                      href={fallback.url}
+                                      href={parsed.url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="underline"
+                                      className="underline hover:opacity-90"
                                       style={{ color: "var(--color-primary)" }}
                                     >
-                                      {fallback.name}
+                                      {parsed.name}
                                     </a>
                                   );
                                 } catch {
-                                  return <span style={{ color: "var(--color-danger)" }}>Archivo inválido</span>;
+                                  return <p style={{ color: "var(--color-danger)" }}>No se pudo interpretar el recurso.</p>;
                                 }
-                              }
+                              })()}
 
-                              if (props.nombre) {
-                                const filename = String(props.nombre).replace(/^[\s🖼📷🎥📄]+/, "").trim();
-                                const entry = blockFileMap[filename];
-
-                                if (entry) {
-                                  if (isImage(entry.name)) {
-                                    return (
-                                      <img
-                                        src={entry.url}
-                                        alt={entry.name}
-                                        className="max-h-64 mx-auto rounded shadow"
-                                      />
-                                    );
-                                  }
-                                  if (isVideo(entry.name)) {
-                                    return (
-                                      <video
-                                        src={entry.url}
-                                        controls
-                                        className="max-h-64 mx-auto rounded shadow"
-                                      />
-                                    );
-                                  }
-                                  if (isDoc(entry.name)) {
-                                    return (
-                                      <a
-                                        href={entry.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="underline"
-                                        style={{ color: "var(--color-primary)" }}
-                                      >
-                                        📄 {entry.name}
-                                      </a>
-                                    );
-                                  }
-                                  return (
-                                    <a
-                                      href={entry.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="underline"
-                                      style={{ color: "var(--color-primary)" }}
+                              {b.quizzes && b.quizzes.length > 0 && (
+                                <div className="space-y-2">
+                                  <h3 className="font-semibold" style={{ color: "var(--color-heading)" }}>Quizzes</h3>
+                                  {b.quizzes.map((q) => (
+                                    <div
+                                      key={q.id}
+                                      className="rounded-lg px-3 py-2 flex justify-between items-center"
+                                      style={cardStyle}
                                     >
-                                      {entry.name}
-                                    </a>
-                                  );
-                                }
-                                return <span>{filename}</span>;
-                              }
+                                      <div className="min-w-0">
+                                        <p className="font-medium truncate" style={{ color: "var(--color-text)" }}>
+                                          {q.titulo}
+                                        </p>
+                                        {q.descripcion && (
+                                          <p className="text-xs line-clamp-2" style={{ color: "var(--color-muted)" }}>
+                                            {q.descripcion}
+                                          </p>
+                                        )}
+                                      </div>
 
-                              return <span>Archivo</span>;
-                            },
-                          }}
-                        >
-                          {preprocessMarkdown(b.contenido)}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-
-                    {b.tipo !== "texto" && (() => {
-                      try {
-                        const json = b.contenido.replace(/<\/?customfile[^>]*>/g, "").trim();
-                        const parsed = JSON.parse(json) as { name: string; url: string };
-
-                        if (isImage(parsed.name)) {
-                          return (
-                            <div className="text-center">
-                              <img src={parsed.url} alt={parsed.name} className="max-h-80 mx-auto rounded shadow" />
-                              <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
-                                <a href={parsed.url} target="_blank" rel="noopener noreferrer">{parsed.name}</a>
-                              </p>
-                            </div>
-                          );
-                        }
-                        if (isVideo(parsed.name)) {
-                          return (
-                            <div className="text-center">
-                              <video src={parsed.url} controls className="max-h-80 mx-auto rounded shadow" />
-                              <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
-                                <a href={parsed.url} target="_blank" rel="noopener noreferrer">{parsed.name}</a>
-                              </p>
-                            </div>
-                          );
-                        }
-                        if (isDoc(parsed.name)) {
-                          return (
-                            <div className="rounded-lg p-4 text-center" style={cardStyle}>
-                              <p className="mb-2 font-medium" style={{ color: "var(--color-heading)" }}>
-                                {b.titulo || parsed.name}
-                              </p>
-                              <a
-                                href={parsed.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-block px-4 py-2 rounded text-white hover:opacity-90"
-                                style={{ backgroundColor: "var(--color-primary)" }}
-                              >
-                                📄 Ver documento
-                              </a>
-                            </div>
-                          );
-                        }
-                        return (
-                          <a
-                            href={parsed.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:opacity-90"
-                            style={{ color: "var(--color-primary)" }}
-                          >
-                            {parsed.name}
-                          </a>
-                        );
-                      } catch {
-                        return <p style={{ color: "var(--color-danger)" }}>No se pudo interpretar el recurso.</p>;
-                      }
-                    })()}
-
-                    {b.quizzes && b.quizzes.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="font-semibold" style={{ color: "var(--color-heading)" }}>Quizzes</h3>
-                        {b.quizzes.map((q) => (
-                          <div
-                            key={q.id}
-                            className="rounded-lg px-3 py-2 flex justify-between items-center"
-                            style={cardStyle}
-                          >
-                            <div className="min-w-0">
-                              <p className="font-medium truncate" style={{ color: "var(--color-text)" }}>
-                                {q.titulo}
-                              </p>
-                              {q.descripcion && (
-                                <p className="text-xs line-clamp-2" style={{ color: "var(--color-muted)" }}>
-                                  {q.descripcion}
-                                </p>
+                                      {rol === "estudiante" ? (
+                                        <a
+                                          href={`/curso/${materiaId}/quiz/${q.id}`}
+                                          className="px-3 py-1 rounded text-white hover:opacity-90"
+                                          style={{ backgroundColor: "var(--color-primary)" }}
+                                        >
+                                          Resolver
+                                        </a>
+                                      ) : (
+                                        <a
+                                          href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
+                                          className="px-3 py-1 rounded text-white hover:opacity-90"
+                                          style={{ backgroundColor: "var(--color-secondary)" }}
+                                        >
+                                          Previsualizar
+                                        </a>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
-
-                            {rol === "estudiante" ? (
-                              <a
-                                href={`/curso/${materiaId}/quiz/${q.id}`}
-                                className="px-3 py-1 rounded text-white hover:opacity-90"
-                                style={{ backgroundColor: "var(--color-primary)" }}
-                              >
-                                Resolver
-                              </a>
-                            ) : (
-                              <a
-                                href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
-                                className="px-3 py-1 rounded text-white hover:opacity-90"
-                                style={{ backgroundColor: "var(--color-secondary)" }}
-                              >
-                                Previsualizar
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                      })}
                   </div>
                 )}
               </div>
@@ -538,30 +590,136 @@ export default function VisualizadorCurso({
           <p style={{ color: "var(--color-muted)" }}>Aún no hay fórmulas públicas.</p>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {formulas.map((f) => (
-            <div
-              key={f.id}
-              className="p-6 rounded-lg shadow text-center flex flex-col items-center justify-center"
-              title={f.titulo || undefined}
-              style={cardStyle}
-            >
-              {f.titulo && (
-                <h3 className="font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
-                  {f.titulo}
-                </h3>
-              )}
-              <div className="max-w-none prose">
-                <ReactMarkdown
-                  remarkPlugins={[remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
+          {formulas.map((f) => {
+            const hasDescription = Boolean(f.descripcion?.trim());
+            const isFlipped = flippedFormulas.includes(f.id);
+
+            return (
+              <button
+                key={f.id}
+                type="button"
+                disabled={!hasDescription}
+                onClick={() => {
+                  if (!hasDescription) return;
+
+                  setFlippedFormulas((prev) =>
+                    prev.includes(f.id)
+                      ? prev.filter((id) => id !== f.id)
+                      : [...prev, f.id]
+                  );
+                }}
+                className={`relative min-h-[130px] rounded-lg text-center transition-transform duration-300 ${
+                  hasDescription ? "cursor-pointer hover:-translate-y-1" : "cursor-default"
+                }`}
+                title={
+                  hasDescription
+                    ? "Clic para ver descripción"
+                    : f.titulo || undefined
+                }
+                style={{
+                  perspective: "1000px",
+                }}
+              >
+                {hasDescription && (
+                  <span
+                    className="absolute right-3 top-3 z-20 text-[11px] px-2 py-[2px] rounded-md"
+                    style={{
+                      backgroundColor: "var(--color-border)",
+                      color: "var(--color-muted)",
+                    }}
+                  >
+                     ↻ Info
+                  </span>
+                )}
+
+                <div
+                  className="relative w-full min-h-[130px] transition-transform duration-500"
+                  style={{
+                    transformStyle: "preserve-3d",
+                    transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                  }}
                 >
-                  {`$$${f.ecuacion}$$`}
-                </ReactMarkdown>
-              </div>
-            </div>
-          ))}
+                  <div
+                    className="absolute inset-0 p-6 rounded-lg shadow flex flex-col items-center justify-center"
+                    style={{
+                      ...cardStyle,
+                      backfaceVisibility: "hidden",
+                    }}
+                  >
+                    {f.titulo && (
+                      <h3
+                        className="font-semibold mb-3"
+                        style={{ color: "var(--color-heading)" }}
+                      >
+                        {f.titulo}
+                      </h3>
+                    )}
+
+                    <div
+                      className="max-w-none"
+                      dangerouslySetInnerHTML={{
+                        __html: renderFormulaHTML(f.ecuacion),
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    className="absolute inset-0 p-6 rounded-lg shadow flex items-center justify-center text-sm leading-relaxed"
+                    style={{
+                      ...cardStyle,
+                      transform: "rotateY(180deg)",
+                      backfaceVisibility: "hidden",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    {f.descripcion}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
+      {previewMedia && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[100]"
+          style={{
+            paddingLeft: "240px",
+          }}
+          onClick={closePreviewMedia}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closePreviewMedia}
+              className="absolute top-2 right-2 bg-white text-black rounded px-2 py-1 text-sm z-10"
+            >
+              ✕
+            </button>
+
+            {previewMedia.type === "image" && (
+              <img
+                src={previewMedia.src}
+                alt="Vista ampliada"
+                className="max-w-[90vw] max-h-[90vh] rounded shadow-lg"
+              />
+            )}
+
+            {previewMedia.type === "video" && (
+              <video
+                key={previewMedia.src}
+                src={previewMedia.src}
+                controls
+                autoPlay
+                className="max-w-[90vw] max-h-[90vh] rounded shadow-lg bg-black"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

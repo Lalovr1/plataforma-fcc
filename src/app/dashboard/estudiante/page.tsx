@@ -162,9 +162,9 @@ export default async function EstudianteDashboard() {
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6">
         {/* 🧍 Avatar principal */}
-        <div className="col-span-2 space-y-6">
+        <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
           <div className="avatar-principal">
             <TarjetaUsuario
               name={usuario?.nombre ?? "Usuario"}
@@ -188,7 +188,7 @@ export default async function EstudianteDashboard() {
         </div>
 
         {/* 🧩 Columna derecha */}
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6 min-w-0">
           {/* 🏆 Ranking global */}
           <div className="widget-ranking">
             <WidgetRanking />

@@ -18,6 +18,8 @@ import {
   Home,
   PlusCircle,
   GraduationCap,
+  Menu,
+  X,
 } from "lucide-react";
 
 interface Props {
@@ -28,6 +30,8 @@ export default function MenuLateral({ rol }: Props) {
   const linkStyle: React.CSSProperties = {
     color: "var(--color-text)",
   };
+
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   const [tutorialActivo, setTutorialActivo] = useState<boolean>(() =>
     typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
@@ -44,9 +48,35 @@ export default function MenuLateral({ rol }: Props) {
     return () => window.removeEventListener("tutorial:estado", handler);
   }, []);
 
-  return (
-    <aside
-      className="menu-lateral fixed top-0 left-0 h-full w-64 flex flex-col justify-between shadow-lg z-20"
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setMenuAbierto(true)}
+          className="lg:hidden fixed top-3 left-3 z-40 rounded-lg p-2 shadow-md"
+          style={{
+            backgroundColor: "var(--color-card)",
+            color: "var(--color-text)",
+            border: "1px solid var(--color-border)",
+          }}
+          aria-label="Abrir menú"
+        >
+          <Menu size={24} />
+        </button>
+
+        {menuAbierto && (
+          <button
+            type="button"
+            onClick={() => setMenuAbierto(false)}
+            className="lg:hidden fixed inset-0 bg-black/40 z-40"
+            aria-label="Cerrar menú"
+          />
+        )}
+
+        <aside
+          className={`menu-lateral fixed top-0 left-0 h-full w-56 flex flex-col justify-between shadow-lg z-50 transition-transform duration-300 ${
+            menuAbierto ? "translate-x-0" : "-translate-x-full"
+          } lg:translate-x-0`}
       style={{
         backgroundColor: "var(--color-card)",
         color: "var(--color-text)",
@@ -55,10 +85,19 @@ export default function MenuLateral({ rol }: Props) {
     >
       <div>
         <div
-          className="p-4 border-b"
+          className="relative flex items-center justify-center p-4 border-b"
           style={{ borderColor: "var(--color-border)" }}
         >
-          <img src="/logo.png" alt="FCC Maths" className="w-full h-auto" />
+          <img src="/logo.png" alt="FCC Maths" className="w-full max-w-[170px] h-auto mx-auto" />
+            <button
+              type="button"
+              onClick={() => setMenuAbierto(false)}
+              className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 hover:opacity-80"
+              style={{ color: "var(--color-text)" }}
+              aria-label="Cerrar menú"
+            >
+              <X size={22} />
+            </button>
         </div>
 
         <nav className="mt-4 flex flex-col gap-1">
@@ -167,6 +206,7 @@ export default function MenuLateral({ rol }: Props) {
       >
         <LogOut size={20} /> Cerrar sesión
       </button>
-    </aside>
+     </aside>
+    </>
   );
 }

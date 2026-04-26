@@ -173,7 +173,7 @@ export default function EditarCursoPage() {
         }
       }
 
-      toast.success("Curso actualizado ✅");
+      toast.success("Curso actualizado");
     } catch (err) {
       console.error(err);
       toast.error("Error al actualizar curso");

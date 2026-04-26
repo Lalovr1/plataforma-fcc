@@ -654,7 +654,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         <button
           onClick={saveQuiz}
           disabled={saving}
-          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50"
+          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50  text-white"
         >
           {saving ? "Guardando..." : "Guardar quiz"}
         </button>
@@ -689,7 +689,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 e.stopPropagation();
                 deleteQuiz(q.id);
               }}
-              className="px-3 py-1 rounded bg-red-600 hover:bg-red-500"
+              className="px-3 py-1 rounded bg-red-600 hover:bg-red-500  text-white"
             >
               Eliminar
             </button>

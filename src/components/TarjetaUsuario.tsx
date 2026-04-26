@@ -79,23 +79,25 @@ export default function TarjetaUsuario({
 
   return (
     <div
-      className="rounded-xl px-10 py-3 flex items-center gap-12 shadow-md"
+      className="rounded-xl px-4 sm:px-6 lg:px-10 py-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-8 lg:gap-12 shadow-md overflow-hidden"
       style={{
         backgroundColor: "var(--color-card)",
         color: "var(--color-text)",
-        minHeight: "250px",
+        minHeight: "clamp(180px, 24vw, 250px)",
         pointerEvents: tutorialActivo ? "none" : "auto", //  bloquea clics durante tutorial
       }}
     >
       {/* Avatar */}
       <div className="shrink-0 flex justify-center items-center">
-        <RenderizadorAvatar config={avatar} size={300} />
+        <div className="scale-[0.65] sm:scale-[0.8] lg:scale-100 origin-center">
+          <RenderizadorAvatar config={avatar} size={300} />
+        </div>
       </div>
 
       {/* Info */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 text-center sm:text-left">
         <h2
-          className="text-4xl font-bold leading-tight truncate"
+          className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight truncate"
           style={{ color: "var(--color-heading)" }}
         >
           {rol === "profesor"

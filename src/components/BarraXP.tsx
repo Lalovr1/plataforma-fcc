@@ -15,7 +15,7 @@ export default function BarraXP({ xp = 0 }: BarraXPProps) {
 
   return (
     <div>
-      <h3 className="font-bold mb-2" style={{ color: "var(--color-heading)" }}>
+      <h3 className="font-semibold text-sm sm:text-base mb-2" style={{ color: "var(--color-heading)" }}>
         Experiencia
       </h3>
 
@@ -24,7 +24,7 @@ export default function BarraXP({ xp = 0 }: BarraXPProps) {
       </p>
 
       <div
-        className="w-full h-4 rounded-full overflow-hidden"
+        className="w-full h-3 sm:h-4 rounded-full overflow-hidden"
         style={{ backgroundColor: "var(--color-border)" }}
       >
         <div
@@ -45,7 +45,7 @@ export default function BarraXP({ xp = 0 }: BarraXPProps) {
         / 500
       </p>
 
-      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+      <p className="text-xs sm:text-sm" style={{ color: "var(--color-muted)" }}>
         Siguiente nivel en{" "}
         <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
           {xpToNextLevel} XP

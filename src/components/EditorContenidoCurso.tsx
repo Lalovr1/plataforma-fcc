@@ -14,9 +14,9 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import rehypeRaw from "rehype-raw";
-import ConstructorQuiz from "@/components/ConstructorQuiz";
 import { useRef } from "react"; 
 import OcrFormula from "@/components/OcrFormula";
+import EditorBasico, { type EditorBasicoRef } from "@/components/EditorBasico";
 
 type BlockType = "texto" | "imagen" | "video" | "documento";
 
@@ -30,17 +30,18 @@ type Block = {
   created_at: string;
 };
 
-type Subsection = {
-  id: string;
-  subtitle: string;
-  text: string;
-  formulas: FormulaItem[];
-};
-
 type FormulaItem = {
   id: string;
   titulo: string;
   ecuacion: string;
+};
+
+type UnidadItem = {
+  id: string;
+  materia_id: string;
+  numero: number;
+  nombre: string;
+  orden: number;
 };
 
 declare global {
@@ -52,9 +53,6 @@ declare global {
 const uid = () =>
   `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
-const normalizeMarkdownSpacing = (md: string) => {
-  return md.replace(/^(#{1,6}[^\n]*?)\n+/gm, "$1\n");
-};
 
 const convertFromCustomfile = (md: string) => {
   return md.replace(/<customfile data='([^']+)'><\/customfile>/g, (_, json) => {
@@ -77,13 +75,25 @@ const convertFromCustomfile = (md: string) => {
 };
 
 const extractLatexFormulas = (text: string): string[] => {
-  const regex = /\$\$([\s\S]*?)\$\$/g;
   const results: string[] = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    results.push(match[1].trim());
+
+  const dollarRegex = /\$\$([\s\S]*?)\$\$/g;
+  let dollarMatch;
+  while ((dollarMatch = dollarRegex.exec(text)) !== null) {
+    const formula = dollarMatch[1].trim();
+    if (formula) results.push(formula);
   }
-  return results;
+
+  const tiptapRegex =
+    /<span[^>]*data-latex=["']([^"']+)["'][^>]*data-type=["']inline-math["'][^>]*><\/span>/g;
+
+  let tiptapMatch;
+  while ((tiptapMatch = tiptapRegex.exec(text)) !== null) {
+    const formula = tiptapMatch[1].trim();
+    if (formula) results.push(formula);
+  }
+
+  return Array.from(new Set(results));
 };
 
 export default function EditorContenidoCurso({
@@ -97,27 +107,39 @@ export default function EditorContenidoCurso({
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
   const introRef = useRef<HTMLTextAreaElement | null>(null);
-  const subsectionRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const editRef = useRef<HTMLTextAreaElement | null>(null);
+  const contenidoPrincipalEditorRef = useRef<EditorBasicoRef | null>(null);
 
   const [tipo, setTipo] = useState<BlockType>("texto");
+  const [unidades, setUnidades] = useState<UnidadItem[]>([]);
+  const [unidad, setUnidad] = useState("");
   const [titulo, setTitulo] = useState("");
   const [intro, setIntro] = useState("");
-  const [subsections, setSubsections] = useState<Subsection[]>([]);
+  const [contenidoPrincipal, setContenidoPrincipal] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
   const [editBlock, setEditBlock] = useState<Block | null>(null);
   const [editTitulo, setEditTitulo] = useState("");
   const [editContenido, setEditContenido] = useState("");
+  const [editUnidad, setEditUnidad] = useState("1");
+  const [editIntro, setEditIntro] = useState("");
+  const editContenidoEditorRef = useRef<EditorBasicoRef | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
   const [editFormulas, setEditFormulas] = useState<
-    { id: string; titulo: string; ecuacion: string; publica: boolean }[]
+    { id: string; titulo: string; ecuacion: string; descripcion: string; publica: boolean }[]
   >([]);
   const [deletedFormulas, setDeletedFormulas] = useState<string[]>([]);
   const [targetFormulaId, setTargetFormulaId] = useState<string | null>(null);
   const [formulaDraft, setFormulaDraft] = useState<{id:string, titulo:string, ecuacion:string, publica:boolean} | null>(null);
 
   const [showFormulaModal, setShowFormulaModal] = useState(false);
+  const [showFormulaPanel, setShowFormulaPanel] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
@@ -129,8 +151,8 @@ export default function EditorContenidoCurso({
   const [formulaMode, setFormulaMode] = useState<"latex" | "image">("latex");
   const [formulaEcuacion, setFormulaEcuacion] = useState("");
   const [formulaTitulo, setFormulaTitulo] = useState("");
+  const [formulaDescripcion, setFormulaDescripcion] = useState("");
   const [targetTextarea, setTargetTextarea] = useState<HTMLTextAreaElement | null>(null);
-  const [targetSubId, setTargetSubId] = useState<string | null>(null);
 
   const [inlineFormulaTitles, setInlineFormulaTitles] = useState<
     { scope: "intro" | string; ecuacion: string; titulo: string }[]
@@ -150,6 +172,47 @@ export default function EditorContenidoCurso({
       .order("orden", { ascending: true });
 
     if (!error && data) setBlocks(data as Block[]);
+  };
+
+  const fetchUnidades = async () => {
+  const { data, error } = await supabase
+    .from("curso_unidades")
+    .select("*")
+    .eq("materia_id", materiaId)
+    .order("orden", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (data && data.length > 0) {
+    setUnidades(data as UnidadItem[]);
+    setUnidad((prev) => prev || data[0].id);
+    return;
+  }
+
+  const { data: nuevaUnidad, error: insertError } = await supabase
+    .from("curso_unidades")
+    .upsert(
+      {
+        materia_id: materiaId,
+        numero: 1,
+        nombre: "",
+        orden: 0,
+      },
+      { onConflict: "materia_id,numero" }
+    )
+    .select("*")
+    .single();
+
+    if (insertError) {
+      console.error(insertError);
+      return;
+    }
+
+    setUnidades([nuevaUnidad as UnidadItem]);
+    setUnidad(nuevaUnidad.id);
   };
 
   const getTipoArchivo = (name: string): "imagen" | "video" | "documento" => {
@@ -176,6 +239,7 @@ export default function EditorContenidoCurso({
 
   useEffect(() => {
     fetchBlocks();
+    fetchUnidades();
   }, [materiaId]);
 
   useEffect(() => {
@@ -189,15 +253,6 @@ export default function EditorContenidoCurso({
       "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
     document.head.appendChild(script);
   }, []);
-
-  useEffect(() => {
-    const typeset = async () => {
-      try {
-        await window.MathJax?.typesetPromise?.();
-      } catch {}
-    };
-    typeset();
-  }, [subsections]);
 
   useEffect(() => {
     const typeset = async () => {
@@ -218,63 +273,11 @@ export default function EditorContenidoCurso({
     typeset();
   }, [formulaEcuacion]);
 
-  const addSubsection = () => {
-    setSubsections((prev) => [
-      ...prev,
-      { id: uid(), subtitle: "", text: "", formulas: [] },
-    ]);
-  };
-  const removeSubsection = (id: string) => {
-    setSubsections((prev) => prev.filter((s) => s.id !== id));
-  };
-  const updateSubsection = (id: string, patch: Partial<Subsection>) => {
-    setSubsections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    );
-  };
-
-  const addFormula = (subId: string) => {
-    setSubsections((prev) =>
-      prev.map((s) =>
-        s.id === subId
-          ? {
-              ...s,
-              formulas: [
-                ...s.formulas,
-                { id: uid(), titulo: "", ecuacion: "" },
-              ],
-            }
-          : s
-      )
-    );
-  };
-  const removeFormula = (subId: string, fId: string) => {
-    setSubsections((prev) =>
-      prev.map((s) =>
-        s.id === subId
-          ? { ...s, formulas: s.formulas.filter((f) => f.id !== fId) }
-          : s
-      )
-    );
-  };
-  const updateFormula = (
-    subId: string,
-    fId: string,
-    patch: Partial<FormulaItem>
-  ) => {
-    setSubsections((prev) =>
-      prev.map((s) =>
-        s.id === subId
-          ? {
-              ...s,
-              formulas: s.formulas.map((f) =>
-                f.id === fId ? { ...f, ...patch } : f
-              ),
-            }
-          : s
-      )
-    );
-  };
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const insertAtCursor = (textarea: HTMLTextAreaElement, text: string) => {
     const start = textarea.selectionStart;
@@ -302,8 +305,13 @@ export default function EditorContenidoCurso({
   };
 
   const uploadToStorage = async (f: File, carpeta: string) => {
-    const ext = f.name.split(".").pop();
-    const originalName = f.name;
+  if (carpeta === "videos" && f.size > 50 * 1024 * 1024) {
+    alert("El video es demasiado pesado. Máximo permitido: 50 MB.");
+    throw new Error("Video demasiado pesado");
+  }
+
+  const ext = f.name.split(".").pop();
+  const originalName = f.name;
     const key = `${materiaId}/${carpeta}/${Date.now()}_${Math.random()
       .toString(36)
       .slice(2)}.${ext}`;
@@ -321,32 +329,6 @@ export default function EditorContenidoCurso({
     return { url: data.publicUrl, originalName, key };
   };
 
-  const buildMarkdown = () => {
-    let md = "";
-
-    if (intro.trim()) {
-      md += `## Introducción\n\n${intro.trim()}\n\n`;
-    }
-
-    subsections.forEach((s) => {
-      if (s.subtitle === "(intro)") return;
-
-      if (s.subtitle.trim()) md += `## ${s.subtitle.trim()}\n\n`;
-      if (s.text.trim()) md += `${s.text.trim()}\n\n`;
-
-      if (s.formulas.length > 0) {
-        s.formulas.forEach((f) => {
-          if (f.titulo.trim()) {
-            md += `<p class="text-center font-bold">${f.titulo.trim()}</p>\n\n`;
-          }
-          if (f.ecuacion.trim()) md += `$$\n${f.ecuacion.trim()}\n$$\n\n`;
-        });
-      }
-    });
-
-    return normalizeMarkdownSpacing(md.trim());
-  };
-
   const handleAddBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -355,13 +337,17 @@ export default function EditorContenidoCurso({
       let archivoSubido: { nombre: string; url: string; tipo: "imagen" | "video" | "documento" } | null = null;
 
       if (tipo === "texto") {
-        const mdBase = buildMarkdown();
-        if (!mdBase) {
+        if (
+          !titulo.trim() &&
+          !intro.trim() &&
+          !contenidoPrincipal.trim()
+        ) {
           alert("Completa algún contenido antes de guardar.");
           setLoading(false);
           return;
         }
-        contenido = convertMarkersToCustomfile(normalizeMarkdownSpacing(mdBase), fileMap);
+
+        contenido = convertMarkersToCustomfile(contenidoPrincipal.trim(), fileMap);
       } else {
         if (!file) {
           alert("Selecciona un archivo.");
@@ -386,7 +372,9 @@ export default function EditorContenidoCurso({
           materia_id: materiaId,
           tipo,
           titulo: titulo.trim() || null,
+          introduccion: intro.trim() || null,
           contenido,
+          unidad_id: unidad || null,
           orden: nextOrden,
         })
         .select("id")
@@ -422,30 +410,16 @@ export default function EditorContenidoCurso({
             orden: ordenFormula++,
           });
         }
-
-        for (const s of subsections) {
-          const textFormulas = extractLatexFormulas(s.text);
-          for (const ecuacion of textFormulas) {
-            if (!ecuacion.trim()) continue;
-            await supabase.from("curso_formulas").insert({
-              bloque_id: insertedBlock.id,
-              titulo: popTitle(s.id, ecuacion),
-              ecuacion,
-              publica: false,
-              orden: ordenFormula++,
-            });
-          }
-
-          for (const f of s.formulas) {
-            if (!f.ecuacion.trim()) continue;
-            await supabase.from("curso_formulas").insert({
-              bloque_id: insertedBlock.id,
-              titulo: f.titulo?.trim() || null,
-              ecuacion: f.ecuacion.trim(),
-              publica: false,
-              orden: ordenFormula++,
-            });
-          }
+        const contenidoPrincipalFormulas = extractLatexFormulas(contenidoPrincipal);
+        for (const ecuacion of contenidoPrincipalFormulas) {
+          if (!ecuacion.trim()) continue;
+          await supabase.from("curso_formulas").insert({
+            bloque_id: insertedBlock.id,
+            titulo: popTitle("contenido-principal", ecuacion),
+            ecuacion,
+            publica: false,
+            orden: ordenFormula++,
+          });
         }
         if (blockError) throw blockError;
         if (!insertedBlock) {
@@ -488,15 +462,24 @@ export default function EditorContenidoCurso({
       setInlineFormulaTitles([]);
       setTitulo("");
       setIntro("");
-      setSubsections([]);
+      setContenidoPrincipal("");
+      contenidoPrincipalEditorRef.current?.setContent("");
+
+      if (unidades.length > 0) {
+        setUnidad(unidades[0].id);
+      }
+
       setFile(null);
       setTipo("texto");
       setFileMap({});
+
+      setToast({ message: "Bloque agregado correctamente", type: "success" });
+
       await fetchBlocks();
       if (onBloquesChange) onBloquesChange();
     } catch (err: any) {
       console.error(err);
-      alert("No se pudo agregar el bloque.");
+      setToast({ message: "Error al agregar bloque", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -543,10 +526,12 @@ export default function EditorContenidoCurso({
 
   const handleOpenEdit = async (block: Block) => {
     setEditBlock(block);
-    setEditTitulo(block.titulo || "");
 
-    const raw = normalizeMarkdownSpacing(block.contenido || "");
-    setEditContenido(convertFromCustomfile(raw));
+    setEditUnidad((block as any).unidad_id || unidad || unidades[0]?.id || "");
+    setEditTitulo(block.titulo || "");
+    setEditIntro((block as any).introduccion || "");
+    setEditContenido(convertFromCustomfile(block.contenido || ""));
+    setEditorKey((prev) => prev + 1);
 
     const { data: archivos } = await supabase
       .from("curso_archivos")
@@ -563,7 +548,7 @@ export default function EditorContenidoCurso({
 
     const { data: formulas } = await supabase
       .from("curso_formulas")
-      .select("id, titulo, ecuacion, publica, orden")
+      .select("id, titulo, ecuacion, descripcion, publica, orden")
       .eq("bloque_id", block.id)
       .order("orden", { ascending: true });
 
@@ -573,6 +558,7 @@ export default function EditorContenidoCurso({
           id: f.id,
           titulo: f.titulo || "",
           ecuacion: f.ecuacion || "",
+          descripcion: f.descripcion || "",
           publica: f.publica || false,
         }))
       );
@@ -596,7 +582,9 @@ export default function EditorContenidoCurso({
       .from("curso_contenido_bloques")
       .update({
         titulo: editTitulo.trim() || null,
+        introduccion: editIntro.trim() || null,
         contenido: contenidoFinal,
+        unidad_id: editUnidad || null,
       })
       .eq("id", editBlock.id);
 
@@ -615,6 +603,7 @@ export default function EditorContenidoCurso({
           bloque_id: editBlock.id,
           titulo: f.titulo.trim() || null,
           ecuacion: f.ecuacion.trim(),
+          descripcion: f.descripcion.trim() || null,
           publica: f.publica,
           orden: i,
         });
@@ -622,6 +611,7 @@ export default function EditorContenidoCurso({
         await supabase.from("curso_formulas").update({
           titulo: f.titulo.trim() || null,
           ecuacion: f.ecuacion.trim(),
+          descripcion: f.descripcion.trim() || null,
           publica: f.publica,
           orden: i,
         }).eq("id", f.id);
@@ -692,6 +682,91 @@ export default function EditorContenidoCurso({
       <form onSubmit={handleAddBlock} className="space-y-4">
         <div className="space-y-4">
           <div>
+            <label className="block text-sm mb-1">Unidad</label>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+              <select
+                value={unidad}
+                onChange={(e) => setUnidad(e.target.value)}
+                className="w-full rounded-lg px-3 py-2"
+                style={{
+                  backgroundColor: "var(--color-card)",
+                  color: "var(--color-text)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    Unidad {u.numero}
+                    {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                value={unidades.find((u) => u.id === unidad)?.nombre || ""}
+                onChange={async (e) => {
+                  const nuevoNombre = e.target.value;
+
+                  setUnidades((prev) =>
+                    prev.map((u) =>
+                      u.id === unidad ? { ...u, nombre: nuevoNombre } : u
+                    )
+                  );
+
+                  const { error } = await supabase
+                    .from("curso_unidades")
+                    .update({ nombre: nuevoNombre })
+                    .eq("id", unidad);
+
+                  if (error) {
+                    console.error(error);
+                  }
+                }}
+                className="w-full rounded-lg px-3 py-2"
+                style={{
+                  backgroundColor: "var(--color-card)",
+                  color: "var(--color-text)",
+                  border: "1px solid var(--color-border)",
+                }}
+                placeholder="Título de la unidad (opcional)"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const nextNumero =
+                    unidades.length > 0
+                      ? Math.max(...unidades.map((u) => u.numero)) + 1
+                      : 1;
+
+                  const { data, error } = await supabase
+                    .from("curso_unidades")
+                    .insert({
+                      materia_id: materiaId,
+                      numero: nextNumero,
+                      nombre: "",
+                      orden: nextNumero - 1,
+                    })
+                    .select("*")
+                    .single();
+
+                  if (error) {
+                    console.error(error);
+                    alert("No se pudo crear la unidad.");
+                    return;
+                  }
+
+                  setUnidades((prev) => [...prev, data as UnidadItem]);
+                  setUnidad(data.id);
+                }}
+                className="rounded-lg px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+              >
+                ➕ Agregar unidad
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label className="block text-sm mb-1">Título</label>
             <input
               type="text"
@@ -710,291 +785,64 @@ export default function EditorContenidoCurso({
           <div>
             <label className="block text-sm mb-1">Introducción (opcional)</label>
             <div className="relative">
-              <TextareaAutosize
-                ref={introRef}
+              <textarea
                 value={intro}
                 onChange={(e) => setIntro(e.target.value)}
-                minRows={3}
                 className="w-full rounded-lg px-3 py-2 resize-none"
                 style={{
                   backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
+                  color: "var(--color-muted)",
                   border: "1px solid var(--color-border)",
+                  textAlign: "center",
+                  fontStyle: "italic",
+                  fontSize: "0.95rem",
                 }}
-                placeholder="Texto introductorio antes de los subtítulos"
               />
-              <div className="mt-2 flex flex-wrap gap-2">
-                {/* Botones: fórmula, imagen, video, documento, enlace */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                    setTargetTextarea(textarea);
-                    setTargetSubId(null);
-                    setShowFormulaModal(true);
-                  }}
-                  className="bg-blue-600 text-white text-xs px-2 py-1 rounded"
-                >
-                  ➕ Fórmula
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                    setTargetTextarea(textarea);
-                    setTargetSubId(null);
-                    setShowImageModal(true);
-                  }}
-                  className="bg-green-600 text-white text-xs px-2 py-1 rounded"
-                >
-                  ➕ Imagen
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                    setTargetTextarea(textarea);
-                    setTargetSubId(null);
-                    setShowVideoModal(true);
-                  }}
-                  className="bg-purple-600 text-white text-xs px-2 py-1 rounded"
-                >
-                  ➕ Video
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                    setTargetTextarea(introRef.current);
-                    setTargetSubId(null);
-                    setShowDocModal(true);
-                  }}
-                  className="bg-yellow-600 text-white text-xs px-2 py-1 rounded"
-                >
-                  ➕ Documento
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTargetTextarea(introRef.current);
-                    setTargetSubId(null);
-                    setShowLinkModal(true);
-                  }}
-                  className="bg-pink-600 text-white text-xs px-2 py-1 rounded"
-                >
-                  ➕ Enlace
-                </button>
-              </div>
             </div>
           </div>
-        </div>
-        {/* Subsecciones */}
-        <div className="space-y-2 mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-sm">Subsecciones (Subtítulo + Contenido)</label>
-            <button
-              type="button"
-              onClick={addSubsection}
-              className="px-3 py-1 rounded-lg text-sm"
-              style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-            >
-              Agregar subtítulo
-            </button>
-          </div>
-
-          {subsections.length === 0 && (
-            <p className="text-xs text-gray-400">
-              Aún no has agregado subtítulos.
-            </p>
-          )}
-
-          {subsections.map((s, idx) => (
-            <div
-              key={s.id}
-              className="rounded-lg p-3 space-y-2 border"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: "var(--color-muted)" }}>
-                  Subtítulo #{idx + 1}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeSubsection(s.id)}
-                  className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-xs text-white"
-                >
-                  Quitar
-                </button>
-              </div>
-
-              <input
-                type="text"
-                value={s.subtitle}
-                onChange={(e) => updateSubsection(s.id, { subtitle: e.target.value })}
-                className="w-full rounded px-3 py-2"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
-                  border: "1px solid var(--color-border)",
+          <div>
+            <label className="block text-sm mb-1">Contenido principal</label>
+            <div className="relative">
+              <EditorBasico
+                ref={contenidoPrincipalEditorRef}
+                value={contenidoPrincipal}
+                onChange={setContenidoPrincipal}
+                onRequestFormula={() => {
+                  setTargetTextarea(null);
+                  setShowFormulaModal(true);
                 }}
-                placeholder="Subtítulo"
+                onRequestImage={() => {
+                  setTargetTextarea(null);
+                  setShowImageModal(true);
+                }}
+                onRequestVideo={() => {
+                  setTargetTextarea(null);
+                  setShowVideoModal(true);
+                }}
+                onRequestDocument={() => {
+                  setTargetTextarea(null);
+                  setShowDocModal(true);
+                }}
+                onRequestLink={() => {
+                  setTargetTextarea(null);
+                  setShowLinkModal(true);
+                }}
+                onPasteImage={async (file) => {
+                  const { url, originalName } = await uploadToStorage(file, "imagenes");
+
+                  setFileMap((prev) => ({
+                    ...prev,
+                    [originalName]: JSON.stringify({ name: originalName, url }),
+                  }));
+
+                  return {
+                    url,
+                    name: originalName,
+                  };
+                }}
               />
-
-              <div className="relative">
-                <TextareaAutosize
-                  ref={(el) => (subsectionRefs.current[s.id] = el)}
-                  value={s.text}
-                  onChange={(e) => updateSubsection(s.id, { text: e.target.value })}
-                  minRows={4}
-                  className="w-full rounded px-3 py-2 resize-none"
-                  style={{
-                    backgroundColor: "var(--color-card)",
-                    color: "var(--color-text)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                  placeholder="Contenido (Markdown)"
-                />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                      setTargetTextarea(textarea);
-                      setTargetSubId(s.id);
-                      setShowFormulaModal(true);
-                    }}
-                    className="bg-blue-600 text-white text-xs px-2 py-1 rounded"
-                  >
-                    ➕ Fórmula
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                      setTargetTextarea(textarea);
-                      setTargetSubId(s.id);
-                      setShowImageModal(true);
-                    }}
-                    className="bg-green-600 text-white text-xs px-2 py-1 rounded"
-                  >
-                    ➕ Imagen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                      setTargetTextarea(textarea);
-                      setTargetSubId(s.id);
-                      setShowVideoModal(true);
-                    }}
-                    className="bg-purple-600 text-white text-xs px-2 py-1 rounded"
-                  >
-                    ➕ Video
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                      setTargetTextarea(textarea);
-                      setTargetSubId(s.id);
-                      setShowDocModal(true);
-                    }}
-                    className="bg-yellow-600 text-white text-xs px-2 py-1 rounded"
-                  >
-                    ➕ Documento
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTargetTextarea(subsectionRefs.current[s.id] || null);
-                      setTargetSubId(s.id);
-                      setShowLinkModal(true);
-                    }}
-                    className="bg-pink-600 text-white text-xs px-2 py-1 rounded"
-                  >
-                    ➕ Enlace
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm">Fórmulas</label>
-                  <button
-                    type="button"
-                    onClick={() => addFormula(s.id)}
-                    className="px-3 py-1 rounded-lg text-sm"
-                    style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                  >
-                    Agregar fórmula
-                  </button>
-                </div>
-
-                {s.formulas.map((f: FormulaItem, fIdx: number) => (
-                  <div
-                    key={f.id}
-                    className="rounded-lg p-3 space-y-2 border"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      color: "var(--color-text)",
-                      borderColor: "var(--color-border)",
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs" style={{ color: "var(--color-muted)" }}>
-                        Fórmula #{fIdx + 1}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeFormula(s.id, f.id)}
-                        className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-xs text-white"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-
-                    <input
-                      type="text"
-                      value={f.titulo}
-                      onChange={(e) => updateFormula(s.id, f.id, { titulo: e.target.value })}
-                      className="w-full rounded px-3 py-2 text-center"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        color: "var(--color-text)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                      placeholder="Título de la fórmula"
-                    />
-
-                    <TextareaAutosize
-                      value={f.ecuacion}
-                      onChange={(e) => updateFormula(s.id, f.id, { ecuacion: e.target.value })}
-                      minRows={2}
-                      className="w-full rounded px-3 py-2 resize-none"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        color: "var(--color-text)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                      placeholder="Ecuación en LaTeX"
-                    />
-
-                    <div
-                      className="rounded p-3 text-center"
-                      style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                    >
-                      <p className="text-xs" style={{ color: "var(--color-muted)" }}>Vista previa:</p>
-                      <div dangerouslySetInnerHTML={{ __html: `$$${f.ecuacion || ""}$$` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
-          ))}
+          </div>
         </div>
         <button
           type="submit"
@@ -1085,425 +933,293 @@ export default function EditorContenidoCurso({
           </div>
         ))}
       </div>
-        {editBlock && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div
-            className="rounded-xl shadow-lg w-full max-w-6xl p-6 flex flex-col h-[85vh]"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-xl font-bold mb-4">
-              Editando bloque:{" "}
-              <span className="text-blue-400">
-                {editTitulo || "(Sin título)"}
-              </span>{" "}
-              <span className="ml-2 text-xs text-gray-400">
-                ({editBlock.tipo})
-              </span>
+      
+      {editBlock && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          style={{
+            paddingLeft: "240px",
+          }}
+        >
+        <div
+          className="relative rounded-xl shadow-lg w-[min(92vw,920px)] p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
+          style={{
+            backgroundColor: "var(--color-card)",
+            color: "var(--color-text)",
+          }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_220px] gap-3 items-center">
+            <h2 className="text-xl font-bold whitespace-nowrap">
+              Editando bloque:
             </h2>
 
-            <div className="flex-1 grid grid-cols-3 gap-4 pr-2 overflow-hidden">
-              {/* Columna 1: edición */}
-              <div 
-                className="flex flex-col space-y-4 overflow-hidden border-r pr-4"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
-                  border: "1px solid var(--color-border)", 
-                }}
-              >
-                <input
-                  type="text"
-                  value={editTitulo}
-                  onChange={(e) => setEditTitulo(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2"
-                  style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-                  placeholder="Título del bloque"
-                />
+            <input
+              type="text"
+              value={editTitulo}
+              onChange={(e) => setEditTitulo(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 font-bold text-xl text-center"
+              style={{
+                backgroundColor: "var(--color-card)",
+                color: "var(--color-text)",
+                border: "1px solid var(--color-border)",
+              }}
+            />
 
-                <div className="flex flex-col flex-1">
-                  <TextareaAutosize
-                    ref={editRef}
-                    value={editContenido}
-                    onChange={(e) => setEditContenido(e.target.value)}
-                    minRows={15}
-                    className="flex-1 w-full rounded-lg px-3 py-2 resize-none overflow-y-auto"
-                    style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-                    placeholder={
-                      editBlock.tipo === "texto"
-                        ? "Contenido del bloque (Markdown generado). Puedes ajustarlo aquí si lo prefieres."
-                        : "URL del recurso (imagen/video/documento) almacenado."
-                    }
-                  />
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        const textarea = (e.currentTarget.parentNode?.previousSibling as HTMLTextAreaElement);
-                        setTargetTextarea(textarea);
-                        setShowFormulaModal(true);
-                      }}
-                      className="bg-blue-600 text-white text-xs px-2 py-1 rounded"
-                    >
-                      ➕ Fórmula
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTargetTextarea(editRef.current);
-                        setTargetSubId(null);
-                        setShowImageModal(true);
-                      }}
-                      className="bg-green-600 text-white text-xs px-2 py-1 rounded"
-                    >
-                      ➕ Imagen
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTargetTextarea(editRef.current);
-                        setTargetSubId(null);
-                        setShowVideoModal(true);
-                      }}
-                      className="bg-purple-600 text-white text-xs px-2 py-1 rounded"
-                    >
-                      ➕ Video
-                    </button>
+            <select
+              value={editUnidad}
+              onChange={(e) => setEditUnidad(e.target.value)}
+              className="w-full rounded-lg px-3 py-2"
+              style={{
+                backgroundColor: "var(--color-card)",
+                color: "var(--color-text)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              {unidades.map((u) => (
+                <option key={u.id} value={u.id}>
+                  Unidad {u.numero}
+                  {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTargetTextarea(editRef.current);
-                        setTargetSubId(null);
-                        setShowDocModal(true);
-                      }}
-                      className="bg-yellow-600 text-white text-xs px-2 py-1 rounded"
-                    >
-                      ➕ Documento
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTargetTextarea(editRef.current);
-                        setTargetSubId(null);
-                        setShowLinkModal(true);
-                      }}
-                      className="bg-pink-600 text-white text-xs px-2 py-1 rounded"
-                    >
-                      ➕ Enlace
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <textarea
+            value={editIntro}
+            onChange={(e) => setEditIntro(e.target.value)}
+            className="w-full rounded-lg px-3 py-2 resize-none"
+            style={{
+              backgroundColor: "var(--color-card)",
+              color: "var(--color-muted)",
+              border: "1px solid var(--color-border)",
+              textAlign: "center",
+              fontStyle: "italic",
+              fontSize: "0.95rem",
+            }}
+          />
 
-              {/* Columna 2: vista previa */}
-              {editBlock.tipo === "texto" && (
-                <div
-                  className="rounded-lg p-3 overflow-y-auto h-full border-r"
-                  style={{
-                    backgroundColor: "var(--color-card)",
-                    color: "var(--color-text)",
-                    borderColor: "var(--color-border)",
-                  }}
-                >
-                  <p className="text-xs mb-2" style={{ color: "var(--color-muted)" }}>
-                    Vista previa completa:
-                  </p>
-                  <div className="prose-invert max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex, rehypeRaw]}
-                      components={{
-                        a: ({ node, ...props }) => (
-                          <a
-                            {...props}
-                            className="text-blue-400 underline hover:text-blue-300"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          />
-                        ),
-                        customfile: ({ node, ...props }: { node?: any; [key: string]: any }) => {
-                          if (props.data) {
-                            try {
-                              const parsed = JSON.parse(props.data as string);
+          <div>
+            <EditorBasico
+              key={editorKey}
+              ref={editContenidoEditorRef}
+              value={editContenido}
+              onChange={setEditContenido}
+              fillHeight
+              onRequestFormula={() => {
+                setTargetTextarea(null);
+                setShowFormulaModal(true);
+              }}
+              onRequestImage={() => {
+                setTargetTextarea(null);
+                setShowImageModal(true);
+              }}
+              onRequestVideo={() => {
+                setTargetTextarea(null);
+                setShowVideoModal(true);
+              }}
+              onRequestDocument={() => {
+                setTargetTextarea(null);
+                setShowDocModal(true);
+              }}
+              onRequestLink={() => {
+                setTargetTextarea(null);
+                setShowLinkModal(true);
+              }}
+              showFormulaPanelButton={true}
+              onRequestFormulaPanel={() => setShowFormulaPanel((prev) => !prev)}
+              onPasteImage={async (file) => {
+                const { url, originalName } = await uploadToStorage(file, "imagenes");
 
-                              if (/\.(png|jpe?g|gif|webp|svg)$/i.test(parsed.name)) {
-                                return (
-                                  <img
-                                    src={parsed.url}
-                                    alt={parsed.name}
-                                    className="max-h-64 mx-auto rounded shadow"
-                                  />
-                                );
-                              }
+                setFileMap((prev) => ({
+                  ...prev,
+                  [originalName]: JSON.stringify({ name: originalName, url }),
+                }));
 
-                              if (/\.(mp4|webm|ogg|mov|mkv)$/i.test(parsed.name)) {
-                                return (
-                                  <video
-                                    src={parsed.url}
-                                    controls
-                                    className="max-h-64 mx-auto rounded shadow"
-                                  />
-                                );
-                              }
+                return {
+                  url,
+                  name: originalName,
+                };
+              }}
+            />
 
-                              if (/\.(pdf|docx?|pptx?|xlsx)$/i.test(parsed.name)) {
-                                return (
-                                  <a
-                                    href={parsed.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-400 underline"
-                                  >
-                                    📄 {parsed.name}
-                                  </a>
-                                );
-                              }
+            {showFormulaPanel && (
+            <aside
+              className="rounded-lg border p-3 text-sm space-y-3 z-[60]"
+              style={{
+                position: "fixed",
+                top: "72px",
+                left: "calc(50% + 470px + 105px)",
+                width: "310px",
+                height: "calc(100vh - 105px)",
+                backgroundColor: "var(--color-border)",
+                borderColor: "var(--color-border)",
+              }}
+            >
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Fórmulas del bloque</h3>
 
-                              return (
-                                <a
-                                  href={parsed.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-400 underline"
-                                >
-                                  {parsed.name}
-                                </a>
-                              );
-                            } catch {
-                              return <span>Archivo inválido</span>;
-                            }
-                          }
-
-                          const filename = props.nombre as string;
-                          const json = fileMap[filename];
-                          if (json) {
-                            try {
-                              const parsed = JSON.parse(json);
-
-                              if (/\.(png|jpe?g|gif|webp|svg)$/i.test(parsed.name)) {
-                                return (
-                                  <img
-                                    src={parsed.url}
-                                    alt={parsed.name}
-                                    className="max-h-64 mx-auto rounded shadow"
-                                  />
-                                );
-                              }
-
-                              if (/\.(mp4|webm|ogg|mov|mkv)$/i.test(parsed.name)) {
-                                return (
-                                  <video
-                                    src={parsed.url}
-                                    controls
-                                    className="max-h-64 mx-auto rounded shadow"
-                                  />
-                                );
-                              }
-
-                              if (/\.(pdf|docx?|pptx?|xlsx)$/i.test(parsed.name)) {
-                                return (
-                                  <a
-                                    href={parsed.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-400 underline"
-                                  >
-                                    {parsed.name}
-                                  </a>
-                                );
-                              }
-
-                              return (
-                                <a
-                                  href={parsed.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-400 underline"
-                                >
-                                  {parsed.name}
-                                </a>
-                              );
-                            } catch {
-                              return <span>{filename}</span>;
-                            }
-                          }
-
-                          return <span>{filename}</span>;
-                        },
-                      }}
-                    >
-                      {preprocessMarkdown(editContenido)}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              )}
-              {editBlock.tipo === "imagen" && (() => {
-                try {
-                  const data = JSON.parse(editBlock.contenido);
-                  return (
-                    <div className="bg-gray-800 rounded-lg p-3 text-center">
-                      <img src={data.url} alt={data.name} className="max-h-80 mx-auto rounded" />
-                      <p className="mt-2 text-sm text-blue-400 underline">
-                        <a href={data.url} target="_blank" rel="noopener noreferrer">{data.name}</a>
-                      </p>
-                    </div>
-                  );
-                } catch {
-                  return <p className="text-red-400">No se pudo mostrar la imagen.</p>;
-                }
-              })()}
-
-              {editBlock.tipo === "video" && (() => {
-                try {
-                  const data = JSON.parse(editBlock.contenido);
-                  return (
-                    <div className="bg-gray-800 rounded-lg p-3 text-center">
-                      <video src={data.url} controls className="max-h-80 mx-auto rounded" />
-                      <p className="mt-2 text-sm text-blue-400 underline">
-                        <a href={data.url} target="_blank" rel="noopener noreferrer">{data.name}</a>
-                      </p>
-                    </div>
-                  );
-                } catch {
-                  return <p className="text-red-400">No se pudo mostrar el video.</p>;
-                }
-              })()}
-
-              {editBlock.tipo === "documento" && (
-                <div className="bg-gray-800 rounded-lg p-3 text-center">
-                  <a
-                    href={editContenido}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 underline"
+                  <button
+                    type="button"
+                    onClick={() => setShowFormulaPanel(false)}
+                    className="px-2 py-1 rounded text-xs"
+                    style={{
+                      backgroundColor: "var(--color-card)",
+                      color: "var(--color-text)",
+                    }}
                   >
-                    📄 Abrir documento
-                  </a>
+                    ×
+                  </button>
                 </div>
-              )}
 
-              {/* Columna 3: listado de fórmulas */}
-              <div
-                className="rounded-lg p-3 overflow-y-auto max-h-[70vh] space-y-3 border-l"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
-                  borderColor: "var(--color-border)", 
-                }}
-              >
-                <p className="text-xs mb-2" style={{ color: "var(--color-muted)" }}>
-                  Fórmulas del bloque
-                </p>
-
-                {editFormulas.map((f, idx) => (
-                  <div
-                    key={f.id}
-                    className="p-3 rounded space-y-2"
-                    style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs" style={{ color: "var(--color-text)" }}>
-                        {f.titulo || `Fórmula #${idx + 1}`}
-                      </span>
-                      <label
-                        className="flex items-center gap-1 text-xs"
-                        style={{ color: "var(--color-muted)" }}
-                      >
+                {editFormulas.length === 0 ? (
+                  <p className="text-xs opacity-70">Este bloque no tiene fórmulas.</p>
+                ) : (
+                  editFormulas.map((f, index) => (
+                    <div
+                      key={f.id}
+                      className="rounded-md p-3 space-y-2"
+                      style={{
+                        backgroundColor: "var(--color-card)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
                         <input
-                          type="checkbox"
-                          checked={f.publica}
+                          value={f.titulo}
                           onChange={(e) =>
                             setEditFormulas((prev) =>
-                              prev.map((x) =>
-                                x.id === f.id ? { ...x, publica: e.target.checked } : x
+                              prev.map((item) =>
+                                item.id === f.id ? { ...item, titulo: e.target.value } : item
                               )
                             )
                           }
-                        />
-                        Hacer visible en formulario
-                      </label>
-                    </div>
-
-                    <div className="text-center">
-                      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {`$$${f.ecuacion}$$`}
-                      </ReactMarkdown>
-                    </div>
-
-                    <div className="flex justify-between gap-2">
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => moveFormula(idx, "up")}
-                          className="px-2 py-1 rounded text-xs"
-                          style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveFormula(idx, "down")}
-                          className="px-2 py-1 rounded text-xs"
-                          style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTargetFormulaId(f.id);
-                            setFormulaEcuacion(f.ecuacion);
-                            setFormulaTitulo(f.titulo || "");
-                            setShowFormulaModal(true);
+                          className="w-full rounded px-2 py-1 text-xs"
+                          style={{
+                            backgroundColor: "var(--color-card)",
+                            border: "1px solid var(--color-border)",
                           }}
-                          className="px-2 py-1 bg-yellow-600 rounded text-xs text-white"
-                        >
-                          Editar
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setEditFormulas((prev) => prev.filter((x) => x.id !== f.id));
-                          if (f.id && !f.id.startsWith("_temp")) {
-                            setDeletedFormulas((prev) => [...prev, f.id]);
+                          placeholder="Título"
+                        />
+
+                        <textarea
+                          value={f.descripcion}
+                          onChange={(e) =>
+                            setEditFormulas((prev) =>
+                              prev.map((item) =>
+                                item.id === f.id
+                                  ? { ...item, descripcion: e.target.value }
+                                  : item
+                              )
+                            )
                           }
-                        }}
-                        className="px-2 py-1 bg-red-600 rounded text-xs text-white"
-                      >
-                        Eliminar
-                      </button>
+                          className="w-full rounded px-2 py-1 text-xs resize-none"
+                          rows={2}
+                          style={{
+                            backgroundColor: "var(--color-card)",
+                            border: "1px solid var(--color-border)",
+                          }}
+                          placeholder="Descripción (opcional)"
+                        />
+
+                        <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={f.publica}
+                            onChange={(e) =>
+                              setEditFormulas((prev) =>
+                                prev.map((item) =>
+                                  item.id === f.id
+                                    ? { ...item, publica: e.target.checked }
+                                    : item
+                                )
+                              )
+                            }
+                          />
+                          Visible
+                        </label>
+                      </div>
+
+                      <div className="text-center text-sky-500">
+                        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {`$$${f.ecuacion}$$`}
+                        </ReactMarkdown>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => moveFormula(index, "up")}>
+                            ↑
+                          </button>
+                          <button type="button" onClick={() => moveFormula(index, "down")}>
+                            ↓
+                          </button>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTargetFormulaId(f.id);
+                              setFormulaTitulo(f.titulo);
+                              setFormulaEcuacion(f.ecuacion);
+                              setFormulaDescripcion(f.descripcion || "");
+                              setShowFormulaModal(true);
+                            }}
+                            className="px-2 py-1 rounded bg-yellow-500 text-white text-xs"
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeletedFormulas((prev) => [...prev, f.id]);
+                              setEditFormulas((prev) => prev.filter((item) => item.id !== f.id));
+                            }}
+                            className="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
 
                 <button
+                  type="button"
                   onClick={() => {
-                    const newId = uid();
-                    setFormulaDraft({ id: newId, titulo: "", ecuacion: "", publica: false });
-                    setTargetFormulaId(newId);
+                    setTargetFormulaId(uid());
+                    setFormulaTitulo("");
+                    setFormulaEcuacion("");
                     setShowFormulaModal(true);
                   }}
-                  className="w-full py-2 bg-blue-600 rounded text-sm text-white"
+                  className="w-full rounded bg-blue-600 text-white py-2 text-sm font-semibold"
                 >
-                  ➕ Agregar fórmula
+                  ＋ Agregar fórmula
                 </button>
-              </div>
-            </div>
+              </aside>
+            )}
+          </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                onClick={() => setEditBlock(null)}
-                className="px-4 py-2 bg-gray-600 rounded text-white"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                className="px-4 py-2 bg-green-600 rounded text-white"
-              >
-                Guardar cambios
-              </button>
-            </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setEditBlock(null)}
+              className="px-4 py-2 bg-gray-600 rounded text-white"
+            >
+              Cancelar
+            </button>
+
+            <button
+              onClick={handleSaveEdit}
+              className="px-4 py-2 bg-green-600 rounded text-white"
+            >
+              Guardar cambios
+            </button>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {showFormulaModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1549,6 +1265,19 @@ export default function EditorContenidoCurso({
                   placeholder="Escribe LaTeX aquí"
                   className="w-full rounded px-3 py-2 mb-3 resize-none"
                   style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
+                />
+
+                <TextareaAutosize
+                  minRows={2}
+                  value={formulaDescripcion}
+                  onChange={(e) => setFormulaDescripcion(e.target.value)}
+                  placeholder="Descripción de la fórmula (opcional)"
+                  className="w-full rounded px-3 py-2 mb-3 resize-none"
+                  style={{
+                    backgroundColor: "var(--color-card)",
+                    color: "var(--color-text)",
+                    border: "1px solid var(--color-border)",
+                  }}
                 />
 
                 <div
@@ -1603,35 +1332,78 @@ export default function EditorContenidoCurso({
                           { scope: "intro", ecuacion: formulaEcuacion.trim(), titulo: formulaTitulo.trim() }
                         ]);
                       }
-                    } else if (targetSubId) {
-                      updateSubsection(targetSubId, { text: value });
+                    } else if (
+                      targetTextarea.placeholder?.includes("Contenido del bloque") ||
+                      targetTextarea.placeholder?.includes("contenido principal del bloque")
+                    ) {
+                      if (targetTextarea === editRef.current) {
+                        setEditContenido(value);
+                        setEditFormulas(prev => [
+                          ...prev,
+                          {
+                            id: uid(),
+                            titulo: formulaTitulo,
+                            ecuacion: formulaEcuacion,
+                            descripcion: formulaDescripcion,
+                            publica: false,
+                          }
+                        ]);
+                      } else {
+                        setContenidoPrincipal(value);
+                        if (formulaTitulo.trim()) {
+                          setInlineFormulaTitles(prev => [
+                            ...prev,
+                            { scope: "contenido-principal", ecuacion: formulaEcuacion.trim(), titulo: formulaTitulo.trim() }
+                          ]);
+                        }
+                      }
+                    }
+                  } else if (!targetTextarea && !targetFormulaId && !editBlock) {
+                      contenidoPrincipalEditorRef.current?.insertFormula(formulaEcuacion);
+                      setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
                       if (formulaTitulo.trim()) {
                         setInlineFormulaTitles(prev => [
                           ...prev,
-                          { scope: targetSubId, ecuacion: formulaEcuacion.trim(), titulo: formulaTitulo.trim() }
+                          {
+                            scope: "contenido-principal",
+                            ecuacion: formulaEcuacion.trim(),
+                            titulo: formulaTitulo.trim(),
+                          },
                         ]);
                       }
-                      setTargetSubId(null);
-                    } else if (targetTextarea.placeholder?.includes("Contenido del bloque")) {
-                      setEditContenido(value);
+                    } else if (!targetTextarea && !targetFormulaId && editBlock) {
+                      editContenidoEditorRef.current?.insertFormula(formulaEcuacion);
+                      setEditContenido(editContenidoEditorRef.current?.getHTML() || "");
+
                       setEditFormulas(prev => [
                         ...prev,
-                        { id: uid(), titulo: formulaTitulo, ecuacion: formulaEcuacion, publica: false },
+                        {
+                          id: uid(),
+                          titulo: formulaTitulo,
+                          ecuacion: formulaEcuacion,
+                          descripcion: formulaDescripcion,
+                          publica: false,
+                        },
                       ]);
-                    }
-                  } else if (targetFormulaId) {
+                    } else if (targetFormulaId) {
                     setEditFormulas((prev) => {
                       const exists = prev.some((f) => f.id === targetFormulaId);
                       if (exists) {
                         return prev.map((f) =>
                           f.id === targetFormulaId
-                            ? { ...f, titulo: formulaTitulo, ecuacion: formulaEcuacion }
+                            ? { ...f, titulo: formulaTitulo, ecuacion: formulaEcuacion, descripcion: formulaDescripcion }
                             : f
                         );
                       }
                       return [
                         ...prev,
-                        { id: targetFormulaId, titulo: formulaTitulo, ecuacion: formulaEcuacion, publica: false },
+                        {
+                          id: targetFormulaId,
+                          titulo: formulaTitulo,
+                          ecuacion: formulaEcuacion,
+                          descripcion: formulaDescripcion,
+                          publica: false,
+                        }
                       ];
                     });
                     setTimeout(() => setTargetFormulaId(null), 0);
@@ -1639,6 +1411,7 @@ export default function EditorContenidoCurso({
 
                   setFormulaEcuacion("");
                   setFormulaTitulo("");
+                  setFormulaDescripcion("");
                   setShowFormulaModal(false);
                 }}
               >
@@ -1674,16 +1447,9 @@ export default function EditorContenidoCurso({
               <button
                 className="px-3 py-1 rounded bg-green-600 text-white"
                 onClick={async () => {
-                  if (!targetTextarea) {
-                    alert("Primero da clic en el botón de 'Imagen' del área donde quieres insertarla.");
-                    return;
-                  }
                   if (!file) return;
 
                   const { url, originalName } = await uploadToStorage(file, "imagenes");
-
-                  const placeholder = `[📷 ${originalName}]`;
-                  insertAtCursor(targetTextarea, placeholder);
 
                   const nextMap = {
                     ...fileMap,
@@ -1691,9 +1457,20 @@ export default function EditorContenidoCurso({
                   };
                   setFileMap(nextMap);
 
-                  const value = targetTextarea.value;
+                  if (!targetTextarea && !editBlock) {
+                    contenidoPrincipalEditorRef.current?.insertImage(url, originalName);
+                    setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
+                  } else if (!targetTextarea && editBlock) {
+                    editContenidoEditorRef.current?.insertImage(url, originalName);
+                    setEditContenido(editContenidoEditorRef.current?.getHTML() || "");
+                  } else if (targetTextarea) {
+                    const placeholder = `[📷 ${originalName}]`;
+                    insertAtCursor(targetTextarea, placeholder);
+                  }
+
+                  const value = targetTextarea?.value || "";
                   if (editBlock) {
-                    if (targetTextarea === editRef.current) {
+                    if (targetTextarea && targetTextarea === editRef.current) {
                       setEditContenido(value);
                     }
                     try {
@@ -1734,14 +1511,13 @@ export default function EditorContenidoCurso({
                     } catch (e) {
                       console.error("Persistencia curso_archivos (imagen edición) ->", e);
                     }
-                  } else {
-                    if (targetTextarea === introRef.current) {
-                      setIntro(value);
-                    } else if (targetSubId) {
-                      updateSubsection(targetSubId, { text: value });
-                      setTargetSubId(null);
+                  } else if (targetTextarea) {
+                      if (targetTextarea === introRef.current) {
+                        setIntro(value);
+                      } else {
+                        setContenidoPrincipal(value);
+                      }
                     }
-                  }
 
                   setFile(null);
                   setTargetTextarea(null);
@@ -1781,16 +1557,9 @@ export default function EditorContenidoCurso({
               <button
                 className="px-3 py-1 rounded bg-green-600 text-white"
                 onClick={async () => {
-                  if (!targetTextarea) {
-                    alert("Primero da clic en el botón de 'Video' del área donde quieres insertarlo.");
-                    return;
-                  }
                   if (!file) return;
 
                   const { url, originalName } = await uploadToStorage(file, "videos");
-
-                  const placeholder = `[🎥 ${originalName}]`;
-                  insertAtCursor(targetTextarea, placeholder);
 
                   const nextMap = {
                     ...fileMap,
@@ -1798,9 +1567,20 @@ export default function EditorContenidoCurso({
                   };
                   setFileMap(nextMap);
 
-                  const value = targetTextarea.value;
+                  if (!targetTextarea && !editBlock) {
+                    contenidoPrincipalEditorRef.current?.insertVideoLink(url, originalName);
+                    setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
+                  } else if (!targetTextarea && editBlock) {
+                    editContenidoEditorRef.current?.insertVideoLink(url, originalName);
+                    setEditContenido(editContenidoEditorRef.current?.getHTML() || "");
+                  } else if (targetTextarea) {
+                    const placeholder = `[🎥 ${originalName}]`;
+                    insertAtCursor(targetTextarea, placeholder);
+                  }
+
+                  const value = targetTextarea?.value || "";
                   if (editBlock) {
-                    if (targetTextarea === editRef.current) {
+                    if (targetTextarea && targetTextarea === editRef.current) {
                       setEditContenido(value);
                     }
                     try {
@@ -1841,14 +1621,13 @@ export default function EditorContenidoCurso({
                     } catch (e) {
                       console.error("Persistencia curso_archivos (video edición) ->", e);
                     }
-                  } else {
-                    if (targetTextarea === introRef.current) {
-                      setIntro(value);
-                    } else if (targetSubId) {
-                      updateSubsection(targetSubId, { text: value });
-                      setTargetSubId(null);
+                  } else if (targetTextarea) {
+                      if (targetTextarea === introRef.current) {
+                        setIntro(value);
+                      } else {
+                        setContenidoPrincipal(value);
+                      }
                     }
-                  }
 
                   setFile(null);
                   setTargetTextarea(null);
@@ -1888,16 +1667,9 @@ export default function EditorContenidoCurso({
               <button
                 className="px-3 py-1 rounded bg-green-600 text-white"
                 onClick={async () => {
-                  if (!targetTextarea) {
-                    alert("Primero da clic en el botón de 'Documento' del área donde quieres insertarlo.");
-                    return;
-                  }
                   if (!file) return;
 
                   const { url, originalName } = await uploadToStorage(file, "documentos");
-
-                  const placeholder = `[📄 ${originalName}]`;
-                  insertAtCursor(targetTextarea, placeholder);
 
                   const nextMap = {
                     ...fileMap,
@@ -1905,9 +1677,20 @@ export default function EditorContenidoCurso({
                   };
                   setFileMap(nextMap);
 
-                  const value = targetTextarea.value;
+                  if (!targetTextarea && !editBlock) {
+                    contenidoPrincipalEditorRef.current?.insertDocumentLink(url, originalName);
+                    setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
+                  } else if (!targetTextarea && editBlock) {
+                    editContenidoEditorRef.current?.insertDocumentLink(url, originalName);
+                    setEditContenido(editContenidoEditorRef.current?.getHTML() || "");
+                  } else if (targetTextarea) {
+                    const placeholder = `[📄 ${originalName}]`;
+                    insertAtCursor(targetTextarea, placeholder);
+                  }
+
+                  const value = targetTextarea?.value || "";
                   if (editBlock) {
-                    if (targetTextarea === editRef.current) {
+                    if (targetTextarea && targetTextarea === editRef.current) {
                       setEditContenido(value);
                     }
                     try {
@@ -1948,14 +1731,13 @@ export default function EditorContenidoCurso({
                     } catch (e) {
                       console.error("Persistencia curso_archivos (documento edición) ->", e);
                     }
-                  } else {
-                    if (targetTextarea === introRef.current) {
-                      setIntro(value);
-                    } else if (targetSubId) {
-                      updateSubsection(targetSubId, { text: value });
-                      setTargetSubId(null);
+                  } else if (targetTextarea) {
+                      if (targetTextarea === introRef.current) {
+                        setIntro(value);
+                      } else {
+                        setContenidoPrincipal(value);
+                      }
                     }
-                  }
 
                   setFile(null);
                   setTargetTextarea(null);
@@ -2004,27 +1786,30 @@ export default function EditorContenidoCurso({
               <button
                 className="px-3 py-1 rounded bg-green-600 text-white"
                 onClick={() => {
-                  if (!targetTextarea || !linkUrl) return;
+                  if (!linkUrl) return;
 
-                  const textarea = targetTextarea;
-                  const start = textarea.selectionStart;
-                  const end = textarea.selectionEnd;
-                  const selected = textarea.value.substring(start, end);
+                  if (!targetTextarea && !editBlock) {
+                    contenidoPrincipalEditorRef.current?.insertLink(linkText, linkUrl);
+                    setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
+                  } else if (!targetTextarea && editBlock) {
+                    editContenidoEditorRef.current?.insertLink(linkText, linkUrl);
+                    setEditContenido(editContenidoEditorRef.current?.getHTML() || "");
+                  } else if (targetTextarea) {
+                    const textarea = targetTextarea;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const selected = textarea.value.substring(start, end);
 
-                  const textToShow = linkText || selected || linkUrl;
+                    const textToShow = linkText || selected || linkUrl;
+                    const before = textarea.value.substring(0, start);
+                    const after = textarea.value.substring(end);
+                    const newValue = `${before}[${textToShow}](${linkUrl})${after}`;
 
-                  const before = textarea.value.substring(0, start);
-                  const after = textarea.value.substring(end);
-
-                  const newValue = `${before}[${textToShow}](${linkUrl})${after}`;
-
-                  if (textarea.placeholder?.includes("Texto introductorio")) {
-                    setIntro(newValue);
-                  } else if (targetSubId) {
-                    updateSubsection(targetSubId, { text: newValue });
-                    setTargetSubId(null);
-                  } else if (textarea.placeholder?.includes("Contenido del bloque")) {
-                    setEditContenido(newValue);
+                    if (textarea.placeholder?.includes("Texto introductorio")) {
+                      setIntro(newValue);
+                    } else if (textarea === editRef.current) {
+                      setEditContenido(newValue);
+                    }
                   }
 
                   setLinkText("");
@@ -2037,6 +1822,18 @@ export default function EditorContenidoCurso({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-lg border border-gray-100 text-gray-800 font-medium">
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-white text-sm
+              ${toast.type === "success" ? "bg-green-500" : "bg-red-500"}`}
+          >
+            {toast.type === "success" ? "✓" : "!"}
+          </span>
+
+          <span>{toast.message}</span>
         </div>
       )}
     </div>

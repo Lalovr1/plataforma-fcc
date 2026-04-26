@@ -31,7 +31,7 @@ export default function RootLayout({
         className={`${inter.className} bg-[#f8fafc] text-gray-900`} // 🚀 Fondo claro inicial
       >
         {children}
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
       </body>
     </html>
   );

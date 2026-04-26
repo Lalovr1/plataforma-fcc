@@ -97,11 +97,11 @@ export default function SeccionCursos({ initialCourses, userId }: Props) {
           Aún no tienes cursos asignados
         </p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {misCursos.map((curso) => (
             <div
               key={curso.id}
-              className="rounded-xl p-6 shadow flex items-center gap-6 relative"
+              className="rounded-xl p-4 sm:p-6 shadow flex items-center gap-4 sm:gap-6 relative min-w-0"
               style={{
                 backgroundColor: "var(--color-card)",
                 color: "var(--color-text)",
@@ -109,9 +109,9 @@ export default function SeccionCursos({ initialCourses, userId }: Props) {
             >
               <CirculoProgreso progress={curso.progress} size={80} />
 
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 pr-4">
                 <p
-                  className="text-lg font-semibold"
+                  className="text-base sm:text-lg font-semibold truncate"
                   style={{ color: "var(--color-heading)" }}
                 >
                   {curso.name}
