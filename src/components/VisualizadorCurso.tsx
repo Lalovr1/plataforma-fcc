@@ -7,11 +7,12 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import CirculoProgreso from "@/components/CirculoProgreso";
 import "katex/dist/katex.min.css";
 import katex from "katex";
+import { createPortal } from "react-dom";
 
 type Rol = "estudiante" | "profesor";
 
@@ -105,6 +106,46 @@ const renderContenidoHTML = (html: string) => {
   );
 };
 
+const ContenidoTextoMemo = memo(function ContenidoTextoMemo({
+  contenido,
+  setPreviewMedia,
+}: {
+  contenido: string;
+  setPreviewMedia: React.Dispatch<
+    React.SetStateAction<{ type: "image" | "video"; src: string } | null>
+  >;
+}) {
+  return (
+    <div
+      className="w-full max-w-none break-words overflow-x-auto text-base sm:text-lg leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:rounded-lg [&_video]:max-w-full [&_video]:h-auto [&_video]:mx-auto [&_video]:rounded-lg"
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+
+        if (target.tagName === "IMG") {
+          const src = (target as HTMLImageElement).src;
+          setPreviewMedia({ type: "image", src });
+          return;
+        }
+
+        if (target.tagName === "VIDEO") {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const video = target as HTMLVideoElement;
+          const src = video.currentSrc || video.src;
+
+          video.pause();
+          setPreviewMedia({ type: "video", src });
+          return;
+        }
+      }}
+      dangerouslySetInnerHTML={{
+        __html: renderContenidoHTML(contenido),
+      }}
+    />
+  );
+});
+
 export default function VisualizadorCurso({
   materiaId,
   userId,
@@ -129,12 +170,6 @@ export default function VisualizadorCurso({
   } | null>(null);
 
   const closePreviewMedia = () => {
-    document.querySelectorAll("video").forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    });
-
     setPreviewMedia(null);
   };
 
@@ -279,17 +314,17 @@ export default function VisualizadorCurso({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 min-w-0">
       {/* Cabecera curso */}
-      <div className="p-6 rounded-xl shadow gap-6 items-center flex" style={cardStyle}>
+      <div className="p-4 sm:p-6 rounded-xl shadow gap-4 sm:gap-6 items-center flex flex-col sm:flex-row" style={cardStyle}>
         {rol === "estudiante" && (
-          <div className="flex items-center min-w-[140px] justify-center">
+          <div className="flex items-center justify-center shrink-0 scale-75 sm:scale-100">
             <CirculoProgreso progress={progreso} size={140} />
           </div>
         )}
 
-        <div className="flex-1 space-y-2">
-          <h1 className="text-3xl font-bold" style={{ color: "var(--color-heading)" }}>
+        <div className="flex-1 space-y-2 min-w-0 text-center sm:text-left">
+          <h1 className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
             {materia.nombre}
           </h1>
           {materia.curso_carreras?.length > 0 ? (
@@ -306,7 +341,7 @@ export default function VisualizadorCurso({
           )}
 
           <div className="mt-6">
-            <h2 className="text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+            <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
               Profesor
             </h2>
             <p style={{ color: "var(--color-muted)" }}>
@@ -319,8 +354,8 @@ export default function VisualizadorCurso({
       </div>
 
       {/* Índice de bloques */}
-      <div className="p-6 rounded-xl shadow space-y-4" style={cardStyle}>
-        <h2 className="text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="p-4 sm:p-6 rounded-xl shadow space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+        <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
           Contenido del curso
         </h2>
         {bloques.length === 0 && (
@@ -341,7 +376,7 @@ export default function VisualizadorCurso({
                         : [...prev, unidad.id]
                     )
                   }
-                  className="w-full text-left rounded-xl px-5 py-4 transition hover:shadow"
+                  className="w-full text-left rounded-xl px-3 sm:px-5 py-3 sm:py-4 transition hover:shadow min-w-0"
                   style={{
                     backgroundColor: "var(--color-card)",
                     border: unidadActiva
@@ -350,14 +385,14 @@ export default function VisualizadorCurso({
                     color: "var(--color-text)",
                   }}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-bold text-lg">{`Unidad ${unidad.numero ?? ""} - ${unidad.nombre}`}</p>
-                    <span>{unidadActiva ? "Ocultar" : "Ver"}</span>
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <p className="font-bold text-base sm:text-lg break-words min-w-0">{`Unidad ${unidad.numero ?? ""} - ${unidad.nombre}`}</p>
+                    <span className="shrink-0 text-sm">{unidadActiva ? "Ocultar" : "Ver"}</span>
                   </div>
                 </button>
 
                 {unidadActiva && (
-                  <div className="space-y-2 pl-4">
+                  <div className="space-y-2 pl-0 sm:pl-4">
                     {unidad.bloques.map((b, i) => {
                       const activo = bloquesAbiertosIds.includes(b.id);
                       const blockFileMap = fileMaps[b.id] || {};
@@ -379,7 +414,7 @@ export default function VisualizadorCurso({
                             className="w-full text-left rounded-lg px-4 py-3 transition hover:shadow"
                             style={headerStyle}
                           >
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center justify-between gap-3 min-w-0">
                               <div className="min-w-0">
                                 <p className="font-semibold truncate" style={{ color: "var(--color-heading)" }}>
                                   {tituloBloque(b, i)}
@@ -397,12 +432,12 @@ export default function VisualizadorCurso({
                           </button>
 
                           {activo && (
-                            <div className="rounded-lg p-6 space-y-4" style={cardStyle}>
+                            <div className="rounded-lg p-3 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
                               {b.tipo === "texto" && (
-                                <div className="max-w-5xl mx-auto pt-6 pb-10 px-3 sm:px-4">
+                                <div className="w-full pt-6 sm:pt-12 pb-6 sm:pb-10 px-8 sm:px-12 md:px-16 min-w-0">
                                   {b.titulo && (
                                     <h2
-                                      className="text-4xl font-extrabold text-center mb-4"
+                                      className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-center mb-4 break-words"
                                       style={{ color: "var(--color-heading)" }}
                                     >
                                       {b.titulo}
@@ -411,41 +446,16 @@ export default function VisualizadorCurso({
 
                                   {b.introduccion?.trim() && (
                                     <p
-                                      className="text-center italic text-sm mb-10"
+                                      className="text-center italic text-base sm:text-lg leading-relaxed mb-8 sm:mb-12"
                                       style={{ color: "var(--color-muted)" }}
                                     >
                                       {b.introduccion}
                                     </p>
                                   )}
 
-                                  <div
-                                    className="max-w-none"
-                                    onClick={(e) => {
-                                      const target = e.target as HTMLElement;
-
-                                      if (target.tagName === "IMG") {
-                                        const src = (target as HTMLImageElement).src;
-                                        setPreviewMedia({ type: "image", src });
-                                        return;
-                                      }
-
-                                      if (target.tagName === "VIDEO") {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-
-                                        const video = target as HTMLVideoElement;
-                                        const src = video.currentSrc || video.src;
-
-                                        video.pause();
-                                        video.currentTime = video.currentTime;
-
-                                        setPreviewMedia({ type: "video", src });
-                                        return;
-                                      }
-                                    }}
-                                    dangerouslySetInnerHTML={{
-                                      __html: renderContenidoHTML(b.contenido),
-                                    }}
+                                  <ContenidoTextoMemo
+                                    contenido={b.contenido}
+                                    setPreviewMedia={setPreviewMedia}
                                   />
                                 </div>
                               )}
@@ -461,7 +471,7 @@ export default function VisualizadorCurso({
                                         <img
                                           src={parsed.url}
                                           alt={parsed.name}
-                                          className="max-h-72 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in"
+                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in object-contain"
                                           onClick={() => setPreviewMedia({ type: "image", src: parsed.url })}
                                         />
                                         <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
@@ -476,7 +486,7 @@ export default function VisualizadorCurso({
                                         <video
                                           src={parsed.url}
                                           controls
-                                          className="max-h-72 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in"
+                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in object-contain"
                                           onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -533,7 +543,7 @@ export default function VisualizadorCurso({
                                   {b.quizzes.map((q) => (
                                     <div
                                       key={q.id}
-                                      className="rounded-lg px-3 py-2 flex justify-between items-center"
+                                      className="rounded-lg px-3 py-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 min-w-0"
                                       style={cardStyle}
                                     >
                                       <div className="min-w-0">
@@ -550,7 +560,7 @@ export default function VisualizadorCurso({
                                       {rol === "estudiante" ? (
                                         <a
                                           href={`/curso/${materiaId}/quiz/${q.id}`}
-                                          className="px-3 py-1 rounded text-white hover:opacity-90"
+                                          className="px-3 py-2 sm:py-1 rounded text-white hover:opacity-90 text-center shrink-0"
                                           style={{ backgroundColor: "var(--color-primary)" }}
                                         >
                                           Resolver
@@ -558,7 +568,7 @@ export default function VisualizadorCurso({
                                       ) : (
                                         <a
                                           href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
-                                          className="px-3 py-1 rounded text-white hover:opacity-90"
+                                          className="px-3 py-2 sm:py-1 rounded text-white hover:opacity-90 text-center shrink-0"
                                           style={{ backgroundColor: "var(--color-secondary)" }}
                                         >
                                           Previsualizar
@@ -582,8 +592,8 @@ export default function VisualizadorCurso({
       </div>
 
       {/* Formulario */}
-      <div className="p-6 rounded-xl shadow space-y-4" style={cardStyle}>
-        <h2 className="text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="p-4 sm:p-6 rounded-xl shadow space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+        <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
           Formulario
         </h2>
         {formulas.length === 0 && (
@@ -640,7 +650,7 @@ export default function VisualizadorCurso({
                   }}
                 >
                   <div
-                    className="absolute inset-0 p-6 rounded-lg shadow flex flex-col items-center justify-center"
+                    className="absolute inset-0 p-4 sm:p-6 rounded-lg shadow flex flex-col items-center justify-center overflow-hidden"
                     style={{
                       ...cardStyle,
                       backfaceVisibility: "hidden",
@@ -664,7 +674,7 @@ export default function VisualizadorCurso({
                   </div>
 
                   <div
-                    className="absolute inset-0 p-6 rounded-lg shadow flex items-center justify-center text-sm leading-relaxed"
+                    className="absolute inset-0 p-4 sm:p-6 rounded-lg shadow flex items-center justify-center text-xs sm:text-sm leading-relaxed overflow-hidden"
                     style={{
                       ...cardStyle,
                       transform: "rotateY(180deg)",
@@ -680,46 +690,45 @@ export default function VisualizadorCurso({
           })}
         </div>
       </div>
-      {previewMedia && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[100]"
-          style={{
-            paddingLeft: "240px",
-          }}
-          onClick={closePreviewMedia}
-        >
+      {previewMedia &&
+        createPortal(
           <div
-            className="relative max-w-[90vw] max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/80 flex justify-center items-center z-[9999]"
+            onClick={closePreviewMedia}
           >
-            <button
-              type="button"
-              onClick={closePreviewMedia}
-              className="absolute top-2 right-2 bg-white text-black rounded px-2 py-1 text-sm z-10"
+            <div
+              className="relative max-w-[92vw] max-h-[85vh]"
+              onClick={(e) => e.stopPropagation()}
             >
-              ✕
-            </button>
+              <button
+                type="button"
+                onClick={closePreviewMedia}
+                className="absolute top-2 right-2 bg-white text-black rounded px-2 py-1 text-sm z-10"
+              >
+                ✕
+              </button>
 
-            {previewMedia.type === "image" && (
-              <img
-                src={previewMedia.src}
-                alt="Vista ampliada"
-                className="max-w-[90vw] max-h-[90vh] rounded shadow-lg"
-              />
-            )}
+              {previewMedia.type === "image" && (
+                <img
+                  src={previewMedia.src}
+                  alt="Vista ampliada"
+                  className="max-w-[92vw] max-h-[85vh] rounded shadow-lg object-contain"
+                />
+              )}
 
-            {previewMedia.type === "video" && (
-              <video
-                key={previewMedia.src}
-                src={previewMedia.src}
-                controls
-                autoPlay
-                className="max-w-[90vw] max-h-[90vh] rounded shadow-lg bg-black"
-              />
-            )}
-          </div>
-        </div>
-      )}
+              {previewMedia.type === "video" && (
+                <video
+                  key={previewMedia.src}
+                  src={previewMedia.src}
+                  controls
+                  autoPlay
+                  className="max-w-[92vw] max-h-[85vh] rounded shadow-lg bg-black"
+                />
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
