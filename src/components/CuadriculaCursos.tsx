@@ -170,7 +170,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
     >
       <div className="flex justify-between items-start">
         <h3
-          className="text-lg font-bold"
+          className="text-lg font-bold break-words pr-2"
           style={{ color: "var(--color-heading)" }}
         >
           {m.nombre}
@@ -277,7 +277,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       {selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div
-            className="p-6 rounded-xl w-[420px] shadow-lg space-y-4 relative"
+            className="p-4 sm:p-6 rounded-xl w-[95vw] max-w-[420px] max-h-[90vh] overflow-y-auto shadow-lg space-y-4 relative"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <button

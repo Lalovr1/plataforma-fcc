@@ -155,8 +155,8 @@ export default function PaginaConfiguracion() {
 
   return (
     <LayoutGeneral rol={rol}>
-      <div className="max-w-3xl mx-auto space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6 min-w-0">
+        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
           Configuración
         </h1>
 
@@ -171,17 +171,17 @@ export default function PaginaConfiguracion() {
           <h2 className="font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
             Tema
           </h2>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => setTema("oscuro")}
-              className="px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tema === "oscuro")}
             >
               Oscuro
             </button>
             <button
               onClick={() => setTema("claro")}
-              className="px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tema === "claro")}
             >
               Claro
@@ -200,24 +200,24 @@ export default function PaginaConfiguracion() {
           <h2 className="font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
             Tamaño de letra
           </h2>
-          <div className="flex gap-3 flex-wrap">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => setTamano("pequena")}
-              className="px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tamano === "pequena")}
             >
               Pequeña
             </button>
             <button
               onClick={() => setTamano("mediana")}
-              className="px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tamano === "mediana")}
             >
               Mediana
             </button>
             <button
               onClick={() => setTamano("grande")}
-              className="px-4 py-2 rounded-lg"
+              className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tamano === "grande")}
             >
               Grande
@@ -238,16 +238,16 @@ export default function PaginaConfiguracion() {
         </section>
 
         {/* Acciones */}
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={guardar}
-            className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white"
+            className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white w-full sm:w-auto"
           >
             Guardar
           </button>
           <button
             onClick={resetLocal}
-            className="px-5 py-2 rounded-lg"
+            className="px-5 py-2 rounded-lg w-full sm:w-auto"
             style={{
               border: "1px solid var(--color-border)",
               color: "var(--color-text)",

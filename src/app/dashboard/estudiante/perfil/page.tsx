@@ -53,7 +53,7 @@ function ModalEditarNombre({
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
       <div
-        className="p-6 rounded-xl shadow w-96"
+        className="p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
         style={{ backgroundColor: "var(--color-card)" }}
       >
         <h2
@@ -74,7 +74,7 @@ function ModalEditarNombre({
           }}
           placeholder="Ingresa tu nombre"
         />
-        <div className="flex justify-end mt-4 space-x-2">
+        <div className="flex flex-col-reverse sm:flex-row justify-end mt-4 gap-2">
           <button
             className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white transition"
             onClick={onClose}
@@ -203,16 +203,18 @@ export default function PerfilEstudiantePage() {
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="grid grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8 min-w-0">
         {/* Columna izquierda (avatar + editar nombre) */}
-        <div className="col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-4 lg:space-y-6 min-w-0">
           {/* Tarjeta avatar */}
           <div
-            className="flex flex-col items-center rounded-xl p-8 shadow"
+            className="flex flex-col items-center rounded-xl p-4 sm:p-8 shadow overflow-hidden"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
-            <RenderizadorAvatar config={config} size={350} />
-            <h1 className="text-3xl font-bold mt-4">{usuario.nombre}</h1>
+            <div className="scale-[0.7] sm:scale-100 -my-12 sm:my-0">
+              <RenderizadorAvatar config={config} size={350} />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold mt-2 sm:mt-4 text-center break-words max-w-full">{usuario.nombre}</h1>
             <p style={{ color: "var(--color-muted)" }}>Nivel {level}</p>
 
             <button
@@ -225,7 +227,7 @@ export default function PerfilEstudiantePage() {
 
           {/* Tarjeta información */}
           <div
-            className="p-6 rounded-xl shadow"
+            className="p-4 sm:p-6 rounded-xl shadow"
             style={{ backgroundColor: "var(--color-card)" }}
           >
             <h2
@@ -244,10 +246,10 @@ export default function PerfilEstudiantePage() {
         </div>
 
         {/* Columna derecha (experiencia + logros) */}
-        <div className="col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 lg:space-y-6 min-w-0">
           {/* Experiencia */}
           <div
-            className="text-2xl p-6 rounded-xl shadow"
+            className="text-base sm:text-2xl p-4 sm:p-6 rounded-xl shadow"
             style={{ backgroundColor: "var(--color-card)" }}
           >
             <BarraXP xp={usuario.puntos ?? 0} />
@@ -255,11 +257,11 @@ export default function PerfilEstudiantePage() {
 
           {/* Logros */}
           <div
-            className="p-6 rounded-xl shadow space-y-8"
+            className="p-4 sm:p-6 rounded-xl shadow space-y-6 sm:space-y-8 overflow-visible"
             style={{ backgroundColor: "var(--color-card)" }}
           >
             <h2
-              className="text-2xl font-bold"
+              className="text-xl sm:text-2xl font-bold"
               style={{ color: "var(--color-heading)" }}
             >
               Logros

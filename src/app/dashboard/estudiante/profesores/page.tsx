@@ -286,7 +286,7 @@ export default function ProfesoresPage() {
   return (
     <LayoutGeneral rol="estudiante">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
           Profesores
         </h1>
 
@@ -295,7 +295,7 @@ export default function ProfesoresPage() {
             e.preventDefault();
             doSearch();
           }}
-          className="flex gap-2"
+          className="flex flex-col sm:flex-row gap-2"
         >
           <input
             value={search}
@@ -320,7 +320,7 @@ export default function ProfesoresPage() {
           {profesores.map((p) => (
             <button
               key={p.id}
-              className="p-2 rounded-lg text-left flex items-center gap-4 shadow"
+              className="p-3 sm:p-2 rounded-lg text-center sm:text-left flex flex-col sm:flex-row items-center gap-3 sm:gap-4 shadow min-w-0"
               style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
               onClick={() => openProfesor(p)}
             >
@@ -328,8 +328,8 @@ export default function ProfesoresPage() {
                 config={p.avatar_config ?? defaultAvatar}
                 size={150}
               />
-              <div className="overflow-hidden">
-                <div className="text-2xl font-semibold truncate" style={{ color: "var(--color-heading)" }}>
+              <div className="min-w-0">
+                <div className="text-lg sm:text-2xl font-semibold break-words" style={{ color: "var(--color-heading)" }}>
                   {p.nombre}
                 </div>
                 <div className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -344,7 +344,7 @@ export default function ProfesoresPage() {
         {selectedProfesor && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div
-              className="p-6 rounded-2xl w-[720px] shadow-lg relative"
+              className="p-4 sm:p-6 rounded-2xl w-[92vw] max-w-[720px] max-h-[90vh] overflow-y-auto shadow-lg relative"
               style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
             >
               <button
@@ -364,13 +364,15 @@ export default function ProfesoresPage() {
                 ✕
               </button>
 
-              <div className="flex items-center gap-4">
-                <RenderizadorAvatar
-                  config={selectedProfesor.avatar_config ?? defaultAvatar}
-                  size={250}
-                />
+              <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left">
+                <div className="scale-[0.75] sm:scale-100 -my-8 sm:my-0">
+                  <RenderizadorAvatar
+                    config={selectedProfesor.avatar_config ?? defaultAvatar}
+                    size={250}
+                  />
+                </div>
                 <div>
-                  <h3 className="text-4xl font-bold" style={{ color: "var(--color-heading)" }}>
+                  <h3 className="text-2xl sm:text-4xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
                     {selectedProfesor.nombre}
                   </h3>
                   <div style={{ color: "var(--color-muted)" }}>Cursos creados</div>
@@ -392,10 +394,10 @@ export default function ProfesoresPage() {
                         className="rounded-lg p-4"
                         style={{ backgroundColor: "var(--color-bg)" }}
                       >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 min-w-0">
                           <div>
                             <div
-                              className="font-semibold text-lg"
+                              className="font-semibold text-base sm:text-lg break-words"
                               style={{ color: "var(--color-heading)" }}
                             >
                               {m.nombre}
@@ -416,14 +418,14 @@ export default function ProfesoresPage() {
                             </span>
                           ) : m.progresoEstado?.exists ? (
                             <button
-                              className="px-3 py-1 rounded bg-yellow-600 hover:bg-yellow-500 text-white"
+                              className="px-3 py-2 sm:py-1 rounded bg-yellow-600 hover:bg-yellow-500 text-white w-full sm:w-auto"
                               onClick={() => reactivarCurso(m)}
                             >
                               Reactivar curso
                             </button>
                           ) : (
                             <button
-                              className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white"
+                              className="px-3 py-2 sm:py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white w-full sm:w-auto"
                               onClick={() =>
                                 selectedCurso?.id === m.id ? inscribirse() : pickCurso(m)
                               }

@@ -136,10 +136,10 @@ export default function AgregarCursoPage() {
 
   return (
     <LayoutGeneral rol="profesor">
-      <div className="flex justify-center items-center">
+      <div className="flex justify-center items-start min-w-0">
         <form
           onSubmit={handleSubmit}
-          className="p-6 rounded-xl shadow-lg w-full max-w-2xl space-y-4"
+          className="p-4 sm:p-6 rounded-xl shadow-lg w-full max-w-2xl space-y-4 min-w-0"
           style={{
             backgroundColor: "var(--color-card)",
             border: "1px solid var(--color-border)",
@@ -147,7 +147,7 @@ export default function AgregarCursoPage() {
           }}
         >
           <h2
-            className="text-xl font-bold mb-4 flex items-center gap-2"
+            className="text-xl font-bold mb-4 pl-14 lg:pl-0 min-h-11 flex items-center gap-2"
             style={{ color: "var(--color-heading)" }}
           >
             ➕ Agregar Curso
@@ -194,7 +194,7 @@ export default function AgregarCursoPage() {
                       border: "1px solid var(--color-border)",
                     }}
                   >
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 min-w-0">
                       <div>
                         <p className="font-semibold">{carreraNombre}</p>
                         <p
@@ -308,7 +308,7 @@ export default function AgregarCursoPage() {
                         border: "1px solid var(--color-border)",
                       }}
                     >
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <select
                           value={p.nombre}
                           onChange={(e) => {
@@ -343,7 +343,7 @@ export default function AgregarCursoPage() {
                               ),
                             });
                           }}
-                          className="w-24 p-1 rounded"
+                          className="w-full sm:w-24 p-1 rounded"
                           style={{
                             backgroundColor: "var(--color-bg)",
                             border: "1px solid var(--color-border)",
@@ -369,9 +369,9 @@ export default function AgregarCursoPage() {
                       </div>
 
                       {/* Secciones */}
-                      <div className="ml-4 space-y-1">
+                      <div className="ml-0 sm:ml-4 space-y-1">
                         {p.secciones.map((s, sidx) => (
-                          <div key={sidx} className="flex gap-2 items-center">
+                          <div key={sidx} className="flex flex-col sm:flex-row gap-2 sm:items-center">
                             <input
                               type="text"
                               value={s.nombre}
@@ -440,7 +440,7 @@ export default function AgregarCursoPage() {
                               ),
                             })
                           }
-                          className="mt-1 px-2 rounded text-xs text-white"
+                          className="mt-1 px-2 py-2 sm:py-1 rounded text-xs text-white w-full sm:w-auto"
                           style={{ backgroundColor: "#2563eb" }}
                         >
                           ➕ Agregar sección
@@ -464,7 +464,7 @@ export default function AgregarCursoPage() {
                         ],
                       })
                     }
-                    className="mt-2 px-3 py-1 rounded text-xs text-white"
+                    className="mt-2 px-3 py-2 sm:py-1 rounded text-xs text-white w-full sm:w-auto"
                     style={{ backgroundColor: "#2563eb" }}
                   >
                     ➕ Agregar período
@@ -491,7 +491,7 @@ export default function AgregarCursoPage() {
                       setCursoCarreras((prev) => [...prev, nuevaCarrera]);
                       setNuevaCarrera(null);
                     }}
-                    className="flex-1 py-1 rounded text-white"
+                    className="flex-1 py-2 sm:py-1 rounded text-white"
                     style={{ backgroundColor: "#16a34a" }}
                   >
                     Guardar carrera
@@ -499,7 +499,7 @@ export default function AgregarCursoPage() {
                   <button
                     type="button"
                     onClick={() => setNuevaCarrera(null)}
-                    className="flex-1 py-1 rounded text-white"
+                    className="flex-1 py-2 sm:py-1 rounded text-white"
                     style={{ backgroundColor: "#dc2626" }}
                   >
                     Cancelar
@@ -525,7 +525,7 @@ export default function AgregarCursoPage() {
                     ],
                   })
                 }
-                className="mt-2 px-3 py-1 rounded text-white"
+                className="mt-2 px-3 py-2 sm:py-1 rounded text-white w-full sm:w-auto"
                 style={{ backgroundColor: "#2563eb" }}
               >
                 ➕ Agregar carrera

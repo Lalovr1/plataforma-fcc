@@ -146,13 +146,13 @@ export default function CursosPage() {
     <LayoutGeneral>
       <div className="space-y-6">
         <h1
-          className="text-2xl font-bold"
+          className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center"
           style={{ color: "var(--color-heading)" }}
         >
           Explorar Cursos
         </h1>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={searchTerm}

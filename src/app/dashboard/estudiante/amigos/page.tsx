@@ -325,13 +325,13 @@ export default function AmigosPage() {
   return (
     <LayoutGeneral rol="estudiante">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
           Amigos
         </h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 min-w-0">
           {/* Amigos */}
-          <section className="lg:col-span-2">
+          <section className="lg:col-span-2 min-w-0">
             <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
               Tu lista
             </h2>
@@ -344,7 +344,7 @@ export default function AmigosPage() {
                 {friends.map((u) => (
                   <button
                     key={u.id}
-                    className="p-4 rounded-lg flex items-center gap-4 shadow text-left w-full hover:opacity-90"
+                    className="p-4 rounded-lg flex flex-col sm:flex-row items-center gap-3 sm:gap-4 shadow text-center sm:text-left w-full hover:opacity-90 min-w-0"
                     style={{
                       backgroundColor: "var(--color-card)",
                       color: "var(--color-text)",
@@ -356,7 +356,7 @@ export default function AmigosPage() {
                       size={100}
                     />
                     <div>
-                      <div className="text-xl font-semibold" style={{ color: "var(--color-heading)" }}>
+                      <div className="text-lg sm:text-xl font-semibold break-words" style={{ color: "var(--color-heading)" }}>
                         {u.nombre}
                       </div>
                       <div className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -381,7 +381,7 @@ export default function AmigosPage() {
                 {pending.map((req) => (
                   <div
                     key={req.id}
-                    className="p-4 rounded-lg flex items-center justify-between shadow"
+                    className="p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow min-w-0"
                     style={{
                       backgroundColor: "var(--color-card)",
                       color: "var(--color-text)",
@@ -437,7 +437,7 @@ export default function AmigosPage() {
               e.preventDefault();
               doSearch();
             }}
-            className="flex gap-2"
+            className="flex flex-col sm:flex-row gap-2"
           >
             <input
               value={search}
@@ -470,7 +470,7 @@ export default function AmigosPage() {
               return (
                 <div
                   key={u.id}
-                  className="p-4 rounded-lg flex items-center justify-between shadow"
+                  className="p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow min-w-0"
                   style={{
                     backgroundColor: "var(--color-card)",
                     color: "var(--color-text)",
@@ -482,7 +482,7 @@ export default function AmigosPage() {
                       size={100}
                     />
                     <div>
-                      <div className="text-xl font-medium" style={{ color: "var(--color-heading)" }}>
+                      <div className="text-lg sm:text-xl font-medium break-words" style={{ color: "var(--color-heading)" }}>
                         {u.nombre}
                       </div>
                       <div className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -516,8 +516,7 @@ export default function AmigosPage() {
       
       {selectedAmigo && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div
-            className="p-6 rounded-2xl w-[720px] shadow-lg relative"
+          <div className="p-4 sm:p-6 rounded-2xl w-[92vw] max-w-[720px] max-h-[90vh] overflow-y-auto shadow-lg relative"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <button
@@ -529,13 +528,15 @@ export default function AmigosPage() {
               ✕
             </button>
 
-            <div className="flex items-center gap-4">
-              <RenderizadorAvatar
-                config={selectedAmigo.avatar_config ?? defaultAvatar}
-                size={250}
-              />
+            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left">
+              <div className="scale-[0.75] sm:scale-100 -my-8 sm:my-0">
+                <RenderizadorAvatar
+                  config={selectedAmigo.avatar_config ?? defaultAvatar}
+                  size={250}
+                />
+              </div>
               <div>
-                <h3 className="text-4xl font-bold" style={{ color: "var(--color-heading)" }}>
+                <h3 className="text-2xl sm:text-4xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
                   {selectedAmigo.nombre}
                 </h3>
                 <div className="text-lg" style={{ color: "var(--color-muted)" }}>
@@ -557,7 +558,6 @@ export default function AmigosPage() {
                     descripcion: l.descripcion ?? "",
                     desbloqueado: true,
                   }))}
-                  mostrarBloqueados={false}
                 />
               )}
             </div>

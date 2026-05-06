@@ -101,7 +101,7 @@ export default function SeccionCursos({ initialCourses, userId }: Props) {
           {misCursos.map((curso) => (
             <div
               key={curso.id}
-              className="rounded-xl p-4 sm:p-6 shadow flex items-center gap-4 sm:gap-6 relative min-w-0"
+              className="rounded-xl p-4 sm:p-6 shadow flex flex-col sm:flex-row items-center gap-3 sm:gap-6 relative min-w-0"
               style={{
                 backgroundColor: "var(--color-card)",
                 color: "var(--color-text)",
@@ -109,9 +109,9 @@ export default function SeccionCursos({ initialCourses, userId }: Props) {
             >
               <CirculoProgreso progress={curso.progress} size={80} />
 
-              <div className="flex-1 min-w-0 pr-4">
+              <div className="flex-1 min-w-0 pr-0 sm:pr-4 text-center sm:text-left">
                 <p
-                  className="text-base sm:text-lg font-semibold truncate"
+                  className="text-base sm:text-lg font-semibold break-words"
                   style={{ color: "var(--color-heading)" }}
                 >
                   {curso.name}

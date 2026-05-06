@@ -28,7 +28,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className={`${inter.className} bg-[#f8fafc] text-gray-900`} // 🚀 Fondo claro inicial
+        className={`${inter.className} bg-[#f8fafc] text-gray-900 overflow-x-hidden min-w-0`}
       >
         {children}
         <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />

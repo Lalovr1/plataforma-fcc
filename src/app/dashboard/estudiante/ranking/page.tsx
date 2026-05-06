@@ -69,13 +69,13 @@ export default function EstudianteRanking() {
   return (
     <LayoutGeneral rol="estudiante">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
           🏆 Ranking Global
         </h1>
 
         {miUsuario && miPosicion && (
           <div
-            className="p-5 rounded-xl shadow border"
+            className="p-4 sm:p-5 rounded-xl shadow border min-w-0 overflow-hidden"
             style={{
               backgroundColor: "var(--color-card)",
               borderColor: "var(--color-border)",
@@ -84,21 +84,21 @@ export default function EstudianteRanking() {
             <h2 className="text-lg font-bold mb-2 text-cyan-500">
               Tu posición
             </h2>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                 <span className="text-xl font-bold w-12">#{miPosicion}</span>
                 <RenderizadorAvatar
                   config={miUsuario.avatar_config}
                   size={60}
                 />
                 <span
-                  className="font-semibold text-lg"
+                  className="font-semibold text-base sm:text-lg break-words min-w-0"
                   style={{ color: "var(--color-text)" }}
                 >
-                  {miUsuario.nombre}
+                  {miUsuario.nombre.split(" ").slice(0, 2).join(" ")}
                 </span>
               </div>
-              <span className="text-cyan-500 font-bold text-lg">
+              <span className="text-cyan-500 font-bold text-lg self-end sm:self-auto">
                 {miUsuario.puntos} pts
               </span>
             </div>
@@ -106,7 +106,7 @@ export default function EstudianteRanking() {
         )}
 
         <div
-          className="p-6 rounded-xl shadow space-y-4"
+          className="p-3 sm:p-6 rounded-xl shadow space-y-3 sm:space-y-4 min-w-0 overflow-hidden"
           style={{
             backgroundColor: "var(--color-card)",
             border: "1px solid var(--color-border)",
@@ -115,7 +115,7 @@ export default function EstudianteRanking() {
           {usuarios.map((user, index) => (
             <div
               key={user.id}
-              className={`flex items-center justify-between rounded-lg transition`}
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg transition min-w-0`}
               style={{
                 backgroundColor:
                   index === 0
@@ -125,12 +125,12 @@ export default function EstudianteRanking() {
                     : index === 2
                     ? "rgba(251, 146, 60, 0.15)"
                     : "var(--color-bg)",
-                padding: "1.25rem",
+                padding: "clamp(0.75rem, 3vw, 1.25rem)",
               }}
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                 <span
-                  className={`font-bold ${
+                  className={`font-bold self-end sm:self-auto ${
                     index < 3 ? "text-3xl w-12" : "text-lg w-8"
                   }`}
                 >
@@ -142,13 +142,15 @@ export default function EstudianteRanking() {
                     ? "🥉"
                     : `#${index + 1}`}
                 </span>
-                <RenderizadorAvatar
-                  config={user.avatar_config}
-                  size={index < 3 ? 100 : 80}
-                />
+                <div className={index < 3 ? "scale-75 sm:scale-100 -my-3 sm:my-0" : "scale-90 sm:scale-100 -my-1 sm:my-0"}>
+                  <RenderizadorAvatar
+                    config={user.avatar_config}
+                    size={index < 3 ? 100 : 80}
+                  />
+                </div>
                 <span
-                  className={`font-semibold ${
-                    index < 3 ? "text-xl" : "text-base"
+                  className={`font-semibold break-words min-w-0 ${
+                    index < 3 ? "text-lg sm:text-xl" : "text-sm sm:text-base"
                   }`}
                   style={{ color: "var(--color-text)" }}
                 >

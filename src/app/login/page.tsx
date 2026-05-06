@@ -66,12 +66,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900 px-4">
       <form
         onSubmit={handleLogin}
-        className="bg-white p-6 rounded-xl shadow-md w-96 space-y-4 border border-gray-200"
+        className="bg-white p-5 sm:p-6 rounded-xl shadow-md w-full max-w-sm space-y-4 border border-gray-200"
       >
-        <h1 className="text-2xl font-bold text-center">Iniciar Sesión</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-center">Iniciar Sesión</h1>
 
         <input
           type="email"

@@ -93,12 +93,12 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
 
   return (
     <div
-      className="p-4 rounded-xl flex gap-4 flex-wrap"
+      className="p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3"
       style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
     >
       {/* Semestres */}
       <select
-        className="p-2 rounded"
+        className="w-full min-w-0 p-2 rounded"
         style={selectStyle}
         value={filters.semestre_id || ""}
         onChange={(e) =>
@@ -118,7 +118,7 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
 
       {/* Áreas */}
       <select
-        className="p-2 rounded"
+        className="w-full min-w-0 p-2 rounded"
         style={selectStyle}
         value={filters.area || ""}
         onChange={(e) => setFilters({ ...filters, area: e.target.value || null })}
@@ -133,7 +133,7 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
 
       {/* Carreras */}
       <select
-        className="p-2 rounded"
+        className="w-full min-w-0 p-2 rounded"
         style={selectStyle}
         value={filters.carrera_id || ""}
         onChange={(e) =>
@@ -153,7 +153,7 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
 
       {/* Periodos */}
       <select
-        className="p-2 rounded"
+        className="w-full min-w-0 p-2 rounded"
         style={selectStyle}
         value={filters.periodo || ""}
         onChange={(e) => setFilters({ ...filters, periodo: e.target.value || null })}
@@ -168,7 +168,7 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
 
       {/* Agrupación */}
       <select
-        className="p-2 rounded"
+        className="w-full min-w-0 p-2 rounded"
         style={selectStyle}
         value={filters.groupBy}
         onChange={(e) => setFilters({ ...filters, groupBy: e.target.value })}

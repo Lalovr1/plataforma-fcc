@@ -182,7 +182,7 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center h-[100vh] w-full overflow-hidden select-none bg-transparent"
+      className="relative flex flex-col items-center justify-center min-h-[100dvh] w-full overflow-hidden select-none bg-transparent px-4"
       onClick={(e) => {
         if (bloquearClicks) {
           e.stopPropagation();
@@ -196,8 +196,8 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
         className="absolute rounded-full blur-[150px]"
         style={{
           background: `radial-gradient(circle, ${auraPrincipal} 0%, transparent 70%)`,
-          width: "600px",
-          height: "600px",
+          width: "min(600px, 120vw)",
+          height: "min(600px, 120vw)",
           zIndex: 0,
         }}
         animate={{ opacity: [0.6, 0.9, 0.6], scale: [1, 1.1, 1] }}
@@ -211,31 +211,31 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -40 }}
         transition={{ duration: 1, ease: "easeOut" }}
-        className="absolute top-[18%] text-center z-20"
+        className="absolute top-[10%] sm:top-[18%] text-center z-20 px-4"
       >
         {tipo === "bienvenida" ? (
           <>
             <motion.h2
-              className="text-4xl font-extrabold text-amber-400 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
+              className="text-2xl sm:text-4xl font-extrabold text-amber-400 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
               animate={{ scale: [1, 1.08, 1] }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             >
               🎁 ¡Cofre de Bienvenida!
             </motion.h2>
-            <p className="text-white/90 text-lg mt-2 font-medium">
+            <p className="text-white/90 text-sm sm:text-lg mt-2 font-medium">
               Gracias por unirte a FCC Maths, estas son tus primeras recompensas.
             </p>
           </>
         ) : (
           <>
             <motion.h2
-              className="text-4xl font-extrabold text-yellow-300 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
+              className="text-2xl sm:text-4xl font-extrabold text-yellow-300 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
               animate={{ scale: [1, 1.08, 1] }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             >
               🎉 ¡Has subido al Nivel {nivel ?? "?"}!
             </motion.h2>
-            <p className="text-white/90 text-lg mt-2 font-medium">
+            <p className="text-white/90 text-sm sm:text-lg mt-2 font-medium">
               Recibes un cofre con nuevas recompensas
             </p>
           </>
@@ -280,8 +280,8 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
           <Image
             src={framesCofre[frameIndex]}
             alt="Cofre"
-            width={360}
-            height={360}
+            width={280}
+            height={280}
             style={{ width: "auto", height: "auto" }}
             className="select-none"
           />
@@ -293,7 +293,7 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.3 }}
-              className="absolute -top-4 -right-10 w-[60px] h-[60px] flex items-center justify-center rounded-lg font-bold text-white text-2xl shadow-lg"
+              className="absolute -top-2 -right-4 sm:-top-4 sm:-right-10 w-11 h-11 sm:w-[60px] sm:h-[60px] flex items-center justify-center rounded-lg font-bold text-white text-lg sm:text-2xl shadow-lg"
               style={{
                 background: colorContador,
                 boxShadow: `0 0 15px ${colorContador}`,
@@ -311,9 +311,9 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
             initial={skipRapido ? false : { opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={skipRapido ? { duration: 0 } : { duration: 1.2, ease: "easeOut" }}
-            className="absolute flex flex-col items-center text-center top-full mt-2 z-30"
+            className="absolute flex flex-col items-center text-center top-full mt-2 z-30 w-[92vw] max-w-xl"
           >
-            <p className="text-white text-2xl font-semibold mb-4 drop-shadow-lg">
+            <p className="text-white text-lg sm:text-2xl font-semibold mb-4 drop-shadow-lg">
               Recompensas agregadas al inventario:
             </p>
 
@@ -324,7 +324,7 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
                 transition={skipRapido ? { duration: 0 } : { duration: 1 }}
                 className="flex flex-col items-center gap-4"
               >
-                <div className="flex gap-4 flex-wrap justify-center">
+                <div className="flex gap-3 sm:gap-4 flex-wrap justify-center">
                   {recompensasOrdenadas.map((r, i) => {
                     const { color, aura } = rarezaConfig[r.rareza];
                     return (
@@ -347,8 +347,8 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
                         <Image
                           src={r.imagen}
                           alt="Recompensa"
-                          width={100}
-                          height={100}
+                          width={82}
+                          height={82}
                           className="rounded-lg object-contain"
                         />
                       </motion.div>
@@ -418,8 +418,8 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
                 <Image
                   src={recompensasOrdenadas[indiceActual].imagen}
                   alt="Recompensa"
-                  width={130}
-                  height={130}
+                  width={110}
+                  height={110}
                   className="rounded-lg object-contain"
                 />
               </motion.div>

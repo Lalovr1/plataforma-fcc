@@ -53,18 +53,6 @@ type Formula = {
   orden: number;
 };
 
-const preprocessMarkdown = (md: string) => {
-  return (md || "")
-    .replace(/\[\s*(?:🖼|📷)\s+([^\]]+)\]/g, (_m, filename) => `<customfile nombre="${filename}"></customfile>`)
-    .replace(/\[\s*🎥\s+([^\]]+)\]/g, (_m, filename) => `<customfile nombre="${filename}"></customfile>`)
-    .replace(/\[\s*📄\s+([^\]]+)\]/g, (_m, filename) => `<customfile nombre="${filename}"></customfile>`)
-    .replace(
-      /\[([^\]]+\.(png|jpe?g|gif|webp|svg|mp4|webm|ogg|mov|mkv|pdf|docx?|pptx?|xlsx))\]/gi,
-      (_m, filename) => `<customfile nombre="${filename}"></customfile>`
-    )
-    .replace(/<customfile data='([^']+)'><\/customfile>/gi, (_m, json) => `<customfile data='${json}'></customfile>`);
-};
-
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
 const isVideo = (name: string) => /\.(mp4|webm|ogg|mov|mkv)$/i.test(name);
 const isDoc   = (name: string) => /\.(pdf|docx?|pptx?|xlsx)$/i.test(name);
@@ -117,7 +105,11 @@ const ContenidoTextoMemo = memo(function ContenidoTextoMemo({
 }) {
   return (
     <div
-      className="w-full max-w-none break-words overflow-x-auto text-base sm:text-lg leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:rounded-lg [&_video]:max-w-full [&_video]:h-auto [&_video]:mx-auto [&_video]:rounded-lg"
+      className="w-full max-w-none break-words overflow-x-auto text-base sm:text-lg leading-relaxed
+      [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:rounded-lg
+      [&_video]:max-w-full [&_video]:h-auto [&_video]:mx-auto [&_video]:rounded-lg
+      [&_table]:min-w-max [&_table]:w-full
+      [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden"
       onClick={(e) => {
         const target = e.target as HTMLElement;
 
@@ -416,7 +408,7 @@ export default function VisualizadorCurso({
                           >
                             <div className="flex items-center justify-between gap-3 min-w-0">
                               <div className="min-w-0">
-                                <p className="font-semibold truncate" style={{ color: "var(--color-heading)" }}>
+                                <p className="font-semibold break-words" style={{ color: "var(--color-heading)" }}>
                                   {tituloBloque(b, i)}
                                 </p>
                                 <p className="text-xs" style={{ color: "var(--color-muted)" }}>
@@ -434,7 +426,7 @@ export default function VisualizadorCurso({
                           {activo && (
                             <div className="rounded-lg p-3 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
                               {b.tipo === "texto" && (
-                                <div className="w-full pt-6 sm:pt-12 pb-6 sm:pb-10 px-8 sm:px-12 md:px-16 min-w-0">
+                                <div className="w-full pt-6 sm:pt-12 pb-6 sm:pb-10 px-3 sm:px-12 md:px-16 min-w-0">
                                   {b.titulo && (
                                     <h2
                                       className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-center mb-4 break-words"
@@ -446,7 +438,7 @@ export default function VisualizadorCurso({
 
                                   {b.introduccion?.trim() && (
                                     <p
-                                      className="text-center italic text-base sm:text-lg leading-relaxed mb-8 sm:mb-12"
+                                      className="text-center italic text-sm sm:text-base leading-relaxed mb-8 sm:mb-12"
                                       style={{ color: "var(--color-muted)" }}
                                     >
                                       {b.introduccion}
@@ -666,7 +658,7 @@ export default function VisualizadorCurso({
                     )}
 
                     <div
-                      className="max-w-none"
+                      className="max-w-full overflow-x-auto"
                       dangerouslySetInnerHTML={{
                         __html: renderFormulaHTML(f.ecuacion),
                       }}

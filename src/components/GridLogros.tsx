@@ -29,7 +29,7 @@ export default function GridLogros({
   }
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible">
       {logros.map((l) => (
         <div
           key={`${l.id}-${l.desbloqueado ? "on" : "off"}`}
@@ -41,8 +41,8 @@ export default function GridLogros({
             border: l.desbloqueado
               ? "2px solid var(--color-accent)"
               : "1px solid var(--color-border)",
-            width: "90px",
-            height: "90px",
+            width: "clamp(76px, 24vw, 90px)",
+            height: "clamp(76px, 24vw, 90px)",
             margin: "auto",
           }}
         >
@@ -51,7 +51,7 @@ export default function GridLogros({
             <img
               src={l.icono_url || "/icons/trophy_default.png"}
               alt={l.titulo}
-              className="w-[82px] h-[82px] object-contain transition-transform duration-200 group-hover:scale-110"
+              className="w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] object-contain transition-transform duration-200 group-hover:scale-110"
             />
           </div>
 

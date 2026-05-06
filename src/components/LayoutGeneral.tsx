@@ -210,15 +210,14 @@ export default function LayoutGeneral({
         <MenuLateral rol={rol} />
 
         <div className="flex flex-col flex-1 min-w-0">
-
-        <main
-          className="fixed top-0 left-0 lg:left-56 right-0 bottom-0 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden"
+          <main
+            className="fixed top-0 left-0 lg:left-56 right-0 bottom-0 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden min-w-0"
             style={{
               backgroundColor: "var(--color-bg)",
               color: "var(--color-text)",
             }}
           >
-            <div className="w-full min-w-0">
+            <div className="w-full max-w-full min-w-0">
               {children}
             </div>
           </main>

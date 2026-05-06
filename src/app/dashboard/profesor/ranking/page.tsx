@@ -45,7 +45,7 @@ export default function ProfesorRanking() {
         </h1>
 
         <div
-          className="p-6 rounded-xl shadow space-y-4"
+          className="p-3 sm:p-6 rounded-xl shadow space-y-3 sm:space-y-4 min-w-0 overflow-hidden"
           style={{
             backgroundColor: "var(--color-card)",
             border: "1px solid var(--color-border)",
@@ -54,7 +54,7 @@ export default function ProfesorRanking() {
           {usuarios.map((user, index) => (
             <div
               key={user.id}
-              className="flex items-center justify-between rounded-lg"
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg min-w-0"
               style={{
                 backgroundColor:
                   index === 0
@@ -64,10 +64,10 @@ export default function ProfesorRanking() {
                     : index === 2
                     ? "rgba(249,115,22,0.15)" 
                     : "var(--color-bg)",
-                padding: "1.25rem",
+                padding: "1rem",
               }}
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 min-w-0 w-full">
                 <span
                   className="font-bold flex-shrink-0 text-center"
                   style={{
@@ -86,10 +86,18 @@ export default function ProfesorRanking() {
                 </span>
                 <RenderizadorAvatar
                   config={user.avatar_config}
-                  size={index < 3 ? 100 : 80}
+                  size={typeof window !== "undefined"
+                  ? window.innerWidth < 640
+                    ? index < 3
+                      ? 72
+                      : 60
+                    : index < 3
+                    ? 100
+                    : 80
+                  : 80}
                 />
                 <span
-                  className="font-semibold"
+                  className="font-semibold break-words min-w-0"
                   style={{
                     fontSize: index < 3 ? "1.5rem" : "1.25rem",
                     color: "var(--color-text)",
@@ -99,7 +107,7 @@ export default function ProfesorRanking() {
                 </span>
               </div>
               <span
-                className="font-bold"
+                className="font-bold self-end sm:self-auto"
                 style={{
                   fontSize: index < 3 ? "1.75rem" : "1.25rem",
                   color: "#38bdf8", 

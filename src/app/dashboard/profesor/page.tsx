@@ -48,9 +48,9 @@ export default async function ProfesorDashboard() {
 
   return (
     <LayoutGeneral rol="profesor">
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 min-w-0">
         {/* Columna izquierda */}
-        <div className="col-span-2 space-y-6">
+        <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
           <TarjetaUsuario
             name={profesor?.nombre ?? "Profesor"}
             level={0}
@@ -60,7 +60,7 @@ export default async function ProfesorDashboard() {
 
           {/* Cursos creados */}
           <div
-            className="p-6 rounded-xl shadow"
+            className="p-4 sm:p-6 rounded-xl shadow min-w-0 overflow-hidden"
             style={{
               backgroundColor: "var(--color-card)",
               border: "1px solid var(--color-border)",
@@ -87,7 +87,7 @@ export default async function ProfesorDashboard() {
                   >
                     <div>
                       <h3
-                        className="text-lg font-semibold"
+                        className="text-lg font-semibold break-words"
                         style={{ color: "var(--color-heading)" }}
                       >
                         {c.nombre}
@@ -114,7 +114,7 @@ export default async function ProfesorDashboard() {
                       )}
                     </div>
 
-                    <div className="flex gap-2 mt-3">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
                       <Link
                         href={`/dashboard/profesor/cursos/${c.id}/editar`}
                         className="flex-1 text-white px-3 py-1 rounded-lg text-sm text-center"
@@ -144,7 +144,7 @@ export default async function ProfesorDashboard() {
         </div>
 
         {/* Columna derecha */}
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6 min-w-0">
           <WidgetRanking />
         </div>
       </div>

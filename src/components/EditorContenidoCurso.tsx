@@ -675,7 +675,7 @@ export default function EditorContenidoCurso({
 
   return (
     <div
-      className="rounded-xl p-5 shadow space-y-5"
+      className="rounded-xl p-4 sm:p-5 shadow space-y-5 min-w-0 overflow-hidden"
       style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
     >
       {/* Formulario para agregar bloque */}
@@ -759,7 +759,7 @@ export default function EditorContenidoCurso({
                   setUnidades((prev) => [...prev, data as UnidadItem]);
                   setUnidad(data.id);
                 }}
-                className="rounded-lg px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+                className="rounded-lg px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 whitespace-nowrap w-full md:w-auto"
               >
                 ➕ Agregar unidad
               </button>
@@ -847,7 +847,7 @@ export default function EditorContenidoCurso({
         <button
           type="submit"
           disabled={loading}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white"
+          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white w-full sm:w-auto"
         >
           {loading ? "Guardando..." : "Agregar bloque"}
         </button>
@@ -863,7 +863,7 @@ export default function EditorContenidoCurso({
         {blocks.map((b) => (
           <div
             key={b.id}
-            className="rounded-lg p-4 cursor-pointer border"
+            className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
             style={{
               backgroundColor: "var(--color-card)",
               color: "var(--color-text)",
@@ -872,7 +872,7 @@ export default function EditorContenidoCurso({
             onClick={() => handleOpenEdit(b)}
             title="Haz clic para editar este bloque"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="text-xs px-2 py-1 rounded shrink-0"
@@ -884,15 +884,15 @@ export default function EditorContenidoCurso({
                   {b.tipo.toUpperCase()}
                 </span>
                 <span
-                  className="font-semibold truncate"
-                  style={{ color: "var(--color-heading)", maxWidth: "40vw" }}
+                  className="font-semibold break-words min-w-0"
+                  style={{ color: "var(--color-heading)" }}
                   title={b.titulo || "(Sin título)"}
                 >
                   {b.titulo || "(Sin título)"}
                 </span>
               </div>
 
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 shrink-0">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -936,13 +936,10 @@ export default function EditorContenidoCurso({
       
       {editBlock && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          style={{
-            paddingLeft: "240px",
-          }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4"
         >
         <div
-          className="relative rounded-xl shadow-lg w-[min(92vw,920px)] p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
+          className="relative rounded-xl shadow-lg w-[94vw] max-w-[920px] p-4 sm:p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
           style={{
             backgroundColor: "var(--color-card)",
             color: "var(--color-text)",
@@ -1044,13 +1041,13 @@ export default function EditorContenidoCurso({
 
             {showFormulaPanel && (
             <aside
-              className="rounded-lg border p-3 text-sm space-y-3 z-[60]"
+              className="rounded-lg border p-3 text-sm space-y-3 z-[60] overflow-y-auto"
               style={{
                 position: "fixed",
                 top: "72px",
-                left: "calc(50% + 470px + 105px)",
-                width: "310px",
-                height: "calc(100vh - 105px)",
+                right: "12px",
+                width: "min(310px, calc(100vw - 24px))",
+                height: "calc(100dvh - 105px)",
                 backgroundColor: "var(--color-border)",
                 borderColor: "var(--color-border)",
               }}
@@ -1222,9 +1219,9 @@ export default function EditorContenidoCurso({
     )}
 
       {showFormulaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="rounded-xl p-6 w-full max-w-lg"
+            className="rounded-xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <h2 className="text-lg font-bold mb-3">Insertar fórmula</h2>
@@ -1423,9 +1420,9 @@ export default function EditorContenidoCurso({
       )}
       {/* Modal Imagen */}
       {showImageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="rounded-xl p-6 w-full max-w-md"
+            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <h2 className="text-lg font-bold mb-3">Insertar imagen</h2>
@@ -1533,9 +1530,9 @@ export default function EditorContenidoCurso({
 
       {/* Modal Video */}
       {showVideoModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="rounded-xl p-6 w-full max-w-md"
+            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <h2 className="text-lg font-bold mb-3">Insertar video</h2>
@@ -1643,9 +1640,9 @@ export default function EditorContenidoCurso({
 
       {/* Modal Documento */}
       {showDocModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="rounded-xl p-6 w-full max-w-md"
+            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <h2 className="text-lg font-bold mb-3">Insertar documento</h2>
@@ -1753,9 +1750,9 @@ export default function EditorContenidoCurso({
 
       {/* Modal Enlace */}
       {showLinkModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="rounded-xl p-6 w-full max-w-md"
+            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
           >
             <h2 className="text-lg font-bold mb-3">Insertar enlace</h2>

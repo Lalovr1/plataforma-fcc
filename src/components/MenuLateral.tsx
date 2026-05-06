@@ -53,7 +53,7 @@ export default function MenuLateral({ rol }: Props) {
         <button
           type="button"
           onClick={() => setMenuAbierto(true)}
-          className="lg:hidden fixed top-3 left-3 z-40 rounded-lg p-2 shadow-md"
+          className="lg:hidden fixed top-3 left-3 z-40 w-11 h-11 flex items-center justify-center rounded-lg shadow-md"
           style={{
             backgroundColor: "var(--color-card)",
             color: "var(--color-text)",
@@ -74,7 +74,7 @@ export default function MenuLateral({ rol }: Props) {
         )}
 
         <aside
-          className={`menu-lateral fixed top-0 left-0 h-full w-56 flex flex-col justify-between shadow-lg z-50 transition-transform duration-300 ${
+          className={`menu-lateral fixed top-0 left-0 h-full w-56 flex flex-col justify-between shadow-lg z-50 transition-transform duration-300 overflow-y-auto ${
             menuAbierto ? "translate-x-0" : "-translate-x-full"
           } lg:translate-x-0`}
       style={{

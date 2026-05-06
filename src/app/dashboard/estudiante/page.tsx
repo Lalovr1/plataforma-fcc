@@ -162,7 +162,7 @@ export default async function EstudianteDashboard() {
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 min-w-0">
         {/* 🧍 Avatar principal */}
         <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
           <div className="avatar-principal">
@@ -176,7 +176,7 @@ export default async function EstudianteDashboard() {
 
           {/* 📘 Bloque de cursos */}
           <div
-            className="bloque-cursos rounded-xl p-4 shadow"
+            className="bloque-cursos rounded-xl p-3 sm:p-4 shadow min-w-0 overflow-hidden"
             style={{
               backgroundColor: "var(--color-card)",
               border: "1px solid var(--color-border)",

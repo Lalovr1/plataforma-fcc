@@ -427,7 +427,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
   return (
     <div
-      className="rounded-xl p-5 shadow space-y-5"
+      className="rounded-xl p-4 sm:p-5 shadow space-y-5 min-w-0 overflow-hidden"
       style={{
         backgroundColor: "var(--color-card)",
         border: "1px solid var(--color-border)",
@@ -524,7 +524,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       </div>
 
       <div className="space-y-3">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
           <h4 className="font-semibold">Preguntas</h4>
           <button
             onClick={addPregunta}
@@ -550,10 +550,10 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
               color: "var(--color-text)",
             }}
           >
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-2 w-full">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 min-w-0">
+              <span className="flex flex-col sm:flex-row sm:items-start gap-2 w-full min-w-0">
                 {idx + 1}.
-                <div className="flex gap-2 flex-1">
+                <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
                   <textarea
                     data-id={p.id}
                     className="font-semibold rounded px-2 py-1 w-full resize-y min-h-[28px] leading-snug"
@@ -589,8 +589,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             </div>
 
             {p.respuestas.map((r) => (
-              <div key={r.id} className="flex items-center gap-2">
-                <div className="flex gap-2 flex-1">
+              <div key={r.id} className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+                <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0 w-full">
                 <input
                   data-pid={p.id}
                   data-rid={r.id}
@@ -654,7 +654,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         <button
           onClick={saveQuiz}
           disabled={saving}
-          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50  text-white"
+          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white w-full sm:w-auto"
         >
           {saving ? "Guardando..." : "Guardar quiz"}
         </button>
@@ -670,7 +670,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         {quizzesGuardados.map((q) => (
           <div
             key={q.id}
-            className="rounded-lg px-3 py-2 flex justify-between items-center cursor-pointer"
+            className="rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 cursor-pointer min-w-0"
             style={{
               backgroundColor: "var(--color-card)",
               border: "1px solid var(--color-border)",
@@ -678,7 +678,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             }}
             onClick={() => setEditQuiz({ ...q, preguntas: [] })}
           >
-            <span>
+            <span className="break-words min-w-0">
               {q.titulo} (XP {q.xp})
               {typeof q.tiempo_limite_min === "number" && q.tiempo_limite_min > 0
                 ? ` — ${q.tiempo_limite_min} min`
@@ -698,9 +698,9 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
         {/* Modal de edición */}
         {editQuiz && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div
-              className="p-6 rounded-lg w-full max-w-5xl max-h-[90vh] flex flex-col"
+              className="p-4 sm:p-6 rounded-lg w-full max-w-5xl max-h-[90vh] flex flex-col min-w-0"
               style={{
                 backgroundColor: "var(--color-card)",
                 border: "1px solid var(--color-border)",
@@ -787,7 +787,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                           color: "var(--color-text)",
                         }}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
                           <span className="font-semibold">#{idx + 1}</span>
                           <textarea
                             data-pid={p.id}
@@ -833,8 +833,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
                         <div className="space-y-2">
                           {p.respuestas.map((r: any) => (
-                            <div key={r.id} className="flex items-center gap-2">
-                              <div className="flex gap-2 flex-1">
+                            <div key={r.id} className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+                              <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0 w-full">
                                 <input
                                   data-pid={p.id}
                                   data-rid={r.id}
@@ -996,9 +996,9 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
         {/* Modal de fórmulas */}
         {showFormulaModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div
-              className="p-6 rounded-lg w-full max-w-lg space-y-4"
+              className="p-4 sm:p-6 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4"
               style={{
                 backgroundColor: "var(--color-card)",
                 border: "1px solid var(--color-border)",
@@ -1024,9 +1024,9 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 <button
                   onClick={() => setFormulaMode("image")}
                   className={`px-3 py-1 rounded ${
-                    formulaMode === "latex" ? "bg-blue-600 text-white" : ""
+                    formulaMode === "image" ? "bg-blue-600 text-white" : ""
                   }`}
-                  style={ formulaMode !== "latex" ? {
+                  style={ formulaMode !== "image" ? {
                     backgroundColor: "var(--color-bg)",
                     border: "1px solid var(--color-border)",
                     color: "var(--color-text)",

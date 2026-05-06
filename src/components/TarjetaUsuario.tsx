@@ -89,7 +89,7 @@ export default function TarjetaUsuario({
     >
       {/* Avatar */}
       <div className="shrink-0 flex justify-center items-center">
-        <div className="scale-[0.65] sm:scale-[0.8] lg:scale-100 origin-center">
+        <div className="scale-[0.55] sm:scale-[0.8] lg:scale-100 origin-center -my-10 sm:my-0">
           <RenderizadorAvatar config={avatar} size={300} />
         </div>
       </div>
@@ -97,7 +97,7 @@ export default function TarjetaUsuario({
       {/* Info */}
       <div className="flex-1 min-w-0 text-center sm:text-left">
         <h2
-          className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight truncate"
+          className="text-xl sm:text-3xl lg:text-4xl font-bold leading-tight break-words"
           style={{ color: "var(--color-heading)" }}
         >
           {rol === "profesor"
@@ -105,7 +105,7 @@ export default function TarjetaUsuario({
             : `Bienvenido, ${name}`}
         </h2>
         {rol === "estudiante" && (
-          <p className="text-xl mt-2" style={{ color: "var(--color-muted)" }}>
+          <p className="text-base sm:text-xl mt-2" style={{ color: "var(--color-muted)" }}>
             Nivel {level}
           </p>
         )}

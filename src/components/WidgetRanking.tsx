@@ -83,15 +83,15 @@ export default function WidgetRanking() {
         🏆 TOP 5 GLOBAL
       </h2>
 
-      <div className="flex justify-center items-end gap-3 sm:gap-6 lg:gap-8 mb-6 overflow-hidden">
+      <div className="flex justify-center items-end gap-2 sm:gap-6 lg:gap-8 mb-6 overflow-hidden">
         {usuarios[1] && (
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center min-w-0">
             <RenderizadorAvatar
               size={100}
               config={usuarios[1].avatar_config ?? defaultConfig}
             />
-            <p className="mt-2" style={{ color: "var(--color-text)" }}>
-              {usuarios[1].nombre}
+            <p className="text-sm sm:text-base font-bold mt-2 text-center break-words leading-tight max-w-[110px]" style={{ color: "var(--color-text)" }}>
+              {usuarios[1].nombre.split(" ").slice(0, 2).join(" ")}
             </p>
             <span className="text-sm" style={{ color: "var(--color-muted)" }}>
               {usuarios[1].puntos} pts
@@ -103,13 +103,15 @@ export default function WidgetRanking() {
         )}
 
         {usuarios[0] && (
-          <div className="flex flex-col items-center">
-            <RenderizadorAvatar
-              size={180}
-              config={usuarios[0].avatar_config ?? defaultConfig}
-            />
-            <p className="text-base sm:text-xl font-bold mt-2 max-w-[120px] truncate" style={{ color: "var(--color-heading)" }}>
-              {usuarios[0].nombre}
+          <div className="flex flex-col items-center min-w-0">
+            <div className="scale-75 sm:scale-100 -my-6 sm:my-0">
+              <RenderizadorAvatar
+                size={180}
+                config={usuarios[0].avatar_config ?? defaultConfig}
+              />
+            </div>
+            <p className="text-base sm:text-xl font-bold mt-2 text-center break-words leading-tight max-w-[130px]" style={{ color: "var(--color-heading)" }}>
+              {usuarios[0].nombre.split(" ").slice(0, 2).join(" ")}
             </p>
             <span className="text-sm" style={{ color: "var(--color-muted)" }}>
               {usuarios[0].puntos} pts
@@ -121,13 +123,13 @@ export default function WidgetRanking() {
         )}
 
         {usuarios[2] && (
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center min-w-0">
             <RenderizadorAvatar
               size={100}
               config={usuarios[2].avatar_config ?? defaultConfig}
             />
-            <p className="mt-2" style={{ color: "var(--color-text)" }}>
-              {usuarios[2].nombre}
+            <p className="text-sm sm:text-base font-bold mt-2 text-center break-words leading-tight max-w-[110px]" style={{ color: "var(--color-text)" }}>
+              {usuarios[2].nombre.split(" ").slice(0, 2).join(" ")}
             </p>
             <span className="text-sm" style={{ color: "var(--color-muted)" }}>
               {usuarios[2].puntos} pts
@@ -161,7 +163,7 @@ export default function WidgetRanking() {
                 size={60}
                 config={user.avatar_config ?? defaultConfig}
               />
-              <p className="truncate">{user.nombre}</p>
+              <p className="break-words min-w-0 text-left">{user.nombre.split(" ").slice(0, 2).join(" ")}</p>
             </div>
             <span className="text-sm shrink-0" style={{ color: "var(--color-muted)" }}>
               {user.puntos} pts

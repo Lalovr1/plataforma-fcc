@@ -358,7 +358,7 @@ export default function ModalEditorAvatar({
       }}
     >
       <div
-        className="p-6 rounded-xl w-full max-w-5xl max-h-[85vh] shadow-lg flex flex-col overflow-hidden"
+        className="p-3 sm:p-6 rounded-xl w-[95vw] max-w-5xl max-h-[90vh] shadow-lg flex flex-col overflow-hidden"
         style={{
           backgroundColor: "var(--color-card)",
           color: "var(--color-text)",
@@ -366,16 +366,18 @@ export default function ModalEditorAvatar({
         }}
       >
         <h2
-          className="text-2xl font-bold mb-4 text-center"
+          className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center"
           style={{ color: "var(--color-heading)" }}
         >
           Editor de Avatar
         </h2>
 
-        <div className="flex gap-6 flex-1 overflow-hidden">
-          <div className="relative flex flex-col items-center justify-start flex-shrink-0 w-[420px]">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 flex-1 overflow-hidden">
+          <div className="relative flex flex-col items-center justify-start flex-shrink-0 w-full lg:w-[420px]">
             {/* 🔹 Avatar principal */}
-            <RenderizadorAvatar config={config} size={380} />
+            <div className="scale-[0.65] sm:scale-[0.8] lg:scale-100 -my-16 sm:-my-10 lg:my-0">
+              <RenderizadorAvatar config={config} size={380} />
+            </div>
 
             {/* 🔹 Selector de color dinámico debajo del avatar */}
             {currentTab === "gender" && (
@@ -414,7 +416,7 @@ export default function ModalEditorAvatar({
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex justify-center gap-2 mb-4 flex-nowrap">
+            <div className="flex justify-start lg:justify-center gap-2 mb-4 overflow-x-auto pb-2">
               {TABS.map((tab) => {
                 const isActive = currentTab === tab.key;
                 return (
@@ -440,8 +442,8 @@ export default function ModalEditorAvatar({
             </div>
 
             <div
-              className="h-[400px] overflow-y-auto pr-2"
-              style={{ overflowX: "hidden", overflowY: "visible" }}
+              className="h-[320px] sm:h-[400px] overflow-y-auto pr-2"
+              style={{ overflowX: "hidden", overflowY: "auto" }}
             >
               {(() => {
                 const currentTabData = TABS.find((t) => t.key === currentTab);
@@ -749,7 +751,7 @@ export default function ModalEditorAvatar({
         </div>
 
         {/* 🔹 Pie del modal */}
-        <div className="mt-6 flex justify-end items-center gap-4">
+        <div className="mt-4 sm:mt-6 flex flex-col-reverse sm:flex-row justify-end items-stretch sm:items-center gap-3 sm:gap-4">
           {!forzado && (
             <button
               className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white"
@@ -793,7 +795,7 @@ export default function ModalEditorAvatar({
       `}</style>
 
       {mensaje && (
-        <div className="absolute bottom-6 right-6 bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] px-4 py-2 rounded-lg shadow-lg animate-fade-in">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-md bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] px-4 py-2 rounded-lg shadow-lg animate-fade-in">
           {mensaje}
         </div>
       )}

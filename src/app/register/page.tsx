@@ -95,12 +95,12 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900 px-4 py-6">
       <form
         onSubmit={handleRegister}
-        className="bg-white p-6 rounded-xl shadow-md w-96 space-y-4 border border-gray-200"
+        className="bg-white p-5 sm:p-6 rounded-xl shadow-md w-full max-w-sm space-y-4 border border-gray-200"
       >
-        <h2 className="text-2xl font-bold text-center">Registro</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-center">Registro</h2>
 
         <input
           type="text"

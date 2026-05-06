@@ -40,10 +40,11 @@ export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
         style={{
           backgroundColor: "var(--color-card)",
           color: "var(--color-text)",
-          padding: "30px 40px",
+          padding: "24px 20px",
           borderRadius: "22px",
           boxShadow: "0 0 50px rgba(255,255,255,0.9), 0 0 40px var(--color-accent)",
           textAlign: "center",
+          width: "92vw",
           maxWidth: "420px",
           animation: "aparecer 0.6s ease-out",
         }}
@@ -54,8 +55,8 @@ export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
             alt={logro.nombre}
             onError={(e) => (e.currentTarget.src = "/icons/trophy_default.png")}
             style={{
-              width: "120px",
-              height: "120px",
+              width: "clamp(90px, 28vw, 120px)",
+              height: "clamp(90px, 28vw, 120px)",
               objectFit: "contain",
               margin: "0 auto 10px",
               display: "block",

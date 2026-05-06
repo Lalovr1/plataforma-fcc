@@ -335,8 +335,8 @@ export default function ResolverQuizPage() {
 
   return (
     <LayoutGeneral rol={rol}>
-      <div className="p-6 rounded-xl shadow space-y-6" style={cardStyle}>
-        <h1 className="text-2xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="p-4 sm:p-6 rounded-xl shadow space-y-5 sm:space-y-6 min-w-0 overflow-hidden" style={cardStyle}>
+        <h1 className="text-xl sm:text-2xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
           {quizInfo?.titulo || "Resolver Quiz"}
         </h1>
 
@@ -363,11 +363,11 @@ export default function ResolverQuizPage() {
                 : "⏱ Tiempo límite: sin límite"}
             </p>
             <p style={{ color: "var(--color-text)" }}>📝 Preguntas: {preguntas.length}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <button
                 onClick={iniciar}
                 disabled={sinMasIntentos}
-                className="px-4 py-2 rounded text-white hover:opacity-90"
+                className="px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
                 style={{
                   backgroundColor: sinMasIntentos
                     ? "var(--color-secondary)"
@@ -403,10 +403,10 @@ export default function ResolverQuizPage() {
         {(estado === "en_curso" || estado === "finalizado") && (
           <div className="space-y-4">
             {preguntas.map((p, idx) => (
-              <div key={p.id} className="p-4 rounded-lg" style={cardStyle}>
-                <h3 className="font-semibold mb-2 flex gap-2" style={{ color: "var(--color-heading)" }}>
+              <div key={p.id} className="p-3 sm:p-4 rounded-lg min-w-0 overflow-hidden" style={cardStyle}>
+                <h3 className="font-semibold mb-2 flex gap-2 min-w-0" style={{ color: "var(--color-heading)" }}>
                   <span>{idx + 1}.</span>
-                  <span className="prose max-w-none">
+                  <span className="prose max-w-none min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto">
                     <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                       {p.enunciado}
                     </ReactMarkdown>
@@ -417,7 +417,7 @@ export default function ResolverQuizPage() {
                   {(respuestas[p.id] || []).map((r) => {
                     const disabled = estado === "finalizado";
                     return (
-                      <label key={r.id} className="flex items-center gap-2 cursor-pointer">
+                      <label key={r.id} className="flex items-start gap-2 cursor-pointer min-w-0">
                         <input
                           type="radio"
                           name={p.id}
@@ -428,7 +428,7 @@ export default function ResolverQuizPage() {
                             setSeleccionadas((prev) => ({ ...prev, [p.id]: r.id }))
                           }
                         />
-                        <span className="prose max-w-none" style={{ color: "var(--color-text)" }}>
+                        <span className="prose max-w-none min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto" style={{ color: "var(--color-text)" }}>
                           <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                             {r.texto}
                           </ReactMarkdown>
@@ -446,7 +446,7 @@ export default function ResolverQuizPage() {
         {estado === "en_curso" && (
           <button
             onClick={() => enviarQuiz(false)}
-            className="px-4 py-2 rounded text-white hover:opacity-90"
+            className="px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
             style={{ backgroundColor: "var(--color-success)" }}
           >
             Enviar respuestas
@@ -455,7 +455,7 @@ export default function ResolverQuizPage() {
 
         {/* Resultado */}
         {resultado && (
-          <div className="mt-4 p-4 rounded-lg space-y-2" style={cardStyle}>
+          <div className="mt-4 p-3 sm:p-4 rounded-lg space-y-2 min-w-0 overflow-hidden" style={cardStyle}>
             <p style={{ color: "var(--color-text)" }}>
               Respuestas correctas:{" "}
               <span style={{ color: "var(--color-success)", fontWeight: "bold" }}>
@@ -479,7 +479,7 @@ export default function ResolverQuizPage() {
                     </p>
                     <button
                       onClick={() => router.push(`/curso/${materiaId}`)}
-                      className="mt-3 px-4 py-2 rounded text-white hover:opacity-90"
+                      className="mt-3 px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
                       style={{ backgroundColor: "var(--color-secondary)" }}
                     >
                       Regresar al curso
@@ -501,7 +501,7 @@ export default function ResolverQuizPage() {
                   setSeleccionadas({});
                   enviadoRef.current = false;
                 }}
-                className="mt-3 px-4 py-2 rounded text-white hover:opacity-90"
+                className="mt-3 px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
                 style={{ backgroundColor: "var(--color-primary)" }}
               >
                 Reintentar quiz

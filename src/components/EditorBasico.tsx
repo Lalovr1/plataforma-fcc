@@ -142,7 +142,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
     editorProps: {
       attributes: {
         class:
-          "min-h-[220px] outline-none max-w-none [&_a]:text-blue-600 [&_a]:underline [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_p]:my-2",
+          "min-h-[220px] outline-none max-w-none [&_a]:text-blue-600 [&_a]:underline [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_p]:my-2 break-words",
       },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
@@ -307,7 +307,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       <div
         className={`rounded-xl border overflow-hidden ${
         isExpanded
-          ? "fixed z-50 flex flex-col top-[72px] left-1/2 md:left-[calc(240px+((100vw-240px)/2))] -translate-x-1/2 w-[min(92vw,900px)] h-[calc(100vh-104px)] shadow-2xl"
+          ? "fixed z-50 flex flex-col top-[72px] left-1/2 md:left-[calc(240px+((100vw-240px)/2))] -translate-x-1/2 w-[94vw] md:w-[min(92vw,900px)] h-[calc(100dvh-104px)] shadow-2xl"
           : ""
       }`}
       style={{
@@ -322,7 +322,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           borderColor: "var(--color-border)",
         }}
       >
-        <div className="flex flex-wrap items-center gap-2 p-3">
+        <div className="flex flex-wrap items-center gap-2 p-2 sm:p-3">
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleBold().run()}
@@ -445,7 +445,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           </button>
         </div>
 
-        <div className="px-3 pb-3 flex flex-wrap gap-2 items-center">
+        <div className="px-2 sm:px-3 pb-3 flex flex-wrap gap-2 items-center">
           <button
             type="button"
             onClick={onRequestFormula}
@@ -486,7 +486,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
             <button
               type="button"
               onClick={onRequestFormulaPanel}
-              className="ml-auto bg-slate-700 text-white text-xs px-3 py-1 rounded flex items-center gap-1"
+              className="sm:ml-auto bg-slate-700 text-white text-xs px-3 py-2 sm:py-1 rounded flex items-center gap-1"
               title="Gestionar fórmulas del bloque"
             >
               Fórmulas <span>&gt;</span>
@@ -496,17 +496,17 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       </div>
 
       <div
-        className="p-4 overflow-y-auto"
+        className="p-3 sm:p-4 overflow-y-auto"
         style={{
           height: fillHeight
-            ? "calc(100vh - 430px)"
+            ? "calc(100dvh - 430px)"
             : isExpanded
-            ? "calc(100vh - 260px)"
+            ? "calc(100dvh - 260px)"
             : undefined,
           maxHeight: fillHeight
-            ? "calc(100vh - 430px)"
+            ? "calc(100dvh - 430px)"
             : isExpanded
-            ? "calc(100vh - 260px)"
+            ? "calc(100dvh - 260px)"
             : "420px",
         }}
         onClick={(e) => {
