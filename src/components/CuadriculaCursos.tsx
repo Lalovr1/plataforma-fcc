@@ -6,6 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 
@@ -274,12 +275,18 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       )}
 
       {/* Modal */}
-      {selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      {selected &&
+        typeof document !== "undefined" &&
+        createPortal(
           <div
-            className="p-4 sm:p-6 rounded-xl w-[95vw] max-w-[420px] max-h-[90vh] overflow-y-auto shadow-lg space-y-4 relative"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+            className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+            onClick={() => setSelected(null)}
           >
+            <div
+              className="p-4 sm:p-6 rounded-xl w-[95vw] max-w-[420px] max-h-[90dvh] overflow-y-auto shadow-lg space-y-4 relative"
+              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <button
               className="absolute top-3 right-3"
               style={{ color: "var(--color-muted)" }}
@@ -472,7 +479,8 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -6,6 +6,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
@@ -48,14 +49,31 @@ function ModalEditarNombre({
     }
   };
 
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
       <div
-        className="p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
+        className="relative p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
         style={{ backgroundColor: "var(--color-card)" }}
+        onClick={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 w-8 h-8 rounded-full flex items-center justify-center text-xl leading-none"
+          style={{
+            backgroundColor: "var(--color-border)",
+            color: "var(--color-text)",
+          }}
+          title="Cerrar"
+        >
+          ×
+        </button>
+
         <h2
-          className="text-xl font-bold mb-4"
+          className="text-xl font-bold mb-4 pr-8"
           style={{ color: "var(--color-heading)" }}
         >
           Editar nombre
@@ -87,7 +105,8 @@ function ModalEditarNombre({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

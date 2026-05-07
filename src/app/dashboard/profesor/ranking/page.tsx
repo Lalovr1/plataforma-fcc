@@ -54,7 +54,7 @@ export default function ProfesorRanking() {
           {usuarios.map((user, index) => (
             <div
               key={user.id}
-              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg min-w-0"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg transition min-w-0"
               style={{
                 backgroundColor:
                   index === 0
@@ -67,14 +67,11 @@ export default function ProfesorRanking() {
                 padding: "1rem",
               }}
             >
-              <div className="flex items-center gap-3 min-w-0 w-full">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                 <span
-                  className="font-bold flex-shrink-0 text-center"
-                  style={{
-                    width: index < 3 ? "2.5rem" : "1.5rem",
-                    fontSize: index < 3 ? "2rem" : "1.25rem",
-                    color: "var(--color-heading)",
-                  }}
+                  className={`font-bold self-end sm:self-auto ${
+                    index < 3 ? "text-3xl w-12" : "text-lg w-8"
+                  }`}
                 >
                   {index === 0
                     ? "🥇"
@@ -84,34 +81,25 @@ export default function ProfesorRanking() {
                     ? "🥉"
                     : `#${index + 1}`}
                 </span>
-                <RenderizadorAvatar
-                  config={user.avatar_config}
-                  size={typeof window !== "undefined"
-                  ? window.innerWidth < 640
-                    ? index < 3
-                      ? 72
-                      : 60
-                    : index < 3
-                    ? 100
-                    : 80
-                  : 80}
-                />
+                <div className={index < 3 ? "scale-75 sm:scale-100 -my-3 sm:my-0" : "scale-90 sm:scale-100 -my-1 sm:my-0"}>
+                  <RenderizadorAvatar
+                    config={user.avatar_config}
+                    size={index < 3 ? 100 : 80}
+                  />
+                </div>
                 <span
-                  className="font-semibold break-words min-w-0"
-                  style={{
-                    fontSize: index < 3 ? "1.5rem" : "1.25rem",
-                    color: "var(--color-text)",
-                  }}
+                  className={`font-semibold break-words min-w-0 ${
+                    index < 3 ? "text-lg sm:text-xl xl:text-2xl" : "text-sm sm:text-base xl:text-lg"
+                  }`}
+                  style={{ color: "var(--color-text)" }}
                 >
                   {user.nombre}
                 </span>
               </div>
               <span
-                className="font-bold self-end sm:self-auto"
-                style={{
-                  fontSize: index < 3 ? "1.75rem" : "1.25rem",
-                  color: "#38bdf8", 
-                }}
+                className={`font-bold whitespace-nowrap ${
+                  index < 3 ? "text-cyan-600 text-2xl" : "text-cyan-500 text-base"
+                }`}
               >
                 {user.puntos} pts
               </span>

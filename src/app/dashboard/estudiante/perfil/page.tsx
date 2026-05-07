@@ -7,6 +7,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import BarraXP from "@/components/BarraXP";
 import { supabase } from "@/utils/supabaseClient";
@@ -50,46 +51,64 @@ function ModalEditarNombre({
     }
   };
 
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+    return createPortal(
       <div
-        className="p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
-        style={{ backgroundColor: "var(--color-card)" }}
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+        onClick={onClose}
       >
-        <h2
-          className="text-xl font-bold mb-4"
-          style={{ color: "var(--color-heading)" }}
+        <div
+          className="relative p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
+          style={{ backgroundColor: "var(--color-card)" }}
+          onClick={(e) => e.stopPropagation()}
         >
-          Editar nombre
-        </h2>
-        <input
-          type="text"
-          value={nombreLocal}
-          onChange={(e) => setNombreLocal(e.target.value)}
-          className="w-full p-2 rounded-lg border"
-          style={{
-            borderColor: "var(--color-border)",
-            backgroundColor: "var(--color-bg)",
-            color: "var(--color-text)",
-          }}
-          placeholder="Ingresa tu nombre"
-        />
-        <div className="flex flex-col-reverse sm:flex-row justify-end mt-4 gap-2">
           <button
-            className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white transition"
+            type="button"
             onClick={onClose}
+            className="absolute right-3 top-3 w-8 h-8 rounded-full flex items-center justify-center text-xl leading-none"
+            style={{
+              backgroundColor: "var(--color-border)",
+              color: "var(--color-text)",
+            }}
+            title="Cerrar"
           >
-            Cancelar
+            ×
           </button>
-          <button
-            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition"
-            onClick={handleSave}
+
+          <h2
+            className="text-xl font-bold mb-4 pr-8"
+            style={{ color: "var(--color-heading)" }}
           >
-            Guardar cambios
-          </button>
+            Editar nombre
+          </h2>
+          <input
+            type="text"
+            value={nombreLocal}
+            onChange={(e) => setNombreLocal(e.target.value)}
+            className="w-full p-2 rounded-lg border"
+            style={{
+              borderColor: "var(--color-border)",
+              backgroundColor: "var(--color-bg)",
+              color: "var(--color-text)",
+            }}
+            placeholder="Ingresa tu nombre"
+          />
+          <div className="flex flex-col-reverse sm:flex-row justify-end mt-4 gap-2">
+            <button
+              className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white transition"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+            <button
+              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition"
+              onClick={handleSave}
+            >
+              Guardar cambios
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

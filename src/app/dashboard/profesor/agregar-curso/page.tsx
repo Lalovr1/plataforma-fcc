@@ -171,7 +171,7 @@ export default function AgregarCursoPage() {
           </div>
 
           {/* Carreras ligadas */}
-          <div className="max-h-[60vh] overflow-y-auto pr-1">
+          <div className="max-h-[68vh] overflow-y-auto pr-1">
             <label className="block text-sm mb-2">Carreras ligadas</label>
 
             {cursoCarreras.length === 0 && (

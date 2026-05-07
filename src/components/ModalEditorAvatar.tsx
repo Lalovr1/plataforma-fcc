@@ -7,6 +7,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import RenderizadorAvatar, { AvatarConfig } from "./RenderizadorAvatar";
 import { supabase } from "@/utils/supabaseClient";
 
@@ -328,13 +329,13 @@ export default function ModalEditorAvatar({
   };
 
   const lista = bloqueadosUsados
-    .map((key) => nombresAmigables[key] || key)
-    .join(", ");
+      .map((key) => nombresAmigables[key] || key)
+      .join(", ");
 
-  setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
-  setTimeout(() => setMensaje(""), 5000);
-  return;
-}
+    setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
+    setTimeout(() => setMensaje(""), 5000);
+    return;
+  }
 
     onSave(config);
   };
@@ -348,25 +349,42 @@ export default function ModalEditorAvatar({
     return a.toLowerCase().replace(".png", "") === b.toLowerCase().replace(".png", "");
   }
   
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-all duration-500 ease-out"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center transition-all duration-500 ease-out p-3 sm:p-4"
       style={{
-        zIndex: 10020, 
+        zIndex: 10020,
         backdropFilter: "blur(1px)",
         animation: "fadeZoomIn 0.4s ease-out",
       }}
+      onClick={forzado ? undefined : onClose}
     >
       <div
-        className="p-3 sm:p-6 rounded-xl w-[95vw] max-w-5xl max-h-[90vh] shadow-lg flex flex-col overflow-hidden"
+        className="relative p-3 sm:p-6 rounded-xl w-[95vw] max-w-5xl max-h-[90vh] shadow-lg flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: "var(--color-card)",
           color: "var(--color-text)",
           animation: "fadeZoomIn 0.3s ease-out",
         }}
       >
+        {!forzado && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 z-10 w-8 h-8 rounded-full flex items-center justify-center text-xl leading-none"
+            style={{
+              backgroundColor: "var(--color-border)",
+              color: "var(--color-text)",
+            }}
+            title="Cerrar"
+          >
+            ×
+          </button>
+        )}
+
         <h2
-          className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center"
+          className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center pr-8 pl-8"
           style={{ color: "var(--color-heading)" }}
         >
           Editor de Avatar
@@ -799,6 +817,7 @@ export default function ModalEditorAvatar({
           {mensaje}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

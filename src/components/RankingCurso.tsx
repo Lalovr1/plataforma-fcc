@@ -472,14 +472,14 @@ export default function RankingCurso({
 
                 {quizSel === "" ? (
                   <span
-                    className="font-bold"
+                    className="font-bold whitespace-nowrap"
                     style={{ color: "var(--color-primary)" }}
                   >
                     {user.total} pts
                   </span>
                 ) : (
                   <span
-                    className="font-bold"
+                    className="font-bold whitespace-nowrap"
                     style={{ color: "var(--color-primary)" }}
                   >
                     {user.best} pts

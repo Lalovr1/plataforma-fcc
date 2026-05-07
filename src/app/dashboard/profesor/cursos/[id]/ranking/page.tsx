@@ -82,7 +82,7 @@ export default function RankingCursoPage() {
               const matricula = input?.value?.trim() || null;
               setFiltroMatricula(matricula);
             }}
-            className="flex gap-2 items-center"
+            className="flex flex-col sm:flex-row gap-2 sm:items-center"
           >
             <input
               type="text"
@@ -93,7 +93,7 @@ export default function RankingCursoPage() {
 
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold"
             >
               Buscar
             </button>
@@ -108,7 +108,7 @@ export default function RankingCursoPage() {
                   );
                   if (input) input.value = "";
                 }}
-                className="px-3 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded font-semibold"
+                className="w-full sm:w-auto px-3 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded font-semibold"
               >
                 Quitar filtro
               </button>

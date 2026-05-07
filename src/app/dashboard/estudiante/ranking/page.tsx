@@ -86,7 +86,7 @@ export default function EstudianteRanking() {
             </h2>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
               <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <span className="text-xl font-bold w-12">#{miPosicion}</span>
+                <span className="text-xl font-bold w-12 pl-8">#{miPosicion}</span>
                 <RenderizadorAvatar
                   config={miUsuario.avatar_config}
                   size={60}
@@ -95,7 +95,7 @@ export default function EstudianteRanking() {
                   className="font-semibold text-base sm:text-lg break-words min-w-0"
                   style={{ color: "var(--color-text)" }}
                 >
-                  {miUsuario.nombre.split(" ").slice(0, 2).join(" ")}
+                  {miUsuario.nombre}
                 </span>
               </div>
               <span className="text-cyan-500 font-bold text-lg self-end sm:self-auto">
@@ -150,7 +150,7 @@ export default function EstudianteRanking() {
                 </div>
                 <span
                   className={`font-semibold break-words min-w-0 ${
-                    index < 3 ? "text-lg sm:text-xl" : "text-sm sm:text-base"
+                    index < 3 ? "text-lg sm:text-xl xl:text-2xl" : "text-sm sm:text-base xl:text-lg"
                   }`}
                   style={{ color: "var(--color-text)" }}
                 >

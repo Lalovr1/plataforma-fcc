@@ -9,6 +9,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
@@ -514,11 +515,18 @@ export default function AmigosPage() {
         </section>
       </div>
       
-      {selectedAmigo && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="p-4 sm:p-6 rounded-2xl w-[92vw] max-w-[720px] max-h-[90vh] overflow-y-auto shadow-lg relative"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+      {selectedAmigo &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+            onClick={() => setSelectedAmigo(null)}
           >
+            <div
+              className="p-4 sm:p-6 rounded-2xl w-[92vw] max-w-[720px] max-h-[90dvh] overflow-y-auto shadow-lg relative"
+              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <button
               className="absolute top-3 right-3 hover:opacity-80"
               onClick={() => setSelectedAmigo(null)}
@@ -562,7 +570,8 @@ export default function AmigosPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </LayoutGeneral>
   );

@@ -658,7 +658,7 @@ export default function VisualizadorCurso({
                     )}
 
                     <div
-                      className="max-w-full overflow-x-auto"
+                      className="max-w-full overflow-hidden text-sm sm:text-base [&_.katex-display]:my-1 [&_.katex-display]:overflow-visible [&_.katex]:text-[0.95em] [&_.katex-html]:whitespace-normal"
                       dangerouslySetInnerHTML={{
                         __html: renderFormulaHTML(f.ecuacion),
                       }}
