@@ -1,7 +1,9 @@
 /**
  * Página de login:
  * - Permite iniciar sesión con correo BUAP y contraseña.
- * - Valida credenciales contra Supabase.
+ * - Antes de iniciar sesión revisa si el correo existe y si está confirmado.
+ * - Si el correo no está confirmado, permite reenviar confirmación.
+ * - Si la contraseña falla, permite solicitar restablecimiento.
  * - Busca el rol en la tabla `usuarios` y redirige al dashboard correspondiente.
  */
 
@@ -11,31 +13,96 @@ import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 
+type TipoMensaje = "error" | "success" | "info";
+
 export default function LoginPage() {
   const [correo, setCorreo] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [tipoMensaje, setTipoMensaje] = useState<TipoMensaje>("error");
+  const [cargando, setCargando] = useState(false);
+  const [mostrarReenviarConfirmacion, setMostrarReenviarConfirmacion] = useState(false);
+  const [mostrarRestablecer, setMostrarRestablecer] = useState(false);
+
+  const limpiarMensajes = () => {
+    setMensaje("");
+    setMostrarReenviarConfirmacion(false);
+    setMostrarRestablecer(false);
+  };
+
+  const mostrarMensaje = (
+    texto: string,
+    tipo: TipoMensaje = "error",
+    opciones?: {
+      reenviarConfirmacion?: boolean;
+      restablecer?: boolean;
+    }
+  ) => {
+    setMensaje(texto);
+    setTipoMensaje(tipo);
+    setMostrarReenviarConfirmacion(Boolean(opciones?.reenviarConfirmacion));
+    setMostrarRestablecer(Boolean(opciones?.restablecer));
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    limpiarMensajes();
+    setCargando(true);
+
+    const correoLimpio = correo.trim().toLowerCase();
 
     try {
+      const { data: estadoData, error: estadoError } = await supabase.rpc(
+        "estado_login_usuario",
+        {
+          correo_input: correoLimpio,
+        }
+      );
+
+      if (estadoError) {
+        console.error(estadoError);
+        mostrarMensaje(
+          "❌ No se pudo validar el estado de tu cuenta. Intenta nuevamente."
+        );
+        return;
+      }
+
+      if (estadoData === "no_registrado") {
+        mostrarMensaje(
+          "❌ Este correo no está registrado. Verifica que lo escribiste bien o regístrate para crear una cuenta."
+        );
+        return;
+      }
+
+      if (estadoData === "no_confirmado") {
+        mostrarMensaje(
+          "⚠️ Tu cuenta existe, pero todavía no has confirmado tu correo. Revisa tu bandeja de entrada o solicita un nuevo correo de confirmación.",
+          "info",
+          { reenviarConfirmacion: true }
+        );
+        return;
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: correo,
+        email: correoLimpio,
         password: contrasena,
       });
 
       if (error) {
-        setMensaje("❌ Credenciales inválidas o correo no confirmado.");
+        console.error(error);
+        mostrarMensaje(
+          "❌ La contraseña es incorrecta. Intenta nuevamente o restablécela si no la recuerdas.",
+          "error",
+          { restablecer: true }
+        );
         return;
       }
 
       if (!data.user) {
-        setMensaje("❌ No se encontró usuario.");
+        mostrarMensaje("❌ No se encontró la información del usuario.");
         return;
       }
 
-      console.log("✅ Sesión iniciada:", data.session);
       localStorage.setItem("user_id", data.user.id);
 
       const { data: usuario, error: usuarioError } = await supabase
@@ -46,7 +113,9 @@ export default function LoginPage() {
 
       if (usuarioError || !usuario) {
         console.error(usuarioError);
-        setMensaje("❌ No se pudo determinar el rol del usuario.");
+        mostrarMensaje(
+          "❌ Tu cuenta existe, pero no se pudo determinar tu rol. Contacta al administrador de la plataforma."
+        );
         return;
       }
 
@@ -57,13 +126,87 @@ export default function LoginPage() {
       } else if (usuario.rol === "profesor") {
         window.location.href = "/dashboard/profesor";
       } else {
-        setMensaje("❌ Rol no válido.");
+        mostrarMensaje(
+          "❌ Tu cuenta tiene un rol no válido. Contacta al administrador de la plataforma."
+        );
       }
     } catch (err: any) {
       console.error(err);
-      setMensaje("❌ Error en login: " + err.message);
+      mostrarMensaje("❌ Error inesperado en login: " + err.message);
+    } finally {
+      setCargando(false);
     }
   };
+
+  const reenviarConfirmacion = async () => {
+    limpiarMensajes();
+    setCargando(true);
+
+    const correoLimpio = correo.trim().toLowerCase();
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: correoLimpio,
+      });
+
+      if (error) {
+        console.error(error);
+        mostrarMensaje(
+          "❌ No se pudo reenviar el correo de confirmación. Verifica el correo o intenta más tarde."
+        );
+        return;
+      }
+
+      mostrarMensaje(
+        "✅ Te enviamos un nuevo correo de confirmación. Revisa tu bandeja de entrada y también la carpeta de spam.",
+        "success"
+      );
+    } catch (err: any) {
+      console.error(err);
+      mostrarMensaje("❌ Error al reenviar confirmación: " + err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const restablecerContrasena = async () => {
+    limpiarMensajes();
+    setCargando(true);
+
+    const correoLimpio = correo.trim().toLowerCase();
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(correoLimpio, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        console.error(error);
+        mostrarMensaje(
+          "❌ No se pudo enviar el correo para restablecer tu contraseña. Intenta nuevamente."
+        );
+        return;
+      }
+
+      mostrarMensaje(
+        "✅ Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja de entrada y también spam.",
+        "success"
+      );
+    } catch (err: any) {
+      console.error(err);
+      mostrarMensaje("❌ Error al solicitar restablecimiento: " + err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const colorMensaje =
+    tipoMensaje === "success"
+      ? "text-green-700 bg-green-50 border-green-200"
+      : tipoMensaje === "info"
+      ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+      : "text-red-700 bg-red-50 border-red-200";
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-100 text-gray-900 px-4">
@@ -71,7 +214,9 @@ export default function LoginPage() {
         onSubmit={handleLogin}
         className="bg-white p-5 sm:p-6 rounded-xl shadow-md w-full max-w-sm space-y-4 border border-gray-200"
       >
-        <h1 className="text-xl sm:text-2xl font-bold text-center">Iniciar Sesión</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-center">
+          Iniciar Sesión
+        </h1>
 
         <input
           type="email"
@@ -93,13 +238,38 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold text-white"
+          disabled={cargando}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed p-2 rounded font-bold text-white"
         >
-          Ingresar
+          {cargando ? "Validando..." : "Ingresar"}
         </button>
 
         {mensaje && (
-          <p className="text-sm text-center text-red-600">{mensaje}</p>
+          <div className={`text-sm text-center border rounded-lg p-3 ${colorMensaje}`}>
+            <p>{mensaje}</p>
+
+            {mostrarReenviarConfirmacion && (
+              <button
+                type="button"
+                onClick={reenviarConfirmacion}
+                disabled={cargando}
+                className="mt-3 text-blue-700 font-semibold hover:underline disabled:text-blue-400"
+              >
+                Reenviar correo de confirmación
+              </button>
+            )}
+
+            {mostrarRestablecer && (
+              <button
+                type="button"
+                onClick={restablecerContrasena}
+                disabled={cargando}
+                className="mt-3 text-blue-700 font-semibold hover:underline disabled:text-blue-400"
+              >
+                Restablecer contraseña
+              </button>
+            )}
+          </div>
         )}
 
         <p className="text-sm text-center text-gray-600">

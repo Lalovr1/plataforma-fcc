@@ -281,7 +281,20 @@ export default function ProfesoresPage() {
   }, [selectedCarrera, periodos]);
 
   if (loading) {
-    return <div className="p-6">Cargando…</div>;
+    return (
+      <LayoutGeneral rol="estudiante">
+        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            style={{
+              borderColor: "var(--color-primary)",
+              borderTopColor: "transparent",
+            }}
+          />
+          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+        </div>
+      </LayoutGeneral>
+    );
   }
 
   return (
@@ -396,7 +409,16 @@ export default function ProfesoresPage() {
 
               <div className="mt-4">
                 {loadingCursos ? (
-                  <p style={{ color: "var(--color-muted)" }}>Cargando cursos…</p>
+                  <div className="min-h-[180px] flex flex-col items-center justify-center gap-3 text-center">
+                    <div
+                      className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin"
+                      style={{
+                        borderColor: "var(--color-primary)",
+                        borderTopColor: "transparent",
+                      }}
+                    />
+                    <p style={{ color: "var(--color-muted)" }}>Cargando cursos...</p>
+                  </div>
                 ) : cursos.length === 0 ? (
                   <p style={{ color: "var(--color-muted)" }}>
                     Este profesor aún no tiene cursos.
