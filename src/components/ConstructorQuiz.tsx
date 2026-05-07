@@ -6,6 +6,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
@@ -42,6 +43,29 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const [editQuiz, setEditQuiz] = useState<any | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  const modalActivo = Boolean(editQuiz) || showFormulaModal;
+
+  useEffect(() => {
+    if (!modalActivo) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [modalActivo]);
+
+  const renderPortal = (content: React.ReactNode) => {
+    if (!portalReady || typeof document === "undefined") return null;
+    return createPortal(content, document.body);
+  };
 
   useEffect(() => {
     const fetchBloques = async () => {
@@ -697,10 +721,10 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         ))}
 
         {/* Modal de edición */}
-        {editQuiz && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+        {editQuiz && renderPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-3 sm:p-4">
             <div
-              className="p-4 sm:p-6 rounded-lg w-full max-w-5xl max-h-[90vh] flex flex-col min-w-0"
+              className="p-4 sm:p-6 rounded-lg w-full max-w-5xl h-[92dvh] max-h-[92dvh] flex flex-col min-w-0"
               style={{
                 backgroundColor: "var(--color-card)",
                 border: "1px solid var(--color-border)",
@@ -974,18 +998,18 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 </div>
               </div>
               <div
-                className="flex justify-end gap-2 pt-3 border-t"
+                className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t"
                 style={{ borderColor: "var(--color-border)" }}
               >
                 <button
                   onClick={() => setEditQuiz(null)}
-                  className="px-3 py-1 bg-gray-600 rounded text-white"
+                  className="px-3 py-2 bg-gray-600 rounded text-white w-full sm:w-auto"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleSaveEditQuiz}
-                  className="px-3 py-1 bg-green-600 rounded text-white"
+                  className="px-3 py-2 bg-green-600 rounded text-white w-full sm:w-auto"
                 >
                   Guardar cambios
                 </button>
@@ -995,8 +1019,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         )}
 
         {/* Modal de fórmulas */}
-        {showFormulaModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+        {showFormulaModal && renderPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
             <div
               className="p-4 sm:p-6 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4"
               style={{
@@ -1073,7 +1097,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 <div className="space-y-2">
                   <input type="file" accept="image/*" className="w-full text-sm" />
                   <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-                    Aquí conectarías tu OCR (imagen → LaTeX) más adelante.
+                    Funcionalidad NO disponible por el momento
                   </p>
                 </div>
               )}

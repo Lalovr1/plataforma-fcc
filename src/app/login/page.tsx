@@ -89,11 +89,28 @@ export default function LoginPage() {
       });
 
       if (error) {
-        console.error(error);
+        const mensajeError = error.message?.toLowerCase() || "";
+
+        if (mensajeError.includes("rate limit")) {
+          mostrarMensaje(
+            "⚠️ Has intentado iniciar sesión demasiadas veces en poco tiempo. Espera unos minutos antes de volver a intentarlo.",
+            "info"
+          );
+          return;
+        }
+
+        if (mensajeError.includes("invalid login credentials")) {
+          mostrarMensaje(
+            "❌ La contraseña es incorrecta. Intenta nuevamente o restablécela si no la recuerdas.",
+            "error",
+            { restablecer: true }
+          );
+          return;
+        }
+
         mostrarMensaje(
-          "❌ La contraseña es incorrecta. Intenta nuevamente o restablécela si no la recuerdas.",
-          "error",
-          { restablecer: true }
+          "❌ No se pudo iniciar sesión en este momento. Intenta nuevamente en unos minutos.",
+          "error"
         );
         return;
       }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -17,6 +17,7 @@ import {
   AlignRight,
   AlignJustify,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 export type EditorBasicoRef = {
   insertFormula: (latex: string) => void;
@@ -101,11 +102,32 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
   const [editorVersion, setEditorVersion] = useState(0);
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
 
   const [preview, setPreview] = useState<{
     type: "image" | "video";
     src: string;
   } | null>(null);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isExpanded && !preview) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isExpanded, preview]);
+
+  const renderPortal = (content: React.ReactNode) => {
+    if (!portalReady || typeof document === "undefined") return null;
+    return createPortal(content, document.body);
+  };
 
   const editor = useEditor({
     extensions: [
@@ -295,24 +317,19 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
     color: activo ? "#fff" : "var(--color-text)",
   });
 
-  return (
-    <>
-      {isExpanded && (
-        <div
-          className="fixed top-[56px] left-0 md:left-[240px] right-0 bottom-0 bg-black bg-opacity-60 z-40"
-          onClick={() => setIsExpanded(false)}
-        />
-      )}
-
+  const editorShell = (
       <div
         className={`rounded-xl border overflow-hidden ${
         isExpanded
-          ? "fixed z-50 flex flex-col top-[72px] left-1/2 md:left-[calc(240px+((100vw-240px)/2))] -translate-x-1/2 w-[94vw] md:w-[min(92vw,900px)] h-[calc(100dvh-104px)] shadow-2xl"
+          ? "fixed z-[100] flex flex-col top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-[980px] h-[92dvh] shadow-2xl"
           : ""
       }`}
       style={{
         backgroundColor: "var(--color-card)",
         borderColor: "var(--color-border)",
+      }}
+      onClick={(e) => {
+        if (isExpanded) e.stopPropagation();
       }}
     >
       <div
@@ -486,7 +503,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
             <button
               type="button"
               onClick={onRequestFormulaPanel}
-              className="sm:ml-auto bg-slate-700 text-white text-xs px-3 py-2 sm:py-1 rounded flex items-center gap-1"
+              className="hidden 2xl:flex ml-auto bg-slate-700 text-white text-xs px-3 py-1 rounded items-center gap-1"
               title="Gestionar fórmulas del bloque"
             >
               Fórmulas <span>&gt;</span>
@@ -501,12 +518,12 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           height: fillHeight
             ? "calc(100dvh - 430px)"
             : isExpanded
-            ? "calc(100dvh - 260px)"
+            ? "calc(92dvh - 170px)"
             : undefined,
           maxHeight: fillHeight
             ? "calc(100dvh - 430px)"
             : isExpanded
-            ? "calc(100dvh - 260px)"
+            ? "calc(92dvh - 170px)"
             : "420px",
         }}
         onClick={(e) => {
@@ -526,9 +543,9 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         <EditorContent editor={editor} />
       </div>
 
-      {preview && (
+      {preview && renderPortal(
         <div
-          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[130] p-3"
           onClick={() => setPreview(null)}
         >
           <div
@@ -554,7 +571,19 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         </div>
       )}
     </div>
-  </>
+  );
+
+  return (
+    <>
+      {isExpanded && renderPortal(
+        <div
+          className="fixed inset-0 bg-black bg-opacity-60 z-[90]"
+          onClick={() => setIsExpanded(false)}
+        />
+      )}
+
+      {isExpanded ? renderPortal(editorShell) : editorShell}
+    </>
   );
 });
 

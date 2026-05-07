@@ -17,6 +17,7 @@ import rehypeRaw from "rehype-raw";
 import { useRef } from "react"; 
 import OcrFormula from "@/components/OcrFormula";
 import EditorBasico, { type EditorBasicoRef } from "@/components/EditorBasico";
+import { createPortal } from "react-dom";
 
 type BlockType = "texto" | "imagen" | "video" | "documento";
 
@@ -138,6 +139,8 @@ export default function EditorContenidoCurso({
   const [targetFormulaId, setTargetFormulaId] = useState<string | null>(null);
   const [formulaDraft, setFormulaDraft] = useState<{id:string, titulo:string, ecuacion:string, publica:boolean} | null>(null);
 
+  const [portalReady, setPortalReady] = useState(false);
+
   const [showFormulaModal, setShowFormulaModal] = useState(false);
   const [showFormulaPanel, setShowFormulaPanel] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -159,10 +162,39 @@ export default function EditorContenidoCurso({
   >([]);
 
 
-  const nextOrden = useMemo(
-    () => (blocks.length ? Math.max(...blocks.map((b) => b.orden)) + 1 : 0),
-    [blocks]
-  );
+    useEffect(() => {
+      setPortalReady(true);
+    }, []);
+
+    const modalActivo =
+      Boolean(editBlock) ||
+      showFormulaModal ||
+      showImageModal ||
+      showVideoModal ||
+      showDocModal ||
+      showLinkModal ||
+      showFormulaPanel;
+
+    useEffect(() => {
+      if (!modalActivo) return;
+
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }, [modalActivo]);
+
+    const renderPortal = (content: React.ReactNode) => {
+      if (!portalReady || typeof document === "undefined") return null;
+      return createPortal(content, document.body);
+    };
+
+    const nextOrden = useMemo(
+      () => (blocks.length ? Math.max(...blocks.map((b) => b.orden)) + 1 : 0),
+      [blocks]
+    );
 
   const fetchBlocks = async () => {
     const { data, error } = await supabase
@@ -934,9 +966,9 @@ export default function EditorContenidoCurso({
         ))}
       </div>
       
-      {editBlock && (
+      {editBlock && renderPortal(
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80] p-3 sm:p-4"
         >
         <div
           className="relative rounded-xl shadow-lg w-[94vw] max-w-[920px] p-4 sm:p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
@@ -1039,15 +1071,17 @@ export default function EditorContenidoCurso({
               }}
             />
 
-            {showFormulaPanel && (
+            {showFormulaPanel && renderPortal(
             <aside
-              className="rounded-lg border p-3 text-sm space-y-3 z-[60] overflow-y-auto"
+              className="hidden 2xl:block rounded-lg border p-3 text-sm space-y-3 z-[100] overflow-y-auto shadow-lg"
               style={{
                 position: "fixed",
-                top: "72px",
-                right: "12px",
-                width: "min(310px, calc(100vw - 24px))",
-                height: "calc(100dvh - 105px)",
+                top: "50%",
+                left: "calc(50% + min(94vw, 920px) / 2 + 12px)",
+                transform: "translateY(-50%)",
+                width: "min(340px, calc(50vw - min(94vw, 920px) / 2 - 24px))",
+                height: "92dvh",
+                maxHeight: "92dvh",
                 backgroundColor: "var(--color-border)",
                 borderColor: "var(--color-border)",
               }}
@@ -1218,8 +1252,8 @@ export default function EditorContenidoCurso({
       </div>
     )}
 
-      {showFormulaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      {showFormulaModal && renderPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
           <div
             className="rounded-xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
@@ -1419,8 +1453,8 @@ export default function EditorContenidoCurso({
         </div>
       )}
       {/* Modal Imagen */}
-      {showImageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      {showImageModal && renderPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
           <div
             className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
@@ -1529,8 +1563,8 @@ export default function EditorContenidoCurso({
       )}
 
       {/* Modal Video */}
-      {showVideoModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      {showVideoModal && renderPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
           <div
             className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
@@ -1639,8 +1673,8 @@ export default function EditorContenidoCurso({
       )}
 
       {/* Modal Documento */}
-      {showDocModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      {showDocModal && renderPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
           <div
             className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
@@ -1749,8 +1783,8 @@ export default function EditorContenidoCurso({
       )}
 
       {/* Modal Enlace */}
-      {showLinkModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      {showLinkModal && renderPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
           <div
             className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
             style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
@@ -1822,7 +1856,7 @@ export default function EditorContenidoCurso({
         </div>
       )}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-lg border border-gray-100 text-gray-800 font-medium">
+        <div className="fixed bottom-4 right-4 z-[140] flex items-center gap-3 rounded-lg bg-white px-4 py-3 shadow-lg border border-gray-100 text-gray-800 font-medium">
           <span
             className={`flex h-6 w-6 items-center justify-center rounded-full text-white text-sm
               ${toast.type === "success" ? "bg-green-500" : "bg-red-500"}`}
