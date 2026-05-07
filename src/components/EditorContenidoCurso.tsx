@@ -24,6 +24,7 @@ type BlockType = "texto" | "imagen" | "video" | "documento";
 type Block = {
   id: string;
   materia_id: string;
+  unidad_id?: string | null;
   tipo: BlockType;
   titulo?: string;
   contenido: string;
@@ -120,6 +121,7 @@ export default function EditorContenidoCurso({
   const [tipo, setTipo] = useState<BlockType>("texto");
   const [unidades, setUnidades] = useState<UnidadItem[]>([]);
   const [unidad, setUnidad] = useState("");
+  const [unidadAbiertaId, setUnidadAbiertaId] = useState<string | null>(null);
   const [titulo, setTitulo] = useState("");
   const [intro, setIntro] = useState("");
   const [contenidoPrincipal, setContenidoPrincipal] = useState("");
@@ -190,6 +192,22 @@ export default function EditorContenidoCurso({
       if (!portalReady || typeof document === "undefined") return null;
       return createPortal(content, document.body);
     };
+
+      const bloquesPorUnidad = useMemo(() => {
+      const agrupados: Record<string, Block[]> = {};
+
+      blocks.forEach((b) => {
+        const unidadId = b.unidad_id || "__sin_unidad__";
+
+        if (!agrupados[unidadId]) {
+          agrupados[unidadId] = [];
+        }
+
+        agrupados[unidadId].push(b);
+      });
+
+      return agrupados;
+    }, [blocks]);
 
     const nextOrden = useMemo(
       () => (blocks.length ? Math.max(...blocks.map((b) => b.orden)) + 1 : 0),
@@ -892,78 +910,242 @@ export default function EditorContenidoCurso({
           </p>
         )}
 
-        {blocks.map((b) => (
+        {unidades.map((u) => {
+          const bloquesUnidad = bloquesPorUnidad[u.id] || [];
+          const abierta = unidadAbiertaId === u.id;
+
+          return (
+            <div
+              key={u.id}
+              className="rounded-lg border overflow-hidden"
+              style={{
+                backgroundColor: "var(--color-card)",
+                borderColor: "var(--color-border)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setUnidadAbiertaId((prev) => (prev === u.id ? null : u.id))
+                }
+                className="w-full px-3 sm:px-4 py-3 flex items-center justify-between gap-3 text-left"
+                style={{
+                  backgroundColor: "var(--color-bg)",
+                  color: "var(--color-text)",
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold break-words">
+                    Unidad {u.numero}
+                    {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--color-muted)" }}>
+                    {bloquesUnidad.length} bloque{bloquesUnidad.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <span className="text-lg shrink-0">
+                  {abierta ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {abierta && (
+                <div className="p-3 space-y-3">
+                  {bloquesUnidad.length === 0 ? (
+                    <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                      Esta unidad aún no tiene bloques.
+                    </p>
+                  ) : (
+                    bloquesUnidad.map((b) => (
+                      <div
+                        key={b.id}
+                        className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
+                        style={{
+                          backgroundColor: "var(--color-card)",
+                          color: "var(--color-text)",
+                          borderColor: "var(--color-border)",
+                        }}
+                        onClick={() => handleOpenEdit(b)}
+                        title="Haz clic para editar este bloque"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="text-xs px-2 py-1 rounded shrink-0"
+                              style={{
+                                backgroundColor: "var(--color-border)",
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              {b.tipo.toUpperCase()}
+                            </span>
+                            <span
+                              className="font-semibold break-words min-w-0"
+                              style={{ color: "var(--color-heading)" }}
+                              title={b.titulo || "(Sin título)"}
+                            >
+                              {b.titulo || "(Sin título)"}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                move(b.id, "up");
+                              }}
+                              className="px-2 py-1 rounded"
+                              style={{
+                                backgroundColor: "var(--color-border)",
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                move(b.id, "down");
+                              }}
+                              className="px-2 py-1 rounded"
+                              style={{
+                                backgroundColor: "var(--color-border)",
+                                color: "var(--color-text)",
+                              }}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(b.id);
+                              }}
+                              className="px-2 py-1 bg-red-600 rounded text-white"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {bloquesPorUnidad["__sin_unidad__"]?.length > 0 && (
           <div
-            key={b.id}
-            className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
+            className="rounded-lg border overflow-hidden"
             style={{
               backgroundColor: "var(--color-card)",
-              color: "var(--color-text)",
               borderColor: "var(--color-border)",
             }}
-            onClick={() => handleOpenEdit(b)}
-            title="Haz clic para editar este bloque"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className="text-xs px-2 py-1 rounded shrink-0"
-                  style={{
-                    backgroundColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  {b.tipo.toUpperCase()}
-                </span>
-                <span
-                  className="font-semibold break-words min-w-0"
-                  style={{ color: "var(--color-heading)" }}
-                  title={b.titulo || "(Sin título)"}
-                >
-                  {b.titulo || "(Sin título)"}
-                </span>
+            <button
+              type="button"
+              onClick={() =>
+                setUnidadAbiertaId((prev) =>
+                  prev === "__sin_unidad__" ? null : "__sin_unidad__"
+                )
+              }
+              className="w-full px-3 sm:px-4 py-3 flex items-center justify-between gap-3 text-left"
+              style={{
+                backgroundColor: "var(--color-bg)",
+                color: "var(--color-text)",
+              }}
+            >
+              <div className="min-w-0">
+                <p className="font-semibold break-words">Sin unidad</p>
+                <p className="text-xs" style={{ color: "var(--color-muted)" }}>
+                  {bloquesPorUnidad["__sin_unidad__"].length} bloques
+                </p>
               </div>
 
-              <div className="flex flex-wrap gap-2 shrink-0">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    move(b.id, "up");
-                  }}
-                  className="px-2 py-1 rounded"
-                  style={{
-                    backgroundColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    move(b.id, "down");
-                  }}
-                  className="px-2 py-1 rounded"
-                  style={{
-                    backgroundColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  ↓
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(b.id);
-                  }}
-                  className="px-2 py-1 bg-red-600 rounded text-white"
-                >
-                  Eliminar
-                </button>
+              <span className="text-lg shrink-0">
+                {unidadAbiertaId === "__sin_unidad__" ? "▲" : "▼"}
+              </span>
+            </button>
+
+            {unidadAbiertaId === "__sin_unidad__" && (
+              <div className="p-3 space-y-3">
+                {bloquesPorUnidad["__sin_unidad__"].map((b) => (
+                  <div
+                    key={b.id}
+                    className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
+                    style={{
+                      backgroundColor: "var(--color-card)",
+                      color: "var(--color-text)",
+                      borderColor: "var(--color-border)",
+                    }}
+                    onClick={() => handleOpenEdit(b)}
+                    title="Haz clic para editar este bloque"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="text-xs px-2 py-1 rounded shrink-0"
+                          style={{
+                            backgroundColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          {b.tipo.toUpperCase()}
+                        </span>
+                        <span
+                          className="font-semibold break-words min-w-0"
+                          style={{ color: "var(--color-heading)" }}
+                          title={b.titulo || "(Sin título)"}
+                        >
+                          {b.titulo || "(Sin título)"}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            move(b.id, "up");
+                          }}
+                          className="px-2 py-1 rounded"
+                          style={{
+                            backgroundColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            move(b.id, "down");
+                          }}
+                          className="px-2 py-1 rounded"
+                          style={{
+                            backgroundColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(b.id);
+                          }}
+                          className="px-2 py-1 bg-red-600 rounded text-white"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
-        ))}
+        )}
       </div>
       
       {editBlock && renderPortal(
