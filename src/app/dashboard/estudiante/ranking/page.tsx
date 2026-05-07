@@ -142,7 +142,7 @@ export default function EstudianteRanking() {
                     ? "🥉"
                     : `#${index + 1}`}
                 </span>
-                <div className={index < 3 ? "scale-75 sm:scale-100 -my-3 sm:my-0" : "scale-90 sm:scale-100 -my-1 sm:my-0"}>
+                <div className={index < 3 ? "justify-self-center scale-75 sm:scale-100 -my-3 sm:my-0" : "justify-self-center scale-90 sm:scale-100 -my-1 sm:my-0"}>
                   <RenderizadorAvatar
                     config={user.avatar_config}
                     size={index < 3 ? 100 : 80}
@@ -158,7 +158,7 @@ export default function EstudianteRanking() {
                 </span>
               </div>
               <span
-                className={`font-bold ${
+                className={`font-bold whitespace-nowrap self-center sm:self-auto text-right ${
                   index < 3 ? "text-cyan-600 text-2xl" : "text-cyan-500 text-base"
                 }`}
               >

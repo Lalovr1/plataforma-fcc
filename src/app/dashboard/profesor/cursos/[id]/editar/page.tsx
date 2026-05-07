@@ -217,7 +217,16 @@ export default function EditarCursoPage() {
   if (loading) {
     return (
       <LayoutGeneral rol="profesor">
-        <p className="text-center" style={{ color: "var(--color-muted)" }}>Cargando curso...</p>
+        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            style={{
+              borderColor: "var(--color-primary)",
+              borderTopColor: "transparent",
+            }}
+          />
+          <p style={{ color: "var(--color-muted)" }}>Cargando curso...</p>
+        </div>
       </LayoutGeneral>
     );
   }

@@ -287,7 +287,20 @@ export default function VisualizadorCurso({
     fetchData();
   }, [materiaId, userId, rol]);
 
-  if (loading) return <p style={{ color: "var(--color-muted)" }}>Cargando curso...</p>;
+  if (loading) {
+    return (
+      <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+        <div
+          className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+          style={{
+            borderColor: "var(--color-primary)",
+            borderTopColor: "transparent",
+          }}
+        />
+        <p style={{ color: "var(--color-muted)" }}>Cargando curso...</p>
+      </div>
+    );
+  }
   if (!materia) return <p style={{ color: "var(--color-danger)" }}>Curso no encontrado</p>;
 
   const tituloBloque = (b: Bloque, idx: number) =>

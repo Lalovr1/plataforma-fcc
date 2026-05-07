@@ -175,7 +175,16 @@ export default function PerfilEstudiantePage() {
   if (!usuario) {
     return (
       <LayoutGeneral rol="estudiante">
-        <p style={{ color: "var(--color-muted)" }}>Cargando perfil...</p>
+        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            style={{
+              borderColor: "var(--color-primary)",
+              borderTopColor: "transparent",
+            }}
+          />
+          <p style={{ color: "var(--color-muted)" }}>Cargando perfil...</p>
+        </div>
       </LayoutGeneral>
     );
   }

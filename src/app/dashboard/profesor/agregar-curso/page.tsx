@@ -136,10 +136,10 @@ export default function AgregarCursoPage() {
 
   return (
     <LayoutGeneral rol="profesor">
-      <div className="flex justify-center items-start min-w-0">
+      <div className="flex justify-center items-start min-w-0 pt-4">
         <form
           onSubmit={handleSubmit}
-          className="p-4 sm:p-6 rounded-xl shadow-lg w-full max-w-2xl space-y-4 min-w-0"
+          className="p-4 sm:p-6 rounded-xl shadow-lg w-full max-w-2xl min-w-0 max-h-[calc(100dvh-6rem)] flex flex-col gap-4 overflow-hidden"
           style={{
             backgroundColor: "var(--color-card)",
             border: "1px solid var(--color-border)",
@@ -147,7 +147,7 @@ export default function AgregarCursoPage() {
           }}
         >
           <h2
-            className="text-xl font-bold mb-4 pl-14 lg:pl-0 min-h-11 flex items-center gap-2"
+            className="text-xl font-bold mb-2 min-h-11 flex items-center justify-center gap-2 text-center"
             style={{ color: "var(--color-heading)" }}
           >
             ➕ Agregar Curso
@@ -171,7 +171,7 @@ export default function AgregarCursoPage() {
           </div>
 
           {/* Carreras ligadas */}
-          <div className="max-h-[68vh] overflow-y-auto pr-1">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
             <label className="block text-sm mb-2">Carreras ligadas</label>
 
             {cursoCarreras.length === 0 && (
@@ -536,7 +536,7 @@ export default function AgregarCursoPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-lg font-bold text-white disabled:opacity-50"
+            className="w-full py-2 rounded-lg font-bold text-white disabled:opacity-50 flex-shrink-0"
             style={{ backgroundColor: "#2563eb" }}
           >
             {loading ? "Agregando..." : "Agregar curso"}

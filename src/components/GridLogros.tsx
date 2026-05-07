@@ -7,6 +7,9 @@
 
 "use client";
 
+import { useState } from "react";
+import { createPortal } from "react-dom";
+
 interface Logro {
   id: string;
   titulo: string;
@@ -15,11 +18,16 @@ interface Logro {
   desbloqueado: boolean;
 }
 
-export default function GridLogros({
-  logros,
-}: {
-  logros: Logro[];
-}) {
+type TooltipState = {
+  titulo: string;
+  descripcion: string;
+  x: number;
+  y: number;
+};
+
+export default function GridLogros({ logros }: { logros: Logro[] }) {
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
   if (!logros || logros.length === 0) {
     return (
       <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -28,80 +36,112 @@ export default function GridLogros({
     );
   }
 
+  const showTooltip = (logro: Logro, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+
+    const tooltipWidth = 220;
+    const margin = 12;
+
+    const rawX = rect.left + rect.width / 2;
+    const safeX = Math.min(
+      Math.max(rawX, tooltipWidth / 2 + margin),
+      window.innerWidth - tooltipWidth / 2 - margin
+    );
+
+    const rawY = rect.top - 10;
+    const safeY = Math.max(rawY, 12);
+
+    setTooltip({
+      titulo: logro.titulo,
+      descripcion: logro.descripcion ?? "",
+      x: safeX,
+      y: safeY,
+    });
+  };
+
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible">
-      {logros.map((l) => (
-        <div
-          key={`${l.id}-${l.desbloqueado ? "on" : "off"}`}
-          className="p-2 rounded-lg text-center shadow relative group transition transform hover:scale-105"
-          style={{
-            backgroundColor: "var(--color-card)",
-            opacity: l.desbloqueado ? 1 : 0.6,
-            filter: l.desbloqueado ? "none" : "grayscale(100%)",
-            border: l.desbloqueado
-              ? "2px solid var(--color-accent)"
-              : "1px solid var(--color-border)",
-            width: "clamp(76px, 24vw, 90px)",
-            height: "clamp(76px, 24vw, 90px)",
-            margin: "auto",
-          }}
-        >
-          {/* Imagen más pequeña */}
-          <div className="flex items-center justify-center w-full h-full">
-            <img
-              src={l.icono_url || "/icons/trophy_default.png"}
-              alt={l.titulo}
-              className="w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] object-contain transition-transform duration-200 group-hover:scale-110"
-            />
-          </div>
-
-          {/* Overlay de candado para bloqueados */}
-          {!l.desbloqueado && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div
-                className="w-full h-full rounded-lg flex items-center justify-center"
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.18)",
-                  borderRadius: "8px",
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  className="w-5 h-5 text-white opacity-90"
-                  fill="currentColor"
-                >
-                  <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
-                </svg>
-              </div>
-            </div>
-          )}
-
-          {/* Tooltip flotante con nombre y descripción */}
+    <>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible min-w-0">
+        {logros.map((l) => (
           <div
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none"
+            key={`${l.id}-${l.desbloqueado ? "on" : "off"}`}
+            className="p-2 rounded-lg text-center shadow relative transition hover:scale-105"
+            onMouseEnter={(e) => showTooltip(l, e.currentTarget)}
+            onMouseLeave={() => setTooltip(null)}
+            onTouchStart={(e) => showTooltip(l, e.currentTarget)}
             style={{
+              backgroundColor: "var(--color-card)",
+              opacity: l.desbloqueado ? 1 : 0.6,
+              filter: l.desbloqueado ? "none" : "grayscale(100%)",
+              border: l.desbloqueado
+                ? "2px solid var(--color-accent)"
+                : "1px solid var(--color-border)",
+              width: "clamp(76px, 24vw, 90px)",
+              height: "clamp(76px, 24vw, 90px)",
+              margin: "auto",
+            }}
+          >
+            {/* Imagen */}
+            <div className="flex items-center justify-center w-full h-full">
+              <img
+                src={l.icono_url || "/icons/trophy_default.png"}
+                alt={l.titulo}
+                className="w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] object-contain transition-transform duration-200"
+              />
+            </div>
+
+            {/* Overlay de candado para bloqueados */}
+            {!l.desbloqueado && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div
+                  className="w-full h-full rounded-lg flex items-center justify-center"
+                  style={{
+                    backgroundColor: "rgba(0,0,0,0.18)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5 text-white opacity-90"
+                    fill="currentColor"
+                  >
+                    <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {tooltip &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed w-[220px] p-2 rounded-lg shadow-lg pointer-events-none text-center"
+            style={{
+              left: tooltip.x,
+              top: tooltip.y,
+              transform: "translate(-50%, -100%)",
               backgroundColor: "var(--color-card)",
               color: "var(--color-text)",
               border: "1px solid var(--color-border)",
-              zIndex: 100,
+              zIndex: 10050,
             }}
           >
             <p
-              className="font-semibold mb-1 text-center text-sm"
+              className="font-semibold mb-1 text-sm"
               style={{ color: "var(--color-heading)" }}
             >
-              {l.titulo}
+              {tooltip.titulo}
             </p>
-            <p
-              className="text-xs text-center"
-              style={{ color: "var(--color-muted)" }}
-            >
-              {l.descripcion ?? ""}
+            <p className="text-xs" style={{ color: "var(--color-muted)" }}>
+              {tooltip.descripcion}
             </p>
-          </div>
-        </div>
-      ))}
-    </div>
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

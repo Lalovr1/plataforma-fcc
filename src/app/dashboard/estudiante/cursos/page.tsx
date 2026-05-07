@@ -176,7 +176,16 @@ export default function CursosPage() {
         <FiltrosCursos filters={filters} setFilters={setFilters} materias={materias} />
 
         {loading ? (
-          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+          <div className="min-h-[40dvh] flex flex-col items-center justify-center gap-3 text-center">
+            <div
+              className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+              style={{
+                borderColor: "var(--color-primary)",
+                borderTopColor: "transparent",
+              }}
+            />
+            <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+          </div>
         ) : filtered.length === 0 ? (
           <p style={{ color: "var(--color-muted)" }}>No hay cursos para los filtros seleccionados</p>
         ) : (

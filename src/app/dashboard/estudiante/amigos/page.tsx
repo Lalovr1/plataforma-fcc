@@ -320,7 +320,20 @@ export default function AmigosPage() {
   };
 
   if (loading) {
-    return <div className="p-6">Cargando...</div>;
+    return (
+      <LayoutGeneral rol="estudiante">
+        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            style={{
+              borderColor: "var(--color-primary)",
+              borderTopColor: "transparent",
+            }}
+          />
+          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+        </div>
+      </LayoutGeneral>
+    );
   }
 
   return (
@@ -536,7 +549,7 @@ export default function AmigosPage() {
               ✕
             </button>
 
-            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left">
+            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left min-w-0">
               <div className="scale-[0.75] sm:scale-100 -my-8 sm:my-0">
                 <RenderizadorAvatar
                   config={selectedAmigo.avatar_config ?? defaultAvatar}

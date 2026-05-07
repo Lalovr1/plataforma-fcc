@@ -57,7 +57,16 @@ export default function RankingCursoPage() {
   if (cargando) {
     return (
       <LayoutGeneral rol="profesor">
-        <p className="text-center text-gray-400">Cargando ranking...</p>
+        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div
+            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            style={{
+              borderColor: "var(--color-primary)",
+              borderTopColor: "transparent",
+            }}
+          />
+          <p style={{ color: "var(--color-muted)" }}>Cargando ranking...</p>
+        </div>
       </LayoutGeneral>
     );
   }
@@ -65,7 +74,9 @@ export default function RankingCursoPage() {
   if (!curso) {
     return (
       <LayoutGeneral rol="profesor">
-        <p className="text-center text-red-400">Curso no disponible</p>
+        <div className="min-h-[60dvh] flex items-center justify-center">
+          <p className="text-center text-red-400">Curso no disponible</p>
+        </div>
       </LayoutGeneral>
     );
   }
@@ -73,7 +84,12 @@ export default function RankingCursoPage() {
   return (
     <LayoutGeneral rol="profesor">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">📊 Ranking del curso: {curso.nombre}</h1>
+        <h1
+          className="text-2xl font-bold text-center pl-14 lg:pl-0 min-h-11 flex items-center justify-center"
+          style={{ color: "var(--color-heading)" }}
+        >
+          📊 Ranking del curso: {curso.nombre}
+        </h1>
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200 mb-4">
           <form
             onSubmit={(e) => {

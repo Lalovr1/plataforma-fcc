@@ -317,13 +317,22 @@ export default function ResolverQuizPage() {
     return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
-  if (loading) {
-    return (
-      <LayoutGeneral rol={rol}>
-        <p style={{ color: "var(--color-muted)" }}>Cargando quiz...</p>
-      </LayoutGeneral>
-    );
-  }
+    if (loading) {
+      return (
+        <LayoutGeneral rol={rol}>
+          <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+            <div
+              className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+              style={{
+                borderColor: "var(--color-primary)",
+                borderTopColor: "transparent",
+              }}
+            />
+            <p style={{ color: "var(--color-muted)" }}>Cargando quiz...</p>
+          </div>
+        </LayoutGeneral>
+      );
+    }
 
   const intentosMax = quizInfo?.intentos_max ?? 1;
   const sinMasIntentos = !esPreview && (intentosRealizados >= intentosMax || mejorPuntaje === 100);
@@ -336,8 +345,12 @@ export default function ResolverQuizPage() {
   return (
     <LayoutGeneral rol={rol}>
       <div className="p-4 sm:p-6 rounded-xl shadow space-y-5 sm:space-y-6 min-w-0 overflow-hidden" style={cardStyle}>
-        <h1 className="text-xl sm:text-2xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
-          {quizInfo?.titulo || "Resolver Quiz"}
+        <h1
+          className="text-xl sm:text-2xl font-bold break-words text-center min-h-11 flex items-center justify-center gap-2"
+          style={{ color: "var(--color-heading)" }}
+        >
+          <span aria-hidden="true">📝</span>
+          <span>{quizInfo?.titulo || "Resolver Quiz"}</span>
         </h1>
 
         {quizInfo?.descripcion && (
