@@ -1259,7 +1259,7 @@ export default function EditorContenidoCurso({
               style={{
                 position: "fixed",
                 top: "50%",
-                left: "calc(50% + min(94vw, 920px) / 2 + 12px)",
+                left: "calc(50% + min(94vw, 920px) / 2 + 32px)",
                 transform: "translateY(-50%)",
                 width: "min(340px, calc(50vw - min(94vw, 920px) / 2 - 24px))",
                 height: "92dvh",

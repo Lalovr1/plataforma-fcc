@@ -515,15 +515,15 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       <div
         className="p-3 sm:p-4 overflow-y-auto"
         style={{
-          height: fillHeight
+          height: isExpanded
+            ? "calc(92dvh - 115px)"
+            : fillHeight
             ? "calc(100dvh - 430px)"
-            : isExpanded
-            ? "calc(92dvh - 170px)"
             : undefined,
-          maxHeight: fillHeight
+          maxHeight: isExpanded
+            ? "calc(92dvh - 115px)"
+            : fillHeight
             ? "calc(100dvh - 430px)"
-            : isExpanded
-            ? "calc(92dvh - 170px)"
             : "420px",
         }}
         onClick={(e) => {
