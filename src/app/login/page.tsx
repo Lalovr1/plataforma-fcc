@@ -231,6 +231,14 @@ export default function LoginPage() {
         onSubmit={handleLogin}
         className="bg-white p-5 sm:p-6 rounded-xl shadow-md w-full max-w-sm space-y-4 border border-gray-200"
       >
+        <div className="flex justify-center">
+          <img
+            src="/logo.png"
+            alt="FCC Academy"
+            className="h-44 sm:h-48 w-auto object-contain"
+          />
+        </div>
+
         <h1 className="text-xl sm:text-2xl font-bold text-center">
           Iniciar Sesión
         </h1>

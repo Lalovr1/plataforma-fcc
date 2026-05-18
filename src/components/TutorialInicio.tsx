@@ -163,7 +163,7 @@ export default function TutorialInicio() {
     {
       id: "bienvenida",
       texto:
-        "¡Bienvenido a FCC Maths! Esta plataforma te ayudará a aprender, practicar y subir de nivel resolviendo quizzes y consiguiendo logros.",
+        "¡Bienvenido a FCC Academy! Esta plataforma te ayudará a aprender, practicar y subir de nivel resolviendo quizzes y consiguiendo logros.",
       selector: null,
       pos: "center",
     },
@@ -476,7 +476,7 @@ export default function TutorialInicio() {
           >
             <img
               src={obtenerImagenMascota(paso.id)}
-              alt="Mascota FCC Maths"
+              alt="Mascota FCC Academy"
               style={{
                 width: "150px",
                 height: "auto",

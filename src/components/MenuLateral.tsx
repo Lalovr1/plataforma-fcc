@@ -37,6 +37,8 @@ export default function MenuLateral({ rol }: Props) {
     typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
   );
 
+  const [temaOscuro, setTemaOscuro] = useState(false);
+
   useEffect(() => {
     const handler = (e: any) => setTutorialActivo(!!e.detail?.activo);
     window.addEventListener("tutorial:estado", handler);
@@ -45,7 +47,39 @@ export default function MenuLateral({ rol }: Props) {
       typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
     );
 
-    return () => window.removeEventListener("tutorial:estado", handler);
+    const actualizarTema = () => {
+      const preferenciasGuardadas = localStorage.getItem("preferencias_usuario");
+
+      let temaActual = "claro";
+
+      if (preferenciasGuardadas) {
+        try {
+          const prefs = JSON.parse(preferenciasGuardadas);
+          if (prefs.tema === "oscuro" || prefs.tema === "claro") {
+            temaActual = prefs.tema;
+          }
+        } catch {}
+      }
+
+      setTemaOscuro(temaActual === "oscuro");
+    };
+
+    const handlerPreferencias = (e: any) => {
+      if (e.detail?.tema === "oscuro" || e.detail?.tema === "claro") {
+        setTemaOscuro(e.detail.tema === "oscuro");
+      }
+    };
+
+    actualizarTema();
+
+    window.addEventListener("storage", actualizarTema);
+    window.addEventListener("app:preferencias", handlerPreferencias);
+
+    return () => {
+      window.removeEventListener("tutorial:estado", handler);
+      window.removeEventListener("storage", actualizarTema);
+      window.removeEventListener("app:preferencias", handlerPreferencias);
+    };
   }, []);
 
     return (
@@ -88,7 +122,11 @@ export default function MenuLateral({ rol }: Props) {
           className="relative flex items-center justify-center p-4 border-b"
           style={{ borderColor: "var(--color-border)" }}
         >
-          <img src="/logo.png" alt="FCC Maths" className="w-full max-w-[170px] h-auto mx-auto" />
+          <img
+            src={temaOscuro ? "/logoOscuro.png" : "/logoClaro.png"}
+            alt="FCC Academy"
+            className="w-full max-w-[170px] h-auto mx-auto"
+          />
             <button
               type="button"
               onClick={() => setMenuAbierto(false)}

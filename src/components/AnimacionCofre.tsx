@@ -223,7 +223,7 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
               🎁 ¡Cofre de Bienvenida!
             </motion.h2>
             <p className="text-white/90 text-sm sm:text-lg mt-2 font-medium">
-              Gracias por unirte a FCC Maths, estas son tus primeras recompensas.
+              Gracias por unirte a FCC Academy, estas son tus primeras recompensas.
             </p>
           </>
         ) : (

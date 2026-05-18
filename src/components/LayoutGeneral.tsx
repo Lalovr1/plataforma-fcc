@@ -68,12 +68,69 @@ export default function LayoutGeneral({
 
   // Cambio de tema
   useEffect(() => {
+    async function cargarPreferenciasDesdeSupabase() {
+      try {
+        const { supabase } = await import("@/utils/supabaseClient");
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) return;
+
+        const { data: pref } = await supabase
+          .from("configuraciones_usuario")
+          .select("tema, tamano_fuente")
+          .eq("usuario_id", user.id)
+          .maybeSingle();
+
+        if (!pref) return;
+
+        const temaGuardado =
+          pref.tema === "oscuro" || pref.tema === "claro"
+            ? pref.tema
+            : "claro";
+
+        const tamanoGuardado =
+          pref.tamano_fuente === "pequena" ||
+          pref.tamano_fuente === "mediana" ||
+          pref.tamano_fuente === "grande"
+            ? pref.tamano_fuente
+            : "mediana";
+
+        localStorage.setItem(
+          "preferencias_usuario",
+          JSON.stringify({
+            tema: temaGuardado,
+            tamano_fuente: tamanoGuardado,
+          })
+        );
+
+        setTema(temaGuardado);
+
+        window.dispatchEvent(
+          new CustomEvent("app:preferencias", {
+            detail: {
+              tema: temaGuardado,
+              tamano_fuente: tamanoGuardado,
+            },
+          })
+        );
+      } catch (err) {
+        console.error("Error cargando preferencias desde Supabase:", err);
+      }
+    }
+
     function handler(e: any) {
       if (e.detail?.tema === "oscuro" || e.detail?.tema === "claro") {
         setTema(e.detail.tema);
       }
     }
+
+    cargarPreferenciasDesdeSupabase();
+
     window.addEventListener("app:preferencias", handler);
+
     return () => window.removeEventListener("app:preferencias", handler);
   }, []);
 

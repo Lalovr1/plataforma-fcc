@@ -12,7 +12,7 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FCC Maths",
+  title: "FCC Academy",
   description: "Plataforma educativa FCC",
 };
 
