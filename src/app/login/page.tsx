@@ -232,11 +232,13 @@ export default function LoginPage() {
         className="bg-white p-5 sm:p-6 rounded-xl shadow-md w-full max-w-sm space-y-4 border border-gray-200"
       >
         <div className="flex justify-center">
-          <img
-            src="/logo.png"
-            alt="FCC Academy"
-            className="h-44 sm:h-48 w-auto object-contain"
-          />
+          <div className="flex justify-center">
+            <img
+              src="/logo.png"
+              alt="FCC Academy"
+              className="h-56 sm:h-60 w-auto object-contain rounded-2xl"
+            />
+          </div>
         </div>
 
         <h1 className="text-xl sm:text-2xl font-bold text-center">
