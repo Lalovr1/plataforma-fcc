@@ -10,6 +10,7 @@
 import { memo, useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import CirculoProgreso from "@/components/CirculoProgreso";
+import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import { createPortal } from "react-dom";
@@ -51,6 +52,21 @@ type Formula = {
   publica: boolean;
   created_at: string;
   orden: number;
+};
+
+type RankingCursoUsuario = {
+  usuario_id: string;
+  nombre: string;
+  puntos: number;
+};
+
+type ContextoRankingCurso = {
+  esVisitante: boolean;
+  tieneInscripcion: boolean;
+  carreraNombre: string | null;
+  semestre: number | null;
+  periodoNombre: string | null;
+  seccionNombre: string | null;
 };
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
@@ -169,6 +185,16 @@ export default function VisualizadorCurso({
 
   const [bloquesAbiertosIds, setBloquesAbiertosIds] = useState<string[]>([]);
 
+  const [rankingTopCurso, setRankingTopCurso] = useState<RankingCursoUsuario[]>([]);
+  const [contextoRankingCurso, setContextoRankingCurso] = useState<ContextoRankingCurso>({
+    esVisitante: false,
+    tieneInscripcion: false,
+    carreraNombre: null,
+    semestre: null,
+    periodoNombre: null,
+    seccionNombre: null,
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -178,7 +204,7 @@ export default function VisualizadorCurso({
         .select(`
           id,
           nombre,
-          profesor:usuarios (id, nombre),
+          profesor:usuarios (id, nombre, avatar_config),
           curso_carreras (
             id,
             semestre,
@@ -189,36 +215,276 @@ export default function VisualizadorCurso({
         .single();
       setMateria(mat);
 
-      if (rol === "estudiante") {
-        const { data: quizzesMateria } = await supabase
-          .from("quizzes")
-          .select("id")
-          .eq("materia_id", materiaId);
+            if (rol === "estudiante") {
+              const { data: quizzesMateria } = await supabase
+                .from("quizzes")
+                .select("id")
+                .eq("materia_id", materiaId);
 
-        const totalQuizzes = (quizzesMateria || []).length;
+              const totalQuizzes = (quizzesMateria || []).length;
 
-        const { data: intentosUsuario } = await supabase
-          .from("intentos_quiz")
-          .select("quiz_id")
-          .eq("usuario_id", userId)
-          .eq("completado", true)
-          .in(
-            "quiz_id",
-            (quizzesMateria || []).map((q: any) => q.id)
-          );
+              const { data: intentosUsuario } = await supabase
+                .from("intentos_quiz")
+                .select("quiz_id")
+                .eq("usuario_id", userId)
+                .eq("completado", true)
+                .in(
+                  "quiz_id",
+                  (quizzesMateria || []).map((q: any) => q.id)
+                );
 
-        const completadosUnicos = new Set(
-          (intentosUsuario || []).map((i: any) => i.quiz_id)
-        ).size;
+              const completadosUnicos = new Set(
+                (intentosUsuario || []).map((i: any) => i.quiz_id)
+              ).size;
 
-        setProgreso(
-          totalQuizzes > 0
-            ? Math.min(100, Math.round((completadosUnicos / totalQuizzes) * 100))
-            : 0
-        );
-      } else {
-        setProgreso(0);
-      }
+              setProgreso(
+                totalQuizzes > 0
+                  ? Math.min(100, Math.round((completadosUnicos / totalQuizzes) * 100))
+                  : 0
+              );
+
+              const { data: inscripcionActual } = await supabase
+                .from("progreso")
+                .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
+                .eq("materia_id", materiaId)
+                .eq("usuario_id", userId)
+                .maybeSingle();
+
+                      if (inscripcionActual && !inscripcionActual.es_visitante) {
+          const [
+            { data: carreraActual },
+            { data: periodoActual },
+            { data: seccionActual },
+            { data: cursoCarreraActual },
+          ] = await Promise.all([
+            supabase
+              .from("carreras")
+              .select("nombre")
+              .eq("id", inscripcionActual.carrera_id)
+              .maybeSingle(),
+
+            supabase
+              .from("curso_periodos")
+              .select("nombre, anio")
+              .eq("id", inscripcionActual.periodo_id)
+              .maybeSingle(),
+
+            supabase
+              .from("curso_secciones")
+              .select("nombre")
+              .eq("id", inscripcionActual.seccion_id)
+              .maybeSingle(),
+
+            supabase
+              .from("curso_carreras")
+              .select("semestre")
+              .eq("curso_id", materiaId)
+              .eq("carrera_id", inscripcionActual.carrera_id)
+              .maybeSingle(),
+          ]);
+
+          setContextoRankingCurso({
+            esVisitante: false,
+            tieneInscripcion: true,
+            carreraNombre: carreraActual?.nombre ?? null,
+            semestre: cursoCarreraActual?.semestre ?? null,
+            periodoNombre: periodoActual
+              ? `${periodoActual.nombre} ${periodoActual.anio ?? ""}`.trim()
+              : null,
+            seccionNombre: seccionActual?.nombre ?? null,
+          });
+        } else {
+          setContextoRankingCurso({
+            esVisitante: Boolean(inscripcionActual?.es_visitante),
+            tieneInscripcion: Boolean(inscripcionActual),
+            carreraNombre: null,
+            semestre: null,
+            periodoNombre: null,
+            seccionNombre: null,
+          });
+        }
+
+              let progresoQuery = supabase
+                .from("progreso")
+                .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
+                .eq("materia_id", materiaId);
+
+              if (inscripcionActual && !inscripcionActual.es_visitante) {
+                progresoQuery = progresoQuery
+                  .eq("carrera_id", inscripcionActual.carrera_id)
+                  .eq("periodo_id", inscripcionActual.periodo_id)
+                  .eq("seccion_id", inscripcionActual.seccion_id)
+                  .eq("es_visitante", false);
+              }
+
+              const { data: progresoRanking } = await progresoQuery;
+
+              const usuariosRankingIds = Array.from(
+                new Set((progresoRanking || []).map((p: any) => p.usuario_id))
+              );
+
+              if (usuariosRankingIds.length === 0) {
+                setRankingTopCurso([]);
+              } else {
+                const { data: usuariosRanking } = await supabase
+                  .from("usuarios")
+                  .select("id, nombre, rol")
+                  .in("id", usuariosRankingIds)
+                  .eq("rol", "estudiante");
+
+                const estudiantesIds = (usuariosRanking || []).map((u: any) => u.id);
+
+                const { data: quizzesRanking } = await supabase
+                  .from("quizzes")
+                  .select("id, xp")
+                  .eq("materia_id", materiaId);
+
+                const quizIds = (quizzesRanking || []).map((q: any) => q.id);
+                const xpPorQuiz = Object.fromEntries(
+                  (quizzesRanking || []).map((q: any) => [q.id, Number(q.xp ?? 0)])
+                );
+
+                if (estudiantesIds.length === 0 || quizIds.length === 0) {
+                  setRankingTopCurso(
+                    (usuariosRanking || [])
+                      .map((u: any) => ({
+                        usuario_id: u.id,
+                        nombre: u.nombre ?? "Sin nombre",
+                        puntos: 0,
+                      }))
+                      .slice(0, 3)
+                  );
+                } else {
+                  const { data: intentosRanking } = await supabase
+                    .from("intentos_quiz")
+                    .select("quiz_id, usuario_id, puntaje")
+                    .in("usuario_id", estudiantesIds)
+                    .in("quiz_id", quizIds);
+
+                  const mejoresPorUsuarioQuiz: Record<string, Record<string, number>> = {};
+
+                  (intentosRanking || []).forEach((intento: any) => {
+                    const uid = intento.usuario_id;
+                    const qid = intento.quiz_id;
+                    const puntaje = Number(intento.puntaje ?? 0);
+                    const xpQuiz = xpPorQuiz[qid] ?? 0;
+                    const puntos = Math.round((xpQuiz * puntaje) / 100);
+
+                    if (!mejoresPorUsuarioQuiz[uid]) mejoresPorUsuarioQuiz[uid] = {};
+                    mejoresPorUsuarioQuiz[uid][qid] = Math.max(
+                      mejoresPorUsuarioQuiz[uid][qid] ?? 0,
+                      puntos
+                    );
+                  });
+
+                  const top = (usuariosRanking || [])
+                    .map((u: any) => ({
+                      usuario_id: u.id,
+                      nombre: u.nombre ?? "Sin nombre",
+                      puntos: Object.values(mejoresPorUsuarioQuiz[u.id] || {}).reduce(
+                        (acc, puntos) => acc + puntos,
+                        0
+                      ),
+                    }))
+                    .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
+                    .slice(0, 3);
+
+                  setRankingTopCurso(top);
+                }
+              }
+            } else {
+              setProgreso(0);
+
+              let progresoQuery = supabase
+                .from("progreso")
+                .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
+                .eq("materia_id", materiaId);
+
+              const { data: progresoRanking } = await progresoQuery;
+
+              const usuariosRankingIds = Array.from(
+                new Set((progresoRanking || []).map((p: any) => p.usuario_id))
+              );
+
+              setContextoRankingCurso({
+                esVisitante: true,
+                tieneInscripcion: false,
+                carreraNombre: null,
+                semestre: null,
+                periodoNombre: null,
+                seccionNombre: null,
+              });
+
+              if (usuariosRankingIds.length === 0) {
+                setRankingTopCurso([]);
+              } else {
+                const { data: usuariosRanking } = await supabase
+                  .from("usuarios")
+                  .select("id, nombre, rol")
+                  .in("id", usuariosRankingIds)
+                  .eq("rol", "estudiante");
+
+                const estudiantesIds = (usuariosRanking || []).map((u: any) => u.id);
+
+                const { data: quizzesRanking } = await supabase
+                  .from("quizzes")
+                  .select("id, xp")
+                  .eq("materia_id", materiaId);
+
+                const quizIds = (quizzesRanking || []).map((q: any) => q.id);
+                const xpPorQuiz = Object.fromEntries(
+                  (quizzesRanking || []).map((q: any) => [q.id, Number(q.xp ?? 0)])
+                );
+
+                if (estudiantesIds.length === 0 || quizIds.length === 0) {
+                  setRankingTopCurso(
+                    (usuariosRanking || [])
+                      .map((u: any) => ({
+                        usuario_id: u.id,
+                        nombre: u.nombre ?? "Sin nombre",
+                        puntos: 0,
+                      }))
+                      .slice(0, 3)
+                  );
+                } else {
+                  const { data: intentosRanking } = await supabase
+                    .from("intentos_quiz")
+                    .select("quiz_id, usuario_id, puntaje")
+                    .in("usuario_id", estudiantesIds)
+                    .in("quiz_id", quizIds);
+
+                  const mejoresPorUsuarioQuiz: Record<string, Record<string, number>> = {};
+
+                  (intentosRanking || []).forEach((intento: any) => {
+                    const uid = intento.usuario_id;
+                    const qid = intento.quiz_id;
+                    const puntaje = Number(intento.puntaje ?? 0);
+                    const xpQuiz = xpPorQuiz[qid] ?? 0;
+                    const puntos = Math.round((xpQuiz * puntaje) / 100);
+
+                    if (!mejoresPorUsuarioQuiz[uid]) mejoresPorUsuarioQuiz[uid] = {};
+                    mejoresPorUsuarioQuiz[uid][qid] = Math.max(
+                      mejoresPorUsuarioQuiz[uid][qid] ?? 0,
+                      puntos
+                    );
+                  });
+
+                  const top = (usuariosRanking || [])
+                    .map((u: any) => ({
+                      usuario_id: u.id,
+                      nombre: u.nombre ?? "Sin nombre",
+                      puntos: Object.values(mejoresPorUsuarioQuiz[u.id] || {}).reduce(
+                        (acc, puntos) => acc + puntos,
+                        0
+                      ),
+                    }))
+                    .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
+                    .slice(0, 3);
+
+                  setRankingTopCurso(top);
+                }
+              }
+            }
 
       const { data: unidadesData } = await supabase
         .from("curso_unidades")
@@ -313,49 +579,159 @@ export default function VisualizadorCurso({
     }))
     .filter((unidad) => unidad.bloques.length > 0);
 
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: "var(--color-card)",
-    border: "1px solid var(--color-border)",
-  };
+    const cardStyle: React.CSSProperties = {
+      backgroundColor: "var(--color-card)",
+      border: "1px solid var(--color-border)",
+    };
+
+    const nombreCorto = (nombre?: string | null) =>
+      (nombre || "Sin nombre").trim().split(/\s+/).slice(0, 2).join(" ");
+
+    const defaultAvatarConfig: AvatarConfig = {
+      gender: "masculino",
+      skin: "base/masculino/piel.png",
+      skinColor: "#f1c27d",
+      eyes: "Ojos1.png",
+      mouth: "Boca1.png",
+      nose: "Nariz1.png",
+      glasses: "none",
+      hair: "Cabello1.png",
+      playera: "Playera1",
+      sueter: "none",
+      collar: "none",
+      pulsera: "none",
+      accessory: "none",
+    };
+
+    const cursoCarreraPrincipal = materia.curso_carreras?.[0];
+
+    const mostrarDatosGrupo =
+      rol === "estudiante" &&
+      contextoRankingCurso.tieneInscripcion &&
+      !contextoRankingCurso.esVisitante;
+
+    const carreraInfoCurso = mostrarDatosGrupo
+      ? contextoRankingCurso.carreraNombre
+      : cursoCarreraPrincipal?.carrera?.nombre;
+
+    const semestreInfoCurso = mostrarDatosGrupo
+      ? contextoRankingCurso.semestre
+      : cursoCarreraPrincipal?.semestre;
 
   return (
     <div className="space-y-4 md:space-y-6 min-w-0">
       {/* Cabecera curso */}
-      <div className="p-4 sm:p-6 rounded-xl shadow gap-4 sm:gap-6 items-center flex flex-col sm:flex-row" style={cardStyle}>
-        {rol === "estudiante" && (
-          <div className="flex items-center justify-center shrink-0 scale-75 sm:scale-100">
-            <CirculoProgreso progress={progreso} size={140} />
-          </div>
-        )}
-
-        <div className="flex-1 space-y-2 min-w-0 text-center sm:text-left">
-          <h1 className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
-            {materia.nombre}
-          </h1>
-          {materia.curso_carreras?.length > 0 ? (
-            materia.curso_carreras.map((cc: any) => (
-              <div key={cc.id} className="text-sm" style={{ color: "var(--color-text)" }}>
-                <p>Carrera: {cc.carrera?.nombre ?? "N/A"}</p>
-                <p>Semestre: {cc.semestre ?? "N/A"}</p>
-              </div>
-            ))
-          ) : (
-            <p style={{ color: "var(--color-muted)" }}>
-              Este curso aún no tiene carreras asignadas
-            </p>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px_360px] gap-4 md:gap-6 min-w-0">
+        <div
+          className="p-4 sm:p-6 rounded-xl shadow gap-3 sm:gap-4 items-center justify-center flex flex-col sm:flex-row min-w-0"
+          style={cardStyle}
+        >
+          {rol === "estudiante" && (
+            <div className="flex items-center justify-center shrink-0 scale-75 sm:scale-100">
+              <CirculoProgreso progress={progreso} size={140} />
+            </div>
           )}
 
-          <div className="mt-6">
-            <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
-              Profesor
-            </h2>
-            <p style={{ color: "var(--color-muted)" }}>
-              {materia.profesor
-                ? materia.profesor.nombre
-                : "Aún no hay profesor asignado"}
-            </p>
+          <div className={`space-y-2 min-w-0 ${rol === "estudiante" ? "text-left" : "text-center"}`}>
+            <h1 className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
+              {materia.nombre}
+            </h1>
+
+            {carreraInfoCurso ? (
+              <div className="text-sm space-y-1" style={{ color: "var(--color-text)" }}>
+                <p>{carreraInfoCurso}</p>
+
+                {semestreInfoCurso && (
+                  <p>Semestre: {semestreInfoCurso}</p>
+                )}
+
+                {mostrarDatosGrupo && contextoRankingCurso.periodoNombre && (
+                  <p>Período: {contextoRankingCurso.periodoNombre}</p>
+                )}
+
+                {mostrarDatosGrupo && contextoRankingCurso.seccionNombre && (
+                  <p>Sección: {contextoRankingCurso.seccionNombre}</p>
+                )}
+              </div>
+            ) : (
+              <p style={{ color: "var(--color-muted)" }}>
+                Este curso aún no tiene carreras asignadas
+              </p>
+            )}
           </div>
         </div>
+
+        <div className="p-4 sm:p-6 rounded-xl shadow min-w-0 flex flex-col items-center justify-center text-center" style={cardStyle}>
+          <h2 className="text-lg sm:text-xl font-bold mb-3" style={{ color: "var(--color-heading)" }}>
+            Profesor
+          </h2>
+
+          {materia.profesor ? (
+            <>
+              <RenderizadorAvatar
+                size={95}
+                config={materia.profesor.avatar_config ?? defaultAvatarConfig}
+              />
+
+              <p className="mt-2 font-semibold truncate max-w-full" style={{ color: "var(--color-text)" }}>
+                {nombreCorto(materia.profesor.nombre)}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Aún no hay profesor asignado
+            </p>
+          )}
+        </div>
+
+        {(rol === "estudiante" || rol === "profesor") && (
+          <div className="p-4 sm:p-6 rounded-xl shadow min-w-0" style={cardStyle}>
+            <div className="mb-4 text-center">
+              <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+                🏆{" "}
+                {rol === "profesor" || contextoRankingCurso.esVisitante
+                  ? "Mejores puntajes"
+                  : "Top 3 del grupo"}
+              </h2>
+            </div>
+
+            {rankingTopCurso.length === 0 ? (
+              <p className="text-sm text-center" style={{ color: "var(--color-muted)" }}>
+                Aún no hay datos para mostrar.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {rankingTopCurso.map((user, index) => (
+                  <div
+                    key={user.usuario_id}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 min-w-0"
+                    style={{
+                      backgroundColor:
+                        index === 0
+                          ? "rgba(234,179,8,0.18)"
+                          : index === 1
+                          ? "rgba(148,163,184,0.18)"
+                          : "rgba(251,146,60,0.18)",
+                    }}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-lg shrink-0">
+                        {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                      </span>
+                      <p className="font-semibold truncate" style={{ color: "var(--color-text)" }}>
+                        {nombreCorto(user.nombre)}
+                      </p>
+                    </div>
+
+                    <span className="font-bold text-sm whitespace-nowrap" style={{ color: "var(--color-primary)" }}>
+                      {user.puntos} pts
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Índice de bloques */}
