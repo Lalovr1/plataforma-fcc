@@ -320,7 +320,7 @@ export default function TutorialInicio() {
             timeoutTooltip = setTimeout(() => {
               setMostrarTooltip(true);
               setTooltipVisibleMovil(true);
-            }, 2800);
+            }, 2000);
           }, 1450);
         }, 650);
 
@@ -484,7 +484,9 @@ export default function TutorialInicio() {
 
     const base = {
       position: "fixed",
-      backgroundColor: "var(--color-card)",
+      backgroundColor: esMobile
+        ? "color-mix(in srgb, var(--color-card) 92%, var(--color-accent) 8%)"
+        : "var(--color-card)",
       color: "var(--color-text)",
       padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
@@ -492,7 +494,7 @@ export default function TutorialInicio() {
       maxWidth: esMobile ? "none" : pasoTooltip.selector ? "430px" : "340px",
       boxShadow: "0 0 40px rgba(255,255,255,0.9), 0 0 30px var(--color-accent)",
       zIndex: 10021,
-      transition: "all 0.6s ease-in-out",
+      transition: esMobile ? "all 0.9s ease-in-out" : "all 0.6s ease-in-out",
       opacity: 1,
     } as React.CSSProperties;
 
@@ -736,10 +738,10 @@ export default function TutorialInicio() {
             opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
             transition:
               esMobile && pasoTooltip.id !== "menu-lateral"
-                ? "opacity 1.4s ease"
+                ? "opacity 0.9s ease, transform 0.9s ease"
                 : tooltipStyle.transition,
             animation:
-              pasoTooltip.id === "crear-avatar"
+              pasoTooltip.id === "crear-avatar" || esMobile
                 ? "aparecerTooltipSuave 0.9s ease-out"
                 : undefined,
           }}
