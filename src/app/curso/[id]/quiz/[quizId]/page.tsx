@@ -504,7 +504,10 @@ export default function ResolverQuizPage() {
         )}
 
         {esPreview && (
-          <p style={{ color: "var(--color-secondary)" }}>
+          <p
+            className="text-center"
+            style={{ color: "var(--color-secondary)" }}
+          >
             👨‍🏫 Modo previsualización: las respuestas no se guardan ni otorgan XP.
           </p>
         )}
@@ -525,7 +528,7 @@ export default function ResolverQuizPage() {
                 : "⏱ Tiempo límite: sin límite"}
             </p>
             <p style={{ color: "var(--color-text)" }}>📝 Preguntas: {preguntas.length}</p>
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <div className="flex flex-col items-center gap-3">
               <button
                 onClick={iniciar}
                 disabled={sinMasIntentos}
@@ -539,8 +542,9 @@ export default function ResolverQuizPage() {
               >
                 Iniciar
               </button>
+
               {sinMasIntentos && (
-                <div className="text-sm space-y-1">
+                <div className="text-sm space-y-1 text-center">
                   <p style={{ color: "var(--color-danger)" }}>
                     Ya no tienes intentos disponibles.
                   </p>

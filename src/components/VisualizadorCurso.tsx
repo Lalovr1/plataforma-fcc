@@ -766,10 +766,15 @@ export default function VisualizadorCurso({
                     color: "var(--color-text)",
                   }}
                 >
-                  <div className="flex items-center justify-between gap-3 min-w-0">
-                    <p className="font-bold text-base sm:text-lg break-words min-w-0">{`Unidad ${unidad.numero ?? ""} - ${unidad.nombre}`}</p>
-                    <span className="shrink-0 text-sm">{unidadActiva ? "Ocultar" : "Ver"}</span>
-                  </div>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 min-w-0">
+                      <div />
+                      <p className="font-bold text-base sm:text-lg break-words min-w-0 text-center">
+                        {`Unidad ${unidad.numero ?? ""} - ${unidad.nombre}`}
+                      </p>
+                      <span className="justify-self-end shrink-0 text-sm">
+                        {unidadActiva ? "Ocultar" : "Ver"}
+                      </span>
+                    </div>
                 </button>
 
                 {unidadActiva && (
