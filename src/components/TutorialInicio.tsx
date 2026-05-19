@@ -75,22 +75,6 @@ export default function TutorialInicio() {
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
-
-    const bloquearScroll = (e: Event) => {
-      e.preventDefault();
-    };
-
-    window.addEventListener("wheel", bloquearScroll, { passive: false });
-    window.addEventListener("touchmove", bloquearScroll, { passive: false });
-
-    return () => {
-      window.removeEventListener("wheel", bloquearScroll);
-      window.removeEventListener("touchmove", bloquearScroll);
-    };
-  }, [visible]);
-
-  useEffect(() => {
     if (!visible) {
       (window as any).__tutorialActivo = false;
       window.dispatchEvent(
@@ -164,6 +148,24 @@ export default function TutorialInicio() {
   const [mostrarCofre, setMostrarCofre] = useState(false);
   const [recompensasCofre, setRecompensasCofre] = useState<any[]>([]);
   const mostrarCofreRef = useRef(mostrarCofre);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (mostrarEditor) return;
+
+    const bloquearScroll = (e: Event) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener("wheel", bloquearScroll, { passive: false });
+    window.addEventListener("touchmove", bloquearScroll, { passive: false });
+
+    return () => {
+      window.removeEventListener("wheel", bloquearScroll);
+      window.removeEventListener("touchmove", bloquearScroll);
+    };
+  }, [visible, mostrarEditor]);
 
   useEffect(() => {
     mostrarCofreRef.current = mostrarCofre;
@@ -845,6 +847,7 @@ export default function TutorialInicio() {
 
       {/* 🔹 Editor de avatar animado */}
       <div
+        className="tutorial-editor-avatar"
         style={{
           opacity: mostrarEditor ? (ocultandoEditor ? 0 : 1) : 0,
           transform: mostrarEditor ? (ocultandoEditor ? "scale(0.97)" : "scale(1)") : "scale(0.97)",
@@ -854,6 +857,9 @@ export default function TutorialInicio() {
           inset: 0,
           pointerEvents: mostrarEditor ? "auto" : "none",
           backgroundColor: mostrarEditor ? "rgba(0,0,0,0.4)" : "transparent",
+          overflowY: mostrarEditor ? "auto" : "hidden",
+          touchAction: mostrarEditor ? "auto" : "none",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {mostrarEditor && (
