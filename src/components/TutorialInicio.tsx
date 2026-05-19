@@ -75,6 +75,22 @@ export default function TutorialInicio() {
   }, []);
 
   useEffect(() => {
+    if (!visible) return;
+
+    const bloquearScroll = (e: Event) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener("wheel", bloquearScroll, { passive: false });
+    window.addEventListener("touchmove", bloquearScroll, { passive: false });
+
+    return () => {
+      window.removeEventListener("wheel", bloquearScroll);
+      window.removeEventListener("touchmove", bloquearScroll);
+    };
+  }, [visible]);
+
+  useEffect(() => {
     if (!visible) {
       (window as any).__tutorialActivo = false;
       window.dispatchEvent(
@@ -179,13 +195,17 @@ export default function TutorialInicio() {
       selector: null,
       pos: "center",
     },
-    {
-      id: "preparar-avatar",
-      texto:
-        "A continuación se abrirá el editor de avatar. Ahí podrás crear tu personaje para usarlo en tu perfil, logros y ranking.",
-      selector: null,
-      pos: "center",
-    },
+    ...(esMobile
+      ? [
+          {
+            id: "preparar-avatar",
+            texto:
+              "A continuación se abrirá el editor de avatar. Ahí podrás crear tu personaje para usarlo en tu perfil, logros y ranking.",
+            selector: null,
+            pos: "center",
+          },
+        ]
+      : []),
     {
       id: "crear-avatar",
       texto:
@@ -241,43 +261,65 @@ export default function TutorialInicio() {
   };
 
   useEffect(() => {
+    let timeoutScroll: NodeJS.Timeout;
+    let timeoutTooltip: NodeJS.Timeout;
+
     const actualizarResaltado = () => {
       if (!paso.selector) {
         setHighlightRect(null);
         setHighlightContent(null);
         setStepTooltip(step);
+        setMostrarTooltip(true);
         return;
       }
 
       const elemento = document.querySelector(paso.selector) as HTMLElement;
 
-      if (elemento) {
+      if (!elemento) {
+        setHighlightRect(null);
+        setHighlightContent(null);
+        return;
+      }
+
+      const calcularResaltado = () => {
+        const rect = elemento.getBoundingClientRect();
+        setHighlightRect(rect);
+        setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+        setStepTooltip(step);
+      };
+
+      if (esMobile && paso.id !== "menu-lateral") {
+        setMostrarTooltip(false);
+
         elemento.scrollIntoView({
           behavior: "smooth",
-          block: "center",
+          block: paso.id === "ranking" || paso.id === "xp" ? "end" : "start",
           inline: "nearest",
         });
 
-        setTimeout(() => {
-          const rect = elemento.getBoundingClientRect();
-          setHighlightRect(rect);
-          setHighlightContent(elemento.cloneNode(true) as HTMLElement);
-          setStepTooltip(step);
-        }, 450);
-      } else {
-        setHighlightRect(null);
-        setHighlightContent(null);
+        timeoutScroll = setTimeout(() => {
+          calcularResaltado();
+
+          timeoutTooltip = setTimeout(() => {
+            setMostrarTooltip(true);
+          }, 180);
+        }, 750);
+
+        return;
       }
+
+      calcularResaltado();
+      setMostrarTooltip(true);
     };
 
     actualizarResaltado();
 
     window.addEventListener("resize", actualizarResaltado);
-    window.addEventListener("scroll", actualizarResaltado, true);
 
     return () => {
+      clearTimeout(timeoutScroll);
+      clearTimeout(timeoutTooltip);
       window.removeEventListener("resize", actualizarResaltado);
-      window.removeEventListener("scroll", actualizarResaltado, true);
     };
   }, [step, esMobile, paso.selector]);
 
@@ -285,11 +327,14 @@ export default function TutorialInicio() {
     if (paso.id === "crear-avatar") {
       setTransicionSuave(true);
       setAnimandoEditor(true);
-      setMostrarTooltip(false); 
+      setMostrarTooltip(false);
 
       const abrir = setTimeout(() => {
         setMostrarEditor(true);
-        setTimeout(() => setMostrarTooltip(true), 800);
+
+        if (!esMobile) {
+          setTimeout(() => setMostrarTooltip(true), 800);
+        }
       }, 400);
 
       return () => clearTimeout(abrir);
@@ -410,16 +455,18 @@ export default function TutorialInicio() {
 
     if (esMobile && pasoTooltip.pos !== "center" && pasoTooltip.id !== "crear-avatar" && highlightRect) {
       const r = highlightRect;
-      const tooltipAlto = 360;
-      const hayEspacioAbajo = window.innerHeight - r.bottom > tooltipAlto + 16;
-      const hayEspacioArriba = r.top > tooltipAlto + 16;
+      const tooltipAlto = 310;
+      const margen = 12;
 
-      if (hayEspacioAbajo) {
+      const hayEspacioAbajo = window.innerHeight - r.bottom > tooltipAlto + margen;
+      const hayEspacioArriba = r.top > tooltipAlto + margen;
+
+      if (r.top < window.innerHeight * 0.45 && hayEspacioAbajo) {
         return {
           ...base,
           left: "16px",
           right: "16px",
-          top: r.bottom + 12,
+          top: r.bottom + margen,
           bottom: "auto",
           width: "auto",
           maxWidth: "none",
@@ -432,7 +479,7 @@ export default function TutorialInicio() {
           ...base,
           left: "16px",
           right: "16px",
-          top: r.top - 12,
+          top: r.top - margen,
           bottom: "auto",
           width: "auto",
           maxWidth: "none",
@@ -665,7 +712,7 @@ export default function TutorialInicio() {
               src={obtenerImagenMascota(pasoTooltip.id)}
               alt="Mascota FCC Academy"
               style={{
-                width: esMobile ? "105px" : "150px",
+                width: esMobile ? "90px" : "150px",
                 height: "auto",
                 objectFit: "contain",
                 filter: "drop-shadow(0 0 14px rgba(255,255,255,0.8))",
