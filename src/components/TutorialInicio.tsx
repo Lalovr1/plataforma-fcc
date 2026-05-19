@@ -484,7 +484,7 @@ export default function TutorialInicio() {
 
     const base = {
       position: "fixed",
-      backgroundColor: esMobile ? "var(--color-bg)" : "var(--color-card)",
+      backgroundColor: "var(--color-card)",
       color: "var(--color-text)",
       padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
@@ -736,11 +736,11 @@ export default function TutorialInicio() {
             opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
             transition:
               esMobile && pasoTooltip.id !== "menu-lateral"
-                ? "opacity 0.9s ease, transform 0.9s ease"
+                ? "opacity 1.1s ease, filter 1.1s ease"
                 : tooltipStyle.transition,
             animation:
               pasoTooltip.id === "crear-avatar" || esMobile
-                ? "aparecerTooltipSuave 0.9s ease-out"
+                ? "aparecerTooltipSuave 1.1s ease-out"
                 : undefined,
           }}
         >
@@ -856,11 +856,11 @@ export default function TutorialInicio() {
         @keyframes aparecerTooltipSuave {
           from {
             opacity: 0;
-            transform: translateY(-50%) scale(0.96);
+            filter: blur(3px);
           }
           to {
             opacity: 1;
-            transform: translateY(-50%) scale(1);
+            filter: blur(0);
           }
         }
       `}</style>
