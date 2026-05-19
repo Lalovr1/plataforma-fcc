@@ -321,8 +321,8 @@ export default function TutorialInicio() {
               setMostrarTooltip(true);
               setTooltipVisibleMovil(true);
             }, 2000);
-          }, 1450);
-        }, 650);
+          }, 1700);
+        }, 400);
 
         return;
       }
