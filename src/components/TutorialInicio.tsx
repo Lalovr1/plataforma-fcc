@@ -119,11 +119,23 @@ export default function TutorialInicio() {
 
   const [step, setStep] = useState(0);
   const [ready, setReady] = useState(false);
+  const [esMobile, setEsMobile] = useState(false);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [highlightContent, setHighlightContent] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setReady(true);
+  }, []);
+
+  useEffect(() => {
+    const actualizarTamano = () => {
+      setEsMobile(window.innerWidth < 1024);
+    };
+
+    actualizarTamano();
+    window.addEventListener("resize", actualizarTamano);
+
+    return () => window.removeEventListener("resize", actualizarTamano);
   }, []);
 
   const [mostrarEditor, setMostrarEditor] = useState(false);
@@ -183,10 +195,11 @@ export default function TutorialInicio() {
     },
     {
       id: "menu-lateral",
-      selector: ".menu-lateral",
-      texto:
-        "Desde esta barra lateral puedes navegar entre las distintas secciones: tus cursos, ranking, amigos, profesores y configuración.",
-      pos: "right",
+      selector: esMobile ? ".boton-menu-mobile" : ".menu-lateral",
+      texto: esMobile
+        ? "Desde este botón puedes abrir el menú de navegación para entrar a tus cursos, ranking, amigos, profesores y configuración."
+        : "Desde esta barra lateral puedes navegar entre las distintas secciones: tus cursos, ranking, amigos, profesores y configuración.",
+      pos: esMobile ? "bottom" : "right",
     },
     {
       id: "cursos",
@@ -213,22 +226,40 @@ export default function TutorialInicio() {
 
   const paso = pasos[step];
 
+  const limitar = (valor: number, minimo: number, maximo: number) => {
+    return Math.min(Math.max(valor, minimo), maximo);
+  };
+
   useEffect(() => {
-    if (!paso.selector) {
-      setHighlightRect(null);
-      setHighlightContent(null);
-      return;
-    }
-    const elemento = document.querySelector(paso.selector) as HTMLElement;
-    if (elemento) {
-      const rect = elemento.getBoundingClientRect();
-      setHighlightRect(rect);
-      setHighlightContent(elemento.cloneNode(true) as HTMLElement);
-    } else {
-      setHighlightRect(null);
-      setHighlightContent(null);
-    }
-  }, [step]);
+    const actualizarResaltado = () => {
+      if (!paso.selector) {
+        setHighlightRect(null);
+        setHighlightContent(null);
+        return;
+      }
+
+      const elemento = document.querySelector(paso.selector) as HTMLElement;
+
+      if (elemento) {
+        const rect = elemento.getBoundingClientRect();
+        setHighlightRect(rect);
+        setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+      } else {
+        setHighlightRect(null);
+        setHighlightContent(null);
+      }
+    };
+
+    actualizarResaltado();
+
+    window.addEventListener("resize", actualizarResaltado);
+    window.addEventListener("scroll", actualizarResaltado, true);
+
+    return () => {
+      window.removeEventListener("resize", actualizarResaltado);
+      window.removeEventListener("scroll", actualizarResaltado, true);
+    };
+  }, [step, esMobile, paso.selector]);
 
   useEffect(() => {
     if (paso.id === "crear-avatar") {
@@ -330,60 +361,146 @@ export default function TutorialInicio() {
   }
 
   const tooltipStyle: React.CSSProperties = (() => {
+    const anchoTooltip = esMobile ? window.innerWidth - 32 : paso.selector ? 430 : 340;
+    const margenPantalla = 16;
+    const margin = 20;
+
     const base = {
-      position: "absolute",
+      position: "fixed",
       backgroundColor: "var(--color-card)",
       color: "var(--color-text)",
-      padding: "18px 22px",
+      padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
-      maxWidth: "340px",
+      width: esMobile ? "auto" : `${anchoTooltip}px`,
+      maxWidth: esMobile ? "none" : paso.selector ? "430px" : "340px",
       boxShadow: "0 0 40px rgba(255,255,255,0.9), 0 0 30px var(--color-accent)",
       zIndex: 10021,
       transition: "all 0.6s ease-in-out",
       opacity: 1,
     } as React.CSSProperties;
 
+    if (esMobile && paso.pos !== "center" && paso.id !== "crear-avatar") {
+      return {
+        ...base,
+        left: "16px",
+        right: "16px",
+        bottom: "20px",
+        top: "auto",
+        width: "auto",
+        maxWidth: "none",
+        transform: "none",
+      };
+    }
+
     if (paso.pos === "left-modal") {
-      return { ...base, top: "50%", left: "3%", transform: "translateY(-50%)" };
+      return {
+        ...base,
+        top: "50%",
+        left: "3%",
+        transform: "translateY(-50%)",
+      };
     }
 
     if (!highlightRect || paso.pos === "center") {
-      return { ...base, top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+      return {
+        ...base,
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+      };
     }
 
     const r = highlightRect;
-    const margin = 20;
 
-    //  Posición especial para el paso de "cursos"
-    if (paso.id === "cursos" && highlightRect) {
+    const leftCentrado = limitar(
+      r.left + r.width / 2 - anchoTooltip / 2,
+      margenPantalla,
+      window.innerWidth - anchoTooltip - margenPantalla
+    );
+
+    const hayEspacioArriba = r.top > 260;
+    const hayEspacioAbajo = window.innerHeight - r.bottom > 260;
+    const hayEspacioDerecha = window.innerWidth - r.right > anchoTooltip + margin;
+    const hayEspacioIzquierda = r.left > anchoTooltip + margin;
+
+    if (paso.pos === "top" && hayEspacioArriba) {
       return {
         ...base,
-        top: highlightRect.top + window.scrollY - 420, 
-       left: Math.max(highlightRect.left + 320, 20),  
+        top: r.top - margin,
+        left: leftCentrado,
+        transform: "translateY(-100%)",
+      };
+    }
+
+    if (paso.pos === "bottom" && hayEspacioAbajo) {
+      return {
+        ...base,
+        top: r.bottom + margin,
+        left: leftCentrado,
         transform: "none",
       };
     }
 
-    //  Posición especial para el paso de "xp" 
-    if (paso.id === "xp" && highlightRect) {
+    if (paso.pos === "right" && hayEspacioDerecha) {
       return {
         ...base,
-        top: highlightRect.top + window.scrollY - 120, 
-        left: Math.max(highlightRect.left - 350, 20),
+        top: limitar(r.top, margenPantalla, window.innerHeight - 260),
+        left: r.right + margin,
         transform: "none",
       };
     }
 
-    switch (paso.pos) {
-      case "right":
-        return { ...base, top: r.top + window.scrollY, left: r.right + margin };
-      case "left":
-        return { ...base, top: r.top + window.scrollY, left: r.left - 360 };
-      case "top":
-        return { ...base, top: r.top + window.scrollY - 180, left: r.left + r.width / 2 - 170 };
-      default:
-        return { ...base, top: r.bottom + window.scrollY + margin, left: r.left + r.width / 2 - 170 };
+    if (paso.pos === "left" && hayEspacioIzquierda) {
+      return {
+        ...base,
+        top: limitar(r.top, margenPantalla, window.innerHeight - 260),
+        left: r.left - anchoTooltip - margin,
+        transform: "none",
+      };
     }
+
+    if (hayEspacioArriba) {
+      return {
+        ...base,
+        top: r.top - margin,
+        left: leftCentrado,
+        transform: "translateY(-100%)",
+      };
+    }
+
+    if (hayEspacioAbajo) {
+      return {
+        ...base,
+        top: r.bottom + margin,
+        left: leftCentrado,
+        transform: "none",
+      };
+    }
+
+    if (hayEspacioDerecha) {
+      return {
+        ...base,
+        top: margenPantalla,
+        left: r.right + margin,
+        transform: "none",
+      };
+    }
+
+    if (hayEspacioIzquierda) {
+      return {
+        ...base,
+        top: margenPantalla,
+        left: r.left - anchoTooltip - margin,
+        transform: "none",
+      };
+    }
+
+    return {
+      ...base,
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+    };
   })();
 
   function obtenerImagenMascota(idPaso: string): string {
@@ -468,9 +585,11 @@ export default function TutorialInicio() {
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
+              flexDirection: esMobile || !paso.selector ? "column" : "row",
               alignItems: "center",
-              textAlign: "center",
+              justifyContent: "center",
+              textAlign: esMobile || !paso.selector ? "center" : "left",
+              gap: esMobile || !paso.selector ? "0px" : "16px",
               marginBottom: "18px",
             }}
           >
@@ -478,11 +597,12 @@ export default function TutorialInicio() {
               src={obtenerImagenMascota(paso.id)}
               alt="Mascota FCC Academy"
               style={{
-                width: "150px",
+                width: esMobile ? "105px" : "150px",
                 height: "auto",
                 objectFit: "contain",
                 filter: "drop-shadow(0 0 14px rgba(255,255,255,0.8))",
-                marginBottom: "12px",
+                marginBottom: esMobile || !paso.selector ? "12px" : "0px",
+                flexShrink: 0,
                 transform: ready ? "scale(1)" : "scale(0.9)",
                 transition: "opacity 0.4s ease, transform 0.4s ease",
                 opacity: ready ? 1 : 0,
@@ -491,7 +611,7 @@ export default function TutorialInicio() {
 
             <p
               style={{
-                fontSize: "15px",
+                fontSize: esMobile ? "14px" : "15px",
                 marginBottom: 0,
                 lineHeight: "1.6",
                 opacity: mostrarTooltip ? 1 : 0,

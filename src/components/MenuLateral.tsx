@@ -87,7 +87,7 @@ export default function MenuLateral({ rol }: Props) {
         <button
           type="button"
           onClick={() => setMenuAbierto(true)}
-          className="lg:hidden fixed top-3 left-3 z-40 w-11 h-11 flex items-center justify-center rounded-lg shadow-md"
+          className="boton-menu-mobile lg:hidden fixed top-3 left-3 z-40 w-11 h-11 flex items-center justify-center rounded-lg shadow-md"
           style={{
             backgroundColor: "var(--color-card)",
             color: "var(--color-text)",
