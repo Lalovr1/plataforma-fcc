@@ -180,9 +180,16 @@ export default function TutorialInicio() {
       pos: "center",
     },
     {
+      id: "preparar-avatar",
+      texto:
+        "A continuación se abrirá el editor de avatar. Ahí podrás crear tu personaje para usarlo en tu perfil, logros y ranking.",
+      selector: null,
+      pos: "center",
+    },
+    {
       id: "crear-avatar",
       texto:
-        "Antes de comenzar, crea tu avatar. Podrás personalizarlo con diferentes estilos y accesorios, y lo verás reflejado en tus logros y ranking.",
+        "Crea tu avatar. Podrás personalizarlo con diferentes estilos y accesorios.",
       selector: null,
       pos: "left-modal",
     },
@@ -224,7 +231,10 @@ export default function TutorialInicio() {
     },
   ];
 
+  const [stepTooltip, setStepTooltip] = useState(0);
+
   const paso = pasos[step];
+  const pasoTooltip = pasos[stepTooltip] ?? paso;
 
   const limitar = (valor: number, minimo: number, maximo: number) => {
     return Math.min(Math.max(valor, minimo), maximo);
@@ -235,15 +245,25 @@ export default function TutorialInicio() {
       if (!paso.selector) {
         setHighlightRect(null);
         setHighlightContent(null);
+        setStepTooltip(step);
         return;
       }
 
       const elemento = document.querySelector(paso.selector) as HTMLElement;
 
       if (elemento) {
-        const rect = elemento.getBoundingClientRect();
-        setHighlightRect(rect);
-        setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+        elemento.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+
+        setTimeout(() => {
+          const rect = elemento.getBoundingClientRect();
+          setHighlightRect(rect);
+          setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+          setStepTooltip(step);
+        }, 450);
       } else {
         setHighlightRect(null);
         setHighlightContent(null);
@@ -269,7 +289,7 @@ export default function TutorialInicio() {
 
       const abrir = setTimeout(() => {
         setMostrarEditor(true);
-        setTimeout(() => setMostrarTooltip(true), 600);
+        setTimeout(() => setMostrarTooltip(true), 800);
       }, 400);
 
       return () => clearTimeout(abrir);
@@ -300,9 +320,12 @@ export default function TutorialInicio() {
       setAvatarConfig(newConfig);
 
       setTimeout(() => {
-        setMostrarEditor(false);
         setStep((s) => s + 1);
-      }, 500); 
+
+        setTimeout(() => {
+          setMostrarEditor(false);
+        }, 250);
+      }, 500);
     } catch (error) {
       console.error("Error guardando avatar:", error);
     }
@@ -310,6 +333,12 @@ export default function TutorialInicio() {
 
   function siguiente() {
     if (paso.id === "crear-avatar") return;
+
+    if (paso.id === "preparar-avatar") {
+      setStep(step + 1);
+      return;
+    }
+
     if (step < pasos.length - 1) setStep(step + 1);
     else finalizar();
   }
@@ -361,7 +390,7 @@ export default function TutorialInicio() {
   }
 
   const tooltipStyle: React.CSSProperties = (() => {
-    const anchoTooltip = esMobile ? window.innerWidth - 32 : paso.selector ? 430 : 340;
+    const anchoTooltip = esMobile ? window.innerWidth - 32 : pasoTooltip.selector ? 430 : 340;
     const margenPantalla = 16;
     const margin = 20;
 
@@ -372,14 +401,45 @@ export default function TutorialInicio() {
       padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
       width: esMobile ? "auto" : `${anchoTooltip}px`,
-      maxWidth: esMobile ? "none" : paso.selector ? "430px" : "340px",
+      maxWidth: esMobile ? "none" : pasoTooltip.selector ? "430px" : "340px",
       boxShadow: "0 0 40px rgba(255,255,255,0.9), 0 0 30px var(--color-accent)",
       zIndex: 10021,
       transition: "all 0.6s ease-in-out",
       opacity: 1,
     } as React.CSSProperties;
 
-    if (esMobile && paso.pos !== "center" && paso.id !== "crear-avatar") {
+    if (esMobile && pasoTooltip.pos !== "center" && pasoTooltip.id !== "crear-avatar" && highlightRect) {
+      const r = highlightRect;
+      const tooltipAlto = 360;
+      const hayEspacioAbajo = window.innerHeight - r.bottom > tooltipAlto + 16;
+      const hayEspacioArriba = r.top > tooltipAlto + 16;
+
+      if (hayEspacioAbajo) {
+        return {
+          ...base,
+          left: "16px",
+          right: "16px",
+          top: r.bottom + 12,
+          bottom: "auto",
+          width: "auto",
+          maxWidth: "none",
+          transform: "none",
+        };
+      }
+
+      if (hayEspacioArriba) {
+        return {
+          ...base,
+          left: "16px",
+          right: "16px",
+          top: r.top - 12,
+          bottom: "auto",
+          width: "auto",
+          maxWidth: "none",
+          transform: "translateY(-100%)",
+        };
+      }
+
       return {
         ...base,
         left: "16px",
@@ -392,7 +452,7 @@ export default function TutorialInicio() {
       };
     }
 
-    if (paso.pos === "left-modal") {
+    if (pasoTooltip.pos === "left-modal") {
       return {
         ...base,
         top: "50%",
@@ -401,7 +461,7 @@ export default function TutorialInicio() {
       };
     }
 
-    if (!highlightRect || paso.pos === "center") {
+    if (!highlightRect || pasoTooltip.pos === "center") {
       return {
         ...base,
         top: "50%",
@@ -423,7 +483,7 @@ export default function TutorialInicio() {
     const hayEspacioDerecha = window.innerWidth - r.right > anchoTooltip + margin;
     const hayEspacioIzquierda = r.left > anchoTooltip + margin;
 
-    if (paso.pos === "top" && hayEspacioArriba) {
+    if (pasoTooltip.pos === "top" && hayEspacioArriba) {
       return {
         ...base,
         top: r.top - margin,
@@ -432,7 +492,7 @@ export default function TutorialInicio() {
       };
     }
 
-    if (paso.pos === "bottom" && hayEspacioAbajo) {
+    if (pasoTooltip.pos === "bottom" && hayEspacioAbajo) {
       return {
         ...base,
         top: r.bottom + margin,
@@ -441,7 +501,7 @@ export default function TutorialInicio() {
       };
     }
 
-    if (paso.pos === "right" && hayEspacioDerecha) {
+    if (pasoTooltip.pos === "right" && hayEspacioDerecha) {
       return {
         ...base,
         top: limitar(r.top, margenPantalla, window.innerHeight - 260),
@@ -450,7 +510,7 @@ export default function TutorialInicio() {
       };
     }
 
-    if (paso.pos === "left" && hayEspacioIzquierda) {
+    if (pasoTooltip.pos === "left" && hayEspacioIzquierda) {
       return {
         ...base,
         top: limitar(r.top, margenPantalla, window.innerHeight - 260),
@@ -580,28 +640,36 @@ export default function TutorialInicio() {
 
       {/* 🔹 Tooltip con mascota */}
       {mostrarTooltip && (
-        <div style={tooltipStyle}>
+        <div
+          style={{
+            ...tooltipStyle,
+            animation:
+              pasoTooltip.id === "crear-avatar"
+                ? "aparecerTooltipSuave 0.9s ease-out"
+                : undefined,
+          }}
+        >
           {/* 🐺 Imagen de mascota (centrada y más grande) */}
           <div
             style={{
               display: "flex",
-              flexDirection: esMobile || !paso.selector ? "column" : "row",
+              flexDirection: esMobile || !pasoTooltip.selector ? "column" : "row",
               alignItems: "center",
               justifyContent: "center",
-              textAlign: esMobile || !paso.selector ? "center" : "left",
-              gap: esMobile || !paso.selector ? "0px" : "16px",
+              textAlign: esMobile || !pasoTooltip.selector ? "center" : "left",
+              gap: esMobile || !pasoTooltip.selector ? "0px" : "16px",
               marginBottom: "18px",
             }}
           >
             <img
-              src={obtenerImagenMascota(paso.id)}
+              src={obtenerImagenMascota(pasoTooltip.id)}
               alt="Mascota FCC Academy"
               style={{
                 width: esMobile ? "105px" : "150px",
                 height: "auto",
                 objectFit: "contain",
                 filter: "drop-shadow(0 0 14px rgba(255,255,255,0.8))",
-                marginBottom: esMobile || !paso.selector ? "12px" : "0px",
+                marginBottom: esMobile || !pasoTooltip.selector ? "12px" : "0px",
                 flexShrink: 0,
                 transform: ready ? "scale(1)" : "scale(0.9)",
                 transition: "opacity 0.4s ease, transform 0.4s ease",
@@ -618,12 +686,12 @@ export default function TutorialInicio() {
                 transition: "opacity 0.6s ease-in-out",
               }}
             >
-              {paso.texto}
+              {pasoTooltip.texto}
             </p>
           </div>
 
           {/* 🟢 Botón siguiente */}
-          {paso.id !== "crear-avatar" && (
+          {pasoTooltip.id !== "crear-avatar" && (
             <div style={{ textAlign: "center" }}>
               <button
                 onClick={siguiente}
@@ -688,6 +756,16 @@ export default function TutorialInicio() {
           100% {
             box-shadow: 0 0 40px 12px rgba(255, 255, 255, 0.8),
               0 0 30px 10px var(--color-accent);
+          }
+        }
+        @keyframes aparecerTooltipSuave {
+          from {
+            opacity: 0;
+            transform: translateY(-50%) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(-50%) scale(1);
           }
         }
       `}</style>
