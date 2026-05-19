@@ -315,14 +315,14 @@ export default function TutorialInicio() {
 
             timeoutResaltar = setTimeout(() => {
               setResaltadoVisibleMovil(true);
-            }, 120);
+            }, 350);
 
             timeoutTooltip = setTimeout(() => {
               setMostrarTooltip(true);
               setTooltipVisibleMovil(true);
-            }, 420);
-          }, 850);
-        }, 250);
+            }, 950);
+          }, 1450);
+        }, 650);
 
         return;
       }
@@ -390,8 +390,15 @@ export default function TutorialInicio() {
       setTimeout(() => {
         if (esMobile) {
           setMostrarTooltip(false);
-          setMostrarEditor(false);
-          setStep((s) => s + 1);
+
+          setTimeout(() => {
+            setMostrarEditor(false);
+
+            setTimeout(() => {
+              setStep((s) => s + 1);
+            }, 500);
+          }, 250);
+
           return;
         }
 
@@ -705,7 +712,7 @@ export default function TutorialInicio() {
                 "0 0 45px 15px rgba(255,255,255,0.9), 0 0 25px 10px var(--color-accent)",
               background: "rgba(255,255,255,0.02)",
               overflow: "hidden",
-              transition: "box-shadow 1s ease-in-out",
+              transition: "box-shadow 1s ease-in-out, opacity 0.8s ease",
               animation: "brilloFlotante 3s ease-in-out infinite",
               opacity: ocultandoEditor || (esMobile && !resaltadoVisibleMovil) ? 0 : 1,
               transitionDuration: "0.8s",
@@ -721,7 +728,7 @@ export default function TutorialInicio() {
           style={{
             ...tooltipStyle,
             opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
-            transition: esMobile ? "opacity 0.45s ease" : tooltipStyle.transition,
+            transition: esMobile ? "opacity 0.9s ease" : tooltipStyle.transition,
             animation:
               pasoTooltip.id === "crear-avatar"
                 ? "aparecerTooltipSuave 0.9s ease-out"
