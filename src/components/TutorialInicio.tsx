@@ -484,9 +484,7 @@ export default function TutorialInicio() {
 
     const base = {
       position: "fixed",
-      backgroundColor: esMobile
-        ? "color-mix(in srgb, var(--color-card) 92%, var(--color-accent) 8%)"
-        : "var(--color-card)",
+      backgroundColor: esMobile ? "var(--color-bg)" : "var(--color-card)",
       color: "var(--color-text)",
       padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
