@@ -195,7 +195,7 @@ export default function TutorialInicio() {
     {
       id: "bienvenida",
       texto:
-        "¡Bienvenido a FCC Academy! Esta plataforma te ayudará a aprender, practicar y subir de nivel resolviendo quizzes y consiguiendo logros.",
+        "¡Bienvenido a FCC Academy! Aquí podrás repasar tus cursos, practicar con quizzes y ver tu progreso dentro de la plataforma mientras ganas experiencia, logros y recompensas.",
       selector: null,
       pos: "center",
     },
@@ -204,7 +204,7 @@ export default function TutorialInicio() {
           {
             id: "preparar-avatar",
             texto:
-              "A continuación se abrirá el editor de avatar. Ahí podrás crear tu personaje para usarlo en tu perfil, logros y ranking.",
+              "Antes de comenzar, crearás tu avatar. Este personaje será parte de tu perfil dentro de FCC Academy",
             selector: null,
             pos: "center",
           },
@@ -213,14 +213,14 @@ export default function TutorialInicio() {
     {
       id: "crear-avatar",
       texto:
-        "Crea tu avatar. Podrás personalizarlo con diferentes estilos y accesorios.",
+        "Antes de comenzar, crea tu avatar. Este personaje será parte de tu perfil dentro de FCC Academy, podrás personalizarlo con distintos estilos y accesorios.",
       selector: null,
       pos: "left-modal",
     },
     {
       id: "avatar-explicacion",
       texto:
-        "Este es tu avatar. Puedes personalizarlo más adelante en tu perfil. Cada vez que subas de nivel desbloquearás nuevos accesorios.",
+        "En esta sección podrás editar tu perfil y consultar tus desbloqueables conforme avances.",
       selector: ".avatar-principal",
       pos: "right",
     },
@@ -228,29 +228,29 @@ export default function TutorialInicio() {
       id: "menu-lateral",
       selector: esMobile ? ".boton-menu-mobile" : ".menu-lateral",
       texto: esMobile
-        ? "Desde este botón puedes abrir el menú de navegación para entrar a tus cursos, ranking, amigos, profesores y configuración."
-        : "Desde esta barra lateral puedes navegar entre las distintas secciones: tus cursos, ranking, amigos, profesores y configuración.",
+        ? "Desde este botón puedes abrir el menú principal para navegar en las diferentes interfaces de FCC Academy."
+        : "Está es la barra de navegación,  desde ella podrás navegar entre las diferentes interfaces de FCC Academy",
       pos: esMobile ? "bottom" : "right",
     },
     {
       id: "cursos",
       selector: ".bloque-cursos, .seccion-cursos",
       texto:
-        "Aquí aparecen tus cursos. Entra para estudiar el contenido y resolver quizzes que te darán experiencia.",
+        "Aquí aparecerán tus cursos. Al entrar a alguno podrás revisar el contenido, estudiar los temas y resolver quizzes relacionados con cada tema.",
       pos: "top",
     },
     {
       id: "ranking",
       selector: ".widget-ranking",
       texto:
-        "En esta sección verás el Top 5 Global de los estudiantes con más puntos.",
+        "En el ranking podrás comparar tu avance con otros estudiantes. Mientras más experiencia y puntos consigas, mejor podrás posicionarte.",
       pos: "left",
     },
     {
       id: "xp",
       selector: ".bloque-xp, .barra-xp",
       texto:
-        "Este bloque muestra tu experiencia actual. Al llenarlo subirás de nivel y podrás obtener cofres con recompensas.",
+        "Esta barra muestra tu experiencia. Al resolver quizzes o desbloquear logros podrás llenarla, subir de nivel y desbloquear recompensas dentro de la plataforma.",
       pos: "top",
     },
   ];
@@ -265,6 +265,8 @@ export default function TutorialInicio() {
   };
 
   useEffect(() => {
+    if (!visible) return;
+
     let timeoutOcultar: NodeJS.Timeout;
     let timeoutScroll: NodeJS.Timeout;
     let timeoutResaltar: NodeJS.Timeout;
@@ -346,7 +348,7 @@ export default function TutorialInicio() {
       clearTimeout(timeoutTooltip);
       window.removeEventListener("resize", actualizarResaltado);
     };
-  }, [step, esMobile, paso.selector]);
+  }, [visible, step, esMobile, paso.selector]);
 
   useEffect(() => {
     if (paso.id === "crear-avatar") {
@@ -682,23 +684,44 @@ export default function TutorialInicio() {
       const x = window.scrollX;
       const y = window.scrollY;
 
-      document.documentElement.style.scrollBehavior = "auto";
-      document.body.style.scrollBehavior = "auto";
+      const html = document.documentElement;
+      const body = document.body;
 
-      window.scrollTo({
-        left: x,
-        top: y,
-        behavior: "auto",
-      });
+      const scrollBehaviorHtmlAnterior = html.style.scrollBehavior;
+      const scrollBehaviorBodyAnterior = body.style.scrollBehavior;
+      const overflowAnchorHtmlAnterior = html.style.overflowAnchor;
+      const overflowAnchorBodyAnterior = body.style.overflowAnchor;
 
-      requestAnimationFrame(() => {
-        window.scrollTo(x, y);
-      });
+      html.style.scrollBehavior = "auto";
+      body.style.scrollBehavior = "auto";
+      html.style.overflowAnchor = "none";
+      body.style.overflowAnchor = "none";
 
-      window.setTimeout(() => {
-        document.documentElement.style.scrollBehavior = "";
-        document.body.style.scrollBehavior = "";
-      }, 80);
+      let intentos = 0;
+
+      const fijarScroll = () => {
+        window.scrollTo({
+          left: x,
+          top: y,
+          behavior: "auto",
+        });
+      };
+
+      fijarScroll();
+
+      const intervalo = window.setInterval(() => {
+        fijarScroll();
+        intentos++;
+
+        if (intentos >= 12) {
+          window.clearInterval(intervalo);
+
+          html.style.scrollBehavior = scrollBehaviorHtmlAnterior;
+          body.style.scrollBehavior = scrollBehaviorBodyAnterior;
+          html.style.overflowAnchor = overflowAnchorHtmlAnterior;
+          body.style.overflowAnchor = overflowAnchorBodyAnterior;
+        }
+      }, 50);
     }
 
     function finalizarTutorial() {
