@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import EditorQuizCampo from "@/components/EditorQuizCampo";
 
 type Bloque = { id: string; titulo?: string | null; tipo: string };
 type PreguntaLocal = {
@@ -43,11 +44,19 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const [editQuiz, setEditQuiz] = useState<any | null>(null);
+  const [deletedPreguntas, setDeletedPreguntas] = useState<string[]>([]);
+  const [deletedRespuestas, setDeletedRespuestas] = useState<string[]>([]);
   const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!editQuiz?.id) return;
+    setDeletedPreguntas([]);
+    setDeletedRespuestas([]);
+  }, [editQuiz?.id]);
 
   const modalActivo = Boolean(editQuiz) || showFormulaModal;
 
@@ -62,10 +71,155 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     };
   }, [modalActivo]);
 
-  const renderPortal = (content: React.ReactNode) => {
-    if (!portalReady || typeof document === "undefined") return null;
-    return createPortal(content, document.body);
+    const renderPortal = (content: React.ReactNode) => {
+      if (!portalReady || typeof document === "undefined") return null;
+      return createPortal(content, document.body);
+    };
+
+    const hasPreviewContent = (text: string) => {
+      return /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|!\[[^\]]*\]\([^)]+\)/.test(text);
+    };
+
+  const decodeQuizEntities = (text: string) => {
+    return text
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/&nbsp;/g, " ");
   };
+
+  const getQuizContentKey = (text: string) => {
+    const raw = decodeQuizEntities(text || "").trim();
+
+    if (!raw) return "";
+
+    const formulas = Array.from(raw.matchAll(/data-latex=["']([^"']+)["']/g))
+      .map((match) => match[1]?.trim())
+      .filter(Boolean);
+
+    const imagenes = Array.from(raw.matchAll(/<img[^>]*src=["']([^"']+)["'][^>]*>/g))
+      .map((match) => `imagen:${match[1]?.trim()}`)
+      .filter(Boolean);
+
+    const markdownFormulas = Array.from(raw.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+?)\$/g))
+      .map((match) => (match[1] || match[2] || "").trim())
+      .filter(Boolean);
+
+    const textoVisible = raw
+      .replace(/<span[^>]*data-type=["']inline-math["'][^>]*><\/span>/g, " ")
+      .replace(/<span[^>]*data-latex=["'][^"']+["'][^>]*><\/span>/g, " ")
+      .replace(/<img[^>]*>/g, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return [...formulas, ...markdownFormulas, ...imagenes, textoVisible]
+      .filter(Boolean)
+      .join(" | ")
+      .toLowerCase();
+  };
+
+  const uploadQuizImage = async (file: File) => {
+    const ext = file.name.split(".").pop();
+    const originalName = file.name;
+
+    const key = `${materiaId}/quizzes/imagenes/${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("curso-contenido")
+      .upload(key, file, { upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from("curso-contenido")
+      .getPublicUrl(key);
+
+    return {
+      url: data.publicUrl,
+      originalName,
+    };
+  };
+
+  const validateQuizPreguntas = (preguntasList: any[]) => {
+    if (!Array.isArray(preguntasList) || preguntasList.length === 0) {
+      toast.error("Agrega al menos una pregunta");
+      return false;
+    }
+
+    for (let i = 0; i < preguntasList.length; i++) {
+      const pregunta = preguntasList[i];
+      const numeroPregunta = i + 1;
+
+      if (!getQuizContentKey(pregunta.enunciado || "")) {
+        toast.error(`La pregunta ${numeroPregunta} está vacía`);
+        return false;
+      }
+
+      if (!Array.isArray(pregunta.respuestas) || pregunta.respuestas.length < 2) {
+        toast.error(`La pregunta ${numeroPregunta} debe tener al menos 2 opciones`);
+        return false;
+      }
+
+      const respuestasLimpias = pregunta.respuestas.map((r: any) =>
+        getQuizContentKey(r.texto || "")
+      );
+
+      if (respuestasLimpias.some((texto: string) => !texto)) {
+        toast.error(`La pregunta ${numeroPregunta} tiene opciones vacías`);
+        return false;
+      }
+
+      const respuestasUnicas = new Set(respuestasLimpias);
+
+      if (respuestasUnicas.size !== respuestasLimpias.length) {
+        toast.error(`La pregunta ${numeroPregunta} tiene opciones repetidas`);
+        return false;
+      }
+
+      if (!pregunta.respuestas.some((r: any) => r.es_correcta)) {
+        toast.error(`La pregunta ${numeroPregunta} debe tener una respuesta correcta`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+    const renderQuizPreview = (text: string) => {
+      if (!text.trim() || !hasPreviewContent(text)) return null;
+
+      return (
+        <div
+          className="mt-1 rounded px-2 py-2 text-sm overflow-x-auto"
+          style={{
+            backgroundColor: "var(--color-bg)",
+            border: "1px dashed var(--color-border)",
+            color: "var(--color-text)",
+          }}
+        >
+          <ReactMarkdown
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+            components={{
+              img: ({ ...props }) => (
+                <img
+                  {...props}
+                  className="max-w-full max-h-40 rounded-lg my-2 cursor-pointer"
+                  alt={props.alt || "Imagen del quiz"}
+                />
+              ),
+            }}
+          >
+            {text}
+          </ReactMarkdown>
+        </div>
+      );
+    };
 
   useEffect(() => {
     const fetchBloques = async () => {
@@ -115,19 +269,38 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     if (!editQuiz?.id) return;
 
     const fetchPreguntas = async () => {
-      const { data: preguntas, error } = await supabase
+      const { data: preguntasData, error: preguntasError } = await supabase
         .from("preguntas")
-        .select("id, enunciado, orden, respuestas(id, texto, es_correcta)")
+        .select("id, enunciado, orden")
         .eq("quiz_id", editQuiz.id)
         .order("orden", { ascending: true });
 
-      if (error) {
-        console.error(error);
+      if (preguntasError) {
+        console.error(preguntasError);
         return;
       }
 
+      const preguntasConRespuestas: any[] = [];
+
+      for (const pregunta of preguntasData || []) {
+        const { data: respuestasData, error: respuestasError } = await supabase
+          .from("respuestas")
+          .select("id, texto, es_correcta, orden")
+          .eq("pregunta_id", pregunta.id)
+          .order("orden", { ascending: true });
+
+        if (respuestasError) {
+          console.error(respuestasError);
+        }
+
+        preguntasConRespuestas.push({
+          ...pregunta,
+          respuestas: respuestasData || [],
+        });
+      }
+
       setEditQuiz((prev: any) =>
-        prev ? { ...prev, preguntas: preguntas || [] } : prev
+        prev ? { ...prev, preguntas: preguntasConRespuestas } : prev
       );
     };
 
@@ -139,7 +312,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       ...prev,
       {
         id: crypto.randomUUID(),
-        enunciado: "Nueva pregunta",
+        enunciado: "",
         respuestas: [],
       },
     ]);
@@ -163,7 +336,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
               ...p,
               respuestas: [
                 ...p.respuestas,
-                { id: crypto.randomUUID(), texto: "Opción", es_correcta: false },
+                { id: crypto.randomUUID(), texto: "", es_correcta: false },
               ],
             }
           : p
@@ -228,15 +401,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       toast.error("Pon un título al quiz");
       return;
     }
-    if (preguntas.length === 0) {
-      toast.error("Agrega al menos una pregunta");
+    if (!validateQuizPreguntas(preguntas)) {
       return;
-    }
-    for (const p of preguntas) {
-      if (!p.respuestas.some((r) => r.es_correcta)) {
-        toast.error("Cada pregunta debe tener al menos una respuesta correcta");
-        return;
-      }
     }
     setSaving(true);
     try {
@@ -266,7 +432,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
           .from("preguntas")
           .insert({
             quiz_id: quizId,
-            enunciado: p.enunciado,
+            enunciado: p.enunciado.trim(),
             orden: i,
           })
           .select("id")
@@ -275,11 +441,14 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         if (pErr) throw pErr;
         const pregId = preg.id;
 
-        for (const r of p.respuestas) {
+        for (let j = 0; j < p.respuestas.length; j++) {
+          const r = p.respuestas[j];
+
           await supabase.from("respuestas").insert({
             pregunta_id: pregId,
-            texto: r.texto,
+            texto: r.texto.trim(),
             es_correcta: r.es_correcta,
+            orden: j,
           });
         }
       }
@@ -321,45 +490,95 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   const handleSaveEditQuiz = async () => {
     if (!editQuiz) return;
 
+    if (!editQuiz.titulo?.trim()) {
+      toast.error("Pon un título al quiz");
+      return;
+    }
+
+    if (!validateQuizPreguntas(editQuiz.preguntas || [])) {
+      return;
+    }
+
     try {
       await supabase
         .from("quizzes")
         .update({
-          titulo: editQuiz.titulo,
+          titulo: editQuiz.titulo.trim(),
           xp: editQuiz.xp,
           tiempo_limite_min: editQuiz.tiempo_limite_min,
           intentos_max: editQuiz.intentos_max,
         })
         .eq("id", editQuiz.id);
 
+      if (deletedRespuestas.length > 0) {
+        await supabase
+          .from("respuestas")
+          .delete()
+          .in("id", deletedRespuestas);
+      }
+
+      if (deletedPreguntas.length > 0) {
+        await supabase
+          .from("preguntas")
+          .delete()
+          .in("id", deletedPreguntas);
+      }
+
       for (let i = 0; i < (editQuiz.preguntas || []).length; i++) {
         const p = editQuiz.preguntas[i];
 
-        if (!p.id || p.id.length !== 36) continue;
+        let preguntaId = p.id;
 
-        await supabase
-          .from("preguntas")
-          .update({
-            enunciado: p.enunciado,
-            orden: i,
-          })
-          .eq("id", p.id);
+        if (String(p.id).startsWith("_new_")) {
+          const { data: nuevaPregunta, error: preguntaInsertError } = await supabase
+            .from("preguntas")
+            .insert({
+              quiz_id: editQuiz.id,
+              enunciado: p.enunciado.trim(),
+              orden: i,
+            })
+            .select("id")
+            .single();
 
-        for (const r of p.respuestas) {
-          if (!r.id || r.id.length !== 36) {
-            await supabase.from("respuestas").insert({
-              pregunta_id: p.id,
-              texto: r.texto,
-              es_correcta: r.es_correcta,
-            });
+          if (preguntaInsertError) throw preguntaInsertError;
+          preguntaId = nuevaPregunta.id;
+        } else {
+          const { error: preguntaUpdateError } = await supabase
+            .from("preguntas")
+            .update({
+              enunciado: p.enunciado.trim(),
+              orden: i,
+            })
+            .eq("id", p.id);
+
+          if (preguntaUpdateError) throw preguntaUpdateError;
+        }
+
+        for (let j = 0; j < p.respuestas.length; j++) {
+          const r = p.respuestas[j];
+
+          if (String(r.id).startsWith("_new_")) {
+            const { error: respuestaInsertError } = await supabase
+              .from("respuestas")
+              .insert({
+                pregunta_id: preguntaId,
+                texto: r.texto.trim(),
+                es_correcta: r.es_correcta,
+                orden: j,
+              });
+
+            if (respuestaInsertError) throw respuestaInsertError;
           } else {
-            await supabase
+            const { error: respuestaUpdateError } = await supabase
               .from("respuestas")
               .update({
-                texto: r.texto,
+                texto: r.texto.trim(),
                 es_correcta: r.es_correcta,
+                orden: j,
               })
               .eq("id", r.id);
+
+            if (respuestaUpdateError) throw respuestaUpdateError;
           }
         }
       }
@@ -374,6 +593,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
       setQuizzesGuardados(data || []);
       setEditQuiz(null);
+      setDeletedPreguntas([]);
+      setDeletedRespuestas([]);
     } catch (err) {
       console.error(err);
       toast.error("Error al actualizar quiz");
@@ -548,14 +769,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       </div>
 
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <div>
           <h4 className="font-semibold">Preguntas</h4>
-          <button
-            onClick={addPregunta}
-            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
-          >
-            + Pregunta
-          </button>
         </div>
 
         {preguntas.length === 0 && (
@@ -575,91 +790,106 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             }}
           >
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 min-w-0">
-              <span className="flex flex-col sm:flex-row sm:items-start gap-2 w-full min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 w-full min-w-0">
                 {idx + 1}.
-                <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
-                  <textarea
-                    data-id={p.id}
-                    className="font-semibold rounded px-2 py-1 w-full resize-y min-h-[28px] leading-snug"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                    value={p.enunciado}
-                    onChange={(e) => updatePregunta(p.id, e.target.value)}
-                    placeholder="Escribe la pregunta (Markdown + LaTeX)"
-                    rows={1}
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const input = (e.currentTarget.previousSibling as HTMLTextAreaElement);
-                      setTargetTextarea(input);
-                      setShowFormulaModal(true);
-                    }}
-                    className="bg-blue-600 text-white text-xs px-3 py-1 rounded h-full"
-                  >
-                    ➕Fórmula
-                  </button>
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
+                    <EditorQuizCampo
+                      value={p.enunciado}
+                      onChange={(value) => updatePregunta(p.id, value)}
+                      placeholder="Nueva pregunta"
+                      onUploadImage={async (file) => {
+                        const { url, originalName } = await uploadQuizImage(file);
+
+                        return {
+                          url,
+                          name: originalName,
+                        };
+                      }}
+                    />
+                  </div>
                 </div>
-              </span>
+              </div>
               <button
+                type="button"
                 onClick={() => deletePregunta(p.id)}
-                className="px-2 py-1 bg-red-600 rounded ml-2"
+                className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
               >
-                🗑
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 text-white"
+                >
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
               </button>
             </div>
 
             {p.respuestas.map((r) => (
               <div key={r.id} className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-                <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0 w-full">
-                <input
-                  data-pid={p.id}
-                  data-rid={r.id}
-                  className="w-full rounded px-2 py-1"
-                  style={{
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                  value={r.texto}
-                  onChange={(e) =>
-                    updateRespuesta(p.id, r.id, { texto: e.target.value })
-                  }
-                  placeholder="Opción de respuesta (Markdown + LaTeX)"
-                />
+                <div className="flex flex-col gap-1 flex-1 min-w-0 w-full">
+                  <EditorQuizCampo
+                    value={r.texto}
+                    onChange={(value) =>
+                      updateRespuesta(p.id, r.id, { texto: value })
+                    }
+                    placeholder="Opción de respuesta"
+                    compact
+                    onUploadImage={async (file) => {
+                      const { url, originalName } = await uploadQuizImage(file);
+
+                      return {
+                        url,
+                        name: originalName,
+                      };
+                    }}
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    const input = (e.currentTarget.previousSibling as HTMLInputElement);
-                    setTargetTextarea(input);
-                    setShowFormulaModal(true);
-                  }}
-                  className="bg-blue-600 text-white text-xs px-3 py-1 rounded h-full"
-                >
-                  ➕Fórmula
-                </button>
-              </div>
-                <button
                   onClick={() => markCorrecta(p.id, r.id)}
-                  className={`px-2 py-1 rounded ${
-                    r.es_correcta ? "bg-green-600" : "bg-gray-600"
+                  className={`h-[34px] px-3 flex items-center justify-center rounded text-white shrink-0 self-start ${
+                    r.es_correcta ? "bg-green-600 hover:bg-green-700" : "bg-gray-600 hover:bg-gray-700"
                   }`}
                 >
-                  ✓
+                  <span className="text-white leading-none">✓</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => deleteRespuesta(p.id, r.id)}
-                  className="px-2 py-1 rounded bg-red-600"
+                  className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
                 >
-                  🗑
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-4 h-4 text-white"
+                  >
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
                 </button>
               </div>
             ))}
 
             <button
+              type="button"
               onClick={() => addRespuesta(p.id)}
               className="px-2 py-1 rounded"
               style={{
@@ -672,6 +902,15 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             </button>
           </div>
         ))}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={addPregunta}
+            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
+          >
+            + Pregunta
+          </button>
+        </div>
       </div>
 
       <div className="flex justify-end">
@@ -811,59 +1050,84 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                           color: "var(--color-text)",
                         }}
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-                          <span className="font-semibold">#{idx + 1}</span>
-                          <textarea
-                            data-pid={p.id}
-                            value={p.enunciado}
-                            onChange={(e) =>
-                              setEditQuiz((prev: any) => ({
-                                ...prev,
-                                preguntas: prev.preguntas.map((q: any) =>
-                                  q.id === p.id ? { ...q, enunciado: e.target.value } : q
-                                ),
-                              }))
-                            }
-                            className="rounded px-2 py-1 w-full resize-y min-h-[28px] leading-snug"
-                            style={{
-                              backgroundColor: "var(--color-bg)",
-                              border: "1px solid var(--color-border)",
-                              color: "var(--color-text)",
-                            }}
-                            rows={1}
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              setTargetTextarea(e.currentTarget.previousSibling as HTMLTextAreaElement);
-                              setShowFormulaModal(true);
-                            }}
-                            className="bg-blue-600 text-white text-xs px-3 py-1 rounded h-full"
-                          >
-                            ➕Fórmula
-                          </button>
-                          <button
-                            onClick={() =>
-                              setEditQuiz((prev: any) => ({
-                                ...prev,
-                                preguntas: prev.preguntas.filter((q: any) => q.id !== p.id),
-                              }))
-                            }
-                            className="px-2 py-1 bg-red-600 rounded"
-                          >
-                            🗑
-                          </button>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-start gap-2 min-w-0">
+                            <span className="font-semibold pt-1">#{idx + 1}</span>
+
+                            <div className="flex flex-col gap-1 flex-1 min-w-0">
+                              <EditorQuizCampo
+                                value={p.enunciado}
+                                onChange={(value) =>
+                                  setEditQuiz((prev: any) => ({
+                                    ...prev,
+                                    preguntas: prev.preguntas.map((q: any) =>
+                                      q.id === p.id ? { ...q, enunciado: value } : q
+                                    ),
+                                  }))
+                                }
+                                placeholder="Nueva pregunta"
+                                onUploadImage={async (file) => {
+                                  const { url, originalName } = await uploadQuizImage(file);
+
+                                  return {
+                                    url,
+                                    name: originalName,
+                                  };
+                                }}
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!String(p.id).startsWith("_new_")) {
+                                  setDeletedPreguntas((prev) =>
+                                    prev.includes(p.id) ? prev : [...prev, p.id]
+                                  );
+
+                                  const respuestasExistentes = (p.respuestas || [])
+                                    .filter((r: any) => !String(r.id).startsWith("_new_"))
+                                    .map((r: any) => r.id);
+
+                                  setDeletedRespuestas((prev) =>
+                                    Array.from(new Set([...prev, ...respuestasExistentes]))
+                                  );
+                                }
+
+                                setEditQuiz((prev: any) => ({
+                                  ...prev,
+                                  preguntas: prev.preguntas.filter((q: any) => q.id !== p.id),
+                                }));
+                              }}
+                              className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="w-4 h-4 text-white"
+                              >
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4h8v2" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v6" />
+                                <path d="M14 11v6" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
 
                         <div className="space-y-2">
                           {p.respuestas.map((r: any) => (
-                            <div key={r.id} className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-                              <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0 w-full">
-                                <input
-                                  data-pid={p.id}
-                                  data-rid={r.id}
+                            <div key={r.id} className="flex flex-col sm:flex-row sm:items-start gap-2 min-w-0">
+                              <div className="flex flex-col gap-1 flex-1 min-w-0 w-full">
+                                <EditorQuizCampo
                                   value={r.texto}
-                                  onChange={(e) =>
+                                  onChange={(value) =>
                                     setEditQuiz((prev: any) => ({
                                       ...prev,
                                       preguntas: prev.preguntas.map((q: any) =>
@@ -871,34 +1135,27 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                           ? {
                                               ...q,
                                               respuestas: q.respuestas.map((x: any) =>
-                                                x.id === r.id ? { ...x, texto: e.target.value } : x
+                                                x.id === r.id ? { ...x, texto: value } : x
                                               ),
                                             }
                                           : q
                                       ),
                                     }))
                                   }
-                                  className="w-full rounded px-3 py-1"
-                                  style={{
-                                    backgroundColor: "var(--color-bg)",
-                                    border: "1px solid var(--color-border)",
-                                    color: "var(--color-text)",
+                                  placeholder="Opción de respuesta"
+                                  compact
+                                  onUploadImage={async (file) => {
+                                    const { url, originalName } = await uploadQuizImage(file);
+
+                                    return {
+                                      url,
+                                      name: originalName,
+                                    };
                                   }}
                                 />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    setTargetTextarea(
-                                      e.currentTarget.previousSibling as HTMLInputElement
-                                    );
-                                    setShowFormulaModal(true);
-                                  }}
-                                  className="bg-blue-600 text-white text-xs px-3 py-1 rounded h-full"
-                                >
-                                  ➕Fórmula
-                                </button>
                               </div>
                               <button
+                                type="button"
                                 onClick={() =>
                                   setEditQuiz((prev: any) => ({
                                     ...prev,
@@ -915,14 +1172,23 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                     ),
                                   }))
                                 }
-                                className={`px-2 py-1 rounded ${
-                                  r.es_correcta ? "bg-green-600" : "bg-gray-600"
+                                className={`h-[34px] px-3 flex items-center justify-center rounded text-white shrink-0 self-start ${
+                                  r.es_correcta
+                                    ? "bg-green-600 hover:bg-green-700"
+                                    : "bg-gray-600 hover:bg-gray-700"
                                 }`}
                               >
-                                ✓
+                                <span className="text-white leading-none">✓</span>
                               </button>
                               <button
-                                onClick={() =>
+                                type="button"
+                                onClick={() => {
+                                  if (!String(r.id).startsWith("_new_")) {
+                                    setDeletedRespuestas((prev) =>
+                                      prev.includes(r.id) ? prev : [...prev, r.id]
+                                    );
+                                  }
+
                                   setEditQuiz((prev: any) => ({
                                     ...prev,
                                     preguntas: prev.preguntas.map((q: any) =>
@@ -933,15 +1199,31 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                           }
                                         : q
                                     ),
-                                  }))
-                                }
-                                className="px-2 py-1 bg-red-600 rounded"
+                                  }));
+                                }}
+                                className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
                               >
-                                🗑
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="w-4 h-4 text-white"
+                                >
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M19 6l-1 14H6L5 6" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
                               </button>
                             </div>
                           ))}
                           <button
+                            type="button"
                             onClick={() =>
                               setEditQuiz((prev: any) => ({
                                 ...prev,
@@ -950,10 +1232,10 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                     ? {
                                         ...q,
                                         respuestas: [
-                                          ...q.respuestas,
+                                          ...(q.respuestas || []),
                                           {
-                                            id: crypto.randomUUID(),
-                                            texto: "Opción",
+                                            id: `_new_${crypto.randomUUID()}`,
+                                            texto: "",
                                             es_correcta: false,
                                           },
                                         ],
@@ -977,24 +1259,27 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                   ) : (
                     <p className="text-gray-400 text-sm">Aún no hay preguntas.</p>
                   )}
-                  <button
-                    onClick={() =>
-                      setEditQuiz((prev: any) => ({
-                        ...prev,
-                        preguntas: [
-                          ...prev.preguntas,
-                          {
-                            id: crypto.randomUUID(),
-                            enunciado: "Nueva pregunta",
-                            respuestas: [],
-                          },
-                        ],
-                      }))
-                    }
-                    className="px-3 py-1 bg-blue-600 rounded text-white"
-                  >
-                    + Pregunta
-                  </button>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditQuiz((prev: any) => ({
+                          ...prev,
+                          preguntas: [
+                            ...(prev.preguntas || []),
+                            {
+                              id: `_new_${crypto.randomUUID()}`,
+                              enunciado: "",
+                              respuestas: [],
+                            },
+                          ],
+                        }))
+                      }
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white"
+                    >
+                      + Pregunta
+                    </button>
+                  </div>
                 </div>
               </div>
               <div
@@ -1002,7 +1287,12 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 style={{ borderColor: "var(--color-border)" }}
               >
                 <button
-                  onClick={() => setEditQuiz(null)}
+                  type="button"
+                  onClick={() => {
+                    setEditQuiz(null);
+                    setDeletedPreguntas([]);
+                    setDeletedRespuestas([]);
+                  }}
                   className="px-3 py-2 bg-gray-600 rounded text-white w-full sm:w-auto"
                 >
                   Cancelar
@@ -1033,6 +1323,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => setFormulaMode("latex")}
                   className={`px-3 py-1 rounded ${
                     formulaMode === "latex" ? "bg-blue-600 text-white" : ""
@@ -1046,6 +1337,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                   LaTeX
                 </button>
                 <button
+                  type="button"
                   onClick={() => setFormulaMode("image")}
                   className={`px-3 py-1 rounded ${
                     formulaMode === "image" ? "bg-blue-600 text-white" : ""
@@ -1104,6 +1396,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
               <div className="flex justify-end gap-2">
                 <button
+                  type="button"
                   onClick={() => setShowFormulaModal(false)}
                   className="px-3 py-1 bg-gray-600 rounded text-white"
                 >
