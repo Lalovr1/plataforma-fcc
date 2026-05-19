@@ -315,12 +315,12 @@ export default function TutorialInicio() {
 
             timeoutResaltar = setTimeout(() => {
               setResaltadoVisibleMovil(true);
-            }, 350);
+            }, 500);
 
             timeoutTooltip = setTimeout(() => {
               setMostrarTooltip(true);
               setTooltipVisibleMovil(true);
-            }, 950);
+            }, 2800);
           }, 1450);
         }, 650);
 
@@ -363,6 +363,12 @@ export default function TutorialInicio() {
       return () => clearTimeout(abrir);
     } else {
       setTransicionSuave(false);
+
+      if (esMobile && paso.selector && paso.id !== "menu-lateral") {
+        setMostrarTooltip(false);
+        return;
+      }
+
       setMostrarTooltip(true);
     }
   }, [step]);
@@ -728,7 +734,10 @@ export default function TutorialInicio() {
           style={{
             ...tooltipStyle,
             opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
-            transition: esMobile ? "opacity 0.9s ease" : tooltipStyle.transition,
+            transition:
+              esMobile && pasoTooltip.id !== "menu-lateral"
+                ? "opacity 1.4s ease"
+                : tooltipStyle.transition,
             animation:
               pasoTooltip.id === "crear-avatar"
                 ? "aparecerTooltipSuave 0.9s ease-out"
