@@ -321,8 +321,8 @@ export default function TutorialInicio() {
               setMostrarTooltip(true);
               setTooltipVisibleMovil(true);
             }, 2000);
-          }, 1700);
-        }, 400);
+          }, 1000);
+        }, 650);
 
         return;
       }
@@ -674,13 +674,46 @@ export default function TutorialInicio() {
     }
   }
 
-  function finalizarTutorial() {
-    setVisible(false);
-    (window as any).__tutorialActivo = false;
-    window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
-    localStorage.setItem("tutorial_visto_finalizado", "1"); 
-    localStorage.setItem("tutorial_visto", "true"); 
-  }
+    function cancelarScrollTutorial() {
+      if (typeof window === "undefined") return;
+
+      const x = window.scrollX;
+      const y = window.scrollY;
+
+      document.documentElement.style.scrollBehavior = "auto";
+      document.body.style.scrollBehavior = "auto";
+
+      window.scrollTo({
+        left: x,
+        top: y,
+        behavior: "auto",
+      });
+
+      requestAnimationFrame(() => {
+        window.scrollTo(x, y);
+      });
+
+      window.setTimeout(() => {
+        document.documentElement.style.scrollBehavior = "";
+        document.body.style.scrollBehavior = "";
+      }, 80);
+    }
+
+    function finalizarTutorial() {
+      cancelarScrollTutorial();
+
+      setMostrarTooltip(false);
+      setTooltipVisibleMovil(false);
+      setResaltadoVisibleMovil(false);
+      setHighlightRect(null);
+      setHighlightContent(null);
+
+      setVisible(false);
+      (window as any).__tutorialActivo = false;
+      window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
+      localStorage.setItem("tutorial_visto_finalizado", "1"); 
+      localStorage.setItem("tutorial_visto", "true"); 
+    }
 
   return (
   <>
