@@ -159,6 +159,8 @@ export default function TutorialInicio() {
   const [transicionSuave, setTransicionSuave] = useState(false);
   const [ocultandoEditor, setOcultandoEditor] = useState(false); 
   const [mostrarTooltip, setMostrarTooltip] = useState(true);
+  const [tooltipVisibleMovil, setTooltipVisibleMovil] = useState(true);
+  const [resaltadoVisibleMovil, setResaltadoVisibleMovil] = useState(true);
   const [mostrarCofre, setMostrarCofre] = useState(false);
   const [recompensasCofre, setRecompensasCofre] = useState<any[]>([]);
   const mostrarCofreRef = useRef(mostrarCofre);
@@ -261,8 +263,17 @@ export default function TutorialInicio() {
   };
 
   useEffect(() => {
+    let timeoutOcultar: NodeJS.Timeout;
     let timeoutScroll: NodeJS.Timeout;
+    let timeoutResaltar: NodeJS.Timeout;
     let timeoutTooltip: NodeJS.Timeout;
+
+    const calcularResaltado = (elemento: HTMLElement) => {
+      const rect = elemento.getBoundingClientRect();
+      setHighlightRect(rect);
+      setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+      setStepTooltip(step);
+    };
 
     const actualizarResaltado = () => {
       if (!paso.selector) {
@@ -270,6 +281,8 @@ export default function TutorialInicio() {
         setHighlightContent(null);
         setStepTooltip(step);
         setMostrarTooltip(true);
+        setTooltipVisibleMovil(true);
+        setResaltadoVisibleMovil(true);
         return;
       }
 
@@ -278,38 +291,46 @@ export default function TutorialInicio() {
       if (!elemento) {
         setHighlightRect(null);
         setHighlightContent(null);
+        setMostrarTooltip(false);
         return;
       }
-
-      const calcularResaltado = () => {
-        const rect = elemento.getBoundingClientRect();
-        setHighlightRect(rect);
-        setHighlightContent(elemento.cloneNode(true) as HTMLElement);
-        setStepTooltip(step);
-      };
 
       if (esMobile && paso.id !== "menu-lateral") {
-        setMostrarTooltip(false);
+        setTooltipVisibleMovil(false);
+        setResaltadoVisibleMovil(false);
 
-        elemento.scrollIntoView({
-          behavior: "smooth",
-          block: paso.id === "ranking" || paso.id === "xp" ? "end" : "start",
-          inline: "nearest",
-        });
+        timeoutOcultar = setTimeout(() => {
+          setMostrarTooltip(false);
+          setHighlightRect(null);
+          setHighlightContent(null);
 
-        timeoutScroll = setTimeout(() => {
-          calcularResaltado();
+          elemento.scrollIntoView({
+            behavior: "smooth",
+            block: paso.id === "ranking" || paso.id === "xp" ? "end" : "start",
+            inline: "nearest",
+          });
 
-          timeoutTooltip = setTimeout(() => {
-            setMostrarTooltip(true);
-          }, 180);
-        }, 750);
+          timeoutScroll = setTimeout(() => {
+            calcularResaltado(elemento);
+
+            timeoutResaltar = setTimeout(() => {
+              setResaltadoVisibleMovil(true);
+            }, 120);
+
+            timeoutTooltip = setTimeout(() => {
+              setMostrarTooltip(true);
+              setTooltipVisibleMovil(true);
+            }, 420);
+          }, 850);
+        }, 250);
 
         return;
       }
 
-      calcularResaltado();
+      calcularResaltado(elemento);
       setMostrarTooltip(true);
+      setTooltipVisibleMovil(true);
+      setResaltadoVisibleMovil(true);
     };
 
     actualizarResaltado();
@@ -317,7 +338,9 @@ export default function TutorialInicio() {
     window.addEventListener("resize", actualizarResaltado);
 
     return () => {
+      clearTimeout(timeoutOcultar);
       clearTimeout(timeoutScroll);
+      clearTimeout(timeoutResaltar);
       clearTimeout(timeoutTooltip);
       window.removeEventListener("resize", actualizarResaltado);
     };
@@ -365,6 +388,13 @@ export default function TutorialInicio() {
       setAvatarConfig(newConfig);
 
       setTimeout(() => {
+        if (esMobile) {
+          setMostrarTooltip(false);
+          setMostrarEditor(false);
+          setStep((s) => s + 1);
+          return;
+        }
+
         setStep((s) => s + 1);
 
         setTimeout(() => {
@@ -677,7 +707,7 @@ export default function TutorialInicio() {
               overflow: "hidden",
               transition: "box-shadow 1s ease-in-out",
               animation: "brilloFlotante 3s ease-in-out infinite",
-              opacity: ocultandoEditor ? 0 : 1, 
+              opacity: ocultandoEditor || (esMobile && !resaltadoVisibleMovil) ? 0 : 1,
               transitionDuration: "0.8s",
             }}
             dangerouslySetInnerHTML={{ __html: highlightContent.outerHTML }}
@@ -690,6 +720,8 @@ export default function TutorialInicio() {
         <div
           style={{
             ...tooltipStyle,
+            opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
+            transition: esMobile ? "opacity 0.45s ease" : tooltipStyle.transition,
             animation:
               pasoTooltip.id === "crear-avatar"
                 ? "aparecerTooltipSuave 0.9s ease-out"
