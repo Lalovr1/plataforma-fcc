@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
@@ -34,6 +34,48 @@ type Solicitud = {
   solicitante?: Usuario;
 };
 
+type LogroModal = {
+  id: string;
+  titulo: string;
+  descripcion?: string;
+  icono_url: string;
+};
+
+type AmigosCache = {
+  timestamp: number;
+  me: Usuario | null;
+  friends: Usuario[];
+  pending: Solicitud[];
+  sentRequests: string[];
+  results: Usuario[];
+};
+
+const CACHE_KEY_BASE = "fcc_academy_amigos_estudiante_v1";
+const LOGROS_CACHE_KEY_BASE = "fcc_academy_amigo_logros_v1";
+
+function parseAvatarConfig(value: any): AvatarConfig | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return value;
+}
+
+function normalizarUsuario(value: any): Usuario | null {
+  if (!value) return null;
+
+  return {
+    ...value,
+    avatar_config: parseAvatarConfig(value.avatar_config),
+  } as Usuario;
+}
+
 export default function AmigosPage() {
   const [me, setMe] = useState<Usuario | null>(null);
   const [friends, setFriends] = useState<Usuario[]>([]);
@@ -44,47 +86,154 @@ export default function AmigosPage() {
   const [results, setResults] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAmigo, setSelectedAmigo] = useState<Usuario | null>(null);
-  const [logros, setLogros] = useState<
-    { id: string; titulo: string; descripcion?: string; icono_url: string }[]
-  >([]);
+  const [logros, setLogros] = useState<LogroModal[]>([]);
+  const [loadingLogros, setLoadingLogros] = useState(false);
+
+  const logrosRevisadosRef = useRef(false);
+
+  const getCacheKey = (usuarioId: string) => `${CACHE_KEY_BASE}_${usuarioId}`;
+  const getLogrosCacheKey = (usuarioId: string) => `${LOGROS_CACHE_KEY_BASE}_${usuarioId}`;
+
+  const guardarCache = (
+    usuarioId: string,
+    data: {
+      me: Usuario | null;
+      friends: Usuario[];
+      pending: Solicitud[];
+      sentRequests: Set<string> | string[];
+      results: Usuario[];
+    }
+  ) => {
+    try {
+      sessionStorage.setItem(
+        getCacheKey(usuarioId),
+        JSON.stringify({
+          timestamp: Date.now(),
+          me: data.me,
+          friends: data.friends,
+          pending: data.pending,
+          sentRequests: Array.isArray(data.sentRequests)
+            ? data.sentRequests
+            : Array.from(data.sentRequests),
+          results: data.results,
+        })
+      );
+    } catch {}
+  };
+
+  const leerCache = (usuarioId: string): AmigosCache | null => {
+    try {
+      const raw = sessionStorage.getItem(getCacheKey(usuarioId));
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+
+      if (!Array.isArray(parsed?.friends)) return null;
+      if (!Array.isArray(parsed?.pending)) return null;
+      if (!Array.isArray(parsed?.sentRequests)) return null;
+      if (!Array.isArray(parsed?.results)) return null;
+
+      return {
+        timestamp: Number(parsed.timestamp) || Date.now(),
+        me: parsed.me ?? null,
+        friends: parsed.friends,
+        pending: parsed.pending,
+        sentRequests: parsed.sentRequests,
+        results: parsed.results,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const aplicarCache = (cache: AmigosCache) => {
+    setMe(cache.me);
+    setFriends(cache.friends);
+    setPending(cache.pending);
+    setSentRequests(new Set(cache.sentRequests));
+    setResults(cache.results);
+  };
+
+  const guardarLogrosCache = (usuarioId: string, data: LogroModal[]) => {
+    try {
+      sessionStorage.setItem(
+        getLogrosCacheKey(usuarioId),
+        JSON.stringify({
+          timestamp: Date.now(),
+          logros: data,
+        })
+      );
+    } catch {}
+  };
+
+  const leerLogrosCache = (usuarioId: string): LogroModal[] | null => {
+    try {
+      const raw = sessionStorage.getItem(getLogrosCacheKey(usuarioId));
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+
+      if (!Array.isArray(parsed?.logros)) return null;
+
+      return parsed.logros;
+    } catch {
+      return null;
+    }
+  };
+
+  useLayoutEffect(() => {
+    const usuarioLocal = localStorage.getItem("user_id");
+    if (!usuarioLocal) return;
+
+    const cache = leerCache(usuarioLocal);
+    if (!cache) return;
+
+    aplicarCache(cache);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) {
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+
+        const cache = leerCache(user.id);
+        if (cache) {
+          aplicarCache(cache);
+          setLoading(false);
+        }
+
+        const { data: meRow } = await supabase
+          .from("usuarios")
+          .select("id,nombre,rol,nivel,puntos,avatar_config")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const meData = normalizarUsuario(meRow);
+
+        if (meData) {
+          setMe(meData);
+        }
+
+        await refreshAll(user.id, meData);
+      } catch (e) {
+        console.error("Error inicializando amigos:", e);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const { data: meRow } = await supabase
-        .from("usuarios")
-        .select("id,nombre,rol,nivel,puntos,avatar_config")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (meRow) setMe(meRow as Usuario);
-
-      await refreshAll(user.id);
-      setLoading(false);
     };
+
     init();
   }, []);
 
-  const refreshAll = async (myId: string) => {
-    await Promise.all([
-      loadFriends(myId),
-      loadPending(myId),
-      loadSentRequests(myId),
-      loadDefaultResults(myId),
-    ]);
-  };
-
-  let logrosRevisados = false; 
-
-  const loadFriends = async (myId: string) => {
+  const fetchFriends = async (myId: string): Promise<Usuario[]> => {
     const { data, error } = await supabase
       .from("amistades")
       .select(`
@@ -96,42 +245,44 @@ export default function AmigosPage() {
 
     if (error) {
       console.error("Error cargando amigos:", error);
-      return;
+      return [];
     }
 
-    const amigos = (data ?? []).map((r) =>
-      r.usuario_id === myId ? r.amigo : r.usuario
-    );
-    setFriends(amigos);
+    const amigos = ((data as any[]) ?? [])
+      .map((r) => (r.usuario_id === myId ? r.amigo : r.usuario))
+      .map((u) => normalizarUsuario(u))
+      .filter(Boolean) as Usuario[];
 
-    // Verificar logros solo una vez (para evitar duplicados al refrescar)
-    if (logrosRevisados) return;
-    logrosRevisados = true;
+    if (!logrosRevisadosRef.current) {
+      logrosRevisadosRef.current = true;
 
-    setTimeout(async () => {
-      try {
-        const { data: amistadesUsuario } = await supabase
-          .from("amistades")
-          .select("id")
-          .eq("usuario_id", myId);
+      setTimeout(async () => {
+        try {
+          const { data: amistadesUsuario } = await supabase
+            .from("amistades")
+            .select("id")
+            .eq("usuario_id", myId);
 
-        const { data: amistadesAmigo } = await supabase
-          .from("amistades")
-          .select("id")
-          .eq("amigo_id", myId);
+          const { data: amistadesAmigo } = await supabase
+            .from("amistades")
+            .select("id")
+            .eq("amigo_id", myId);
 
-        // Suma total de amistades donde aparece el usuario (en cualquiera de las dos columnas)
-        const totalAmigos = (amistadesUsuario?.length ?? 0) + (amistadesAmigo?.length ?? 0);
+          const totalAmigos =
+            (amistadesUsuario?.length ?? 0) + (amistadesAmigo?.length ?? 0);
 
-        const { verificarLogros } = await import("@/utils/verificarLogros");
-        await verificarLogros(myId, "amistades", totalAmigos);
-      } catch (e) {
-        console.error("Error verificando logros iniciales:", e);
-      }
-    }, 1500);
+          const { verificarLogros } = await import("@/utils/verificarLogros");
+          await verificarLogros(myId, "amistades", totalAmigos);
+        } catch (e) {
+          console.error("Error verificando logros iniciales:", e);
+        }
+      }, 1500);
+    }
+
+    return amigos;
   };
 
-  const loadPending = async (myId: string) => {
+  const fetchPending = async (myId: string): Promise<Solicitud[]> => {
     const { data } = await supabase
       .from("solicitudes_amistad")
       .select(
@@ -142,21 +293,23 @@ export default function AmigosPage() {
       .eq("estado", "pendiente")
       .order("created_at", { ascending: true });
 
-    setPending((data as any[]) ?? []);
+    return ((data as any[]) ?? []).map((req) => ({
+      ...req,
+      solicitante: normalizarUsuario(req.solicitante) ?? undefined,
+    }));
   };
 
-  const loadSentRequests = async (myId: string) => {
+  const fetchSentRequests = async (myId: string): Promise<Set<string>> => {
     const { data } = await supabase
       .from("solicitudes_amistad")
       .select("id,destinatario_id,estado")
       .eq("solicitante_id", myId)
       .eq("estado", "pendiente");
 
-    const ids = new Set((data ?? []).map((r) => r.destinatario_id));
-    setSentRequests(ids);
+    return new Set((data ?? []).map((r) => r.destinatario_id));
   };
 
-  const loadDefaultResults = async (myId: string) => {
+  const fetchDefaultResults = async (myId: string): Promise<Usuario[]> => {
     const { data } = await supabase
       .from("usuarios")
       .select("id,nombre,rol,nivel,puntos,avatar_config")
@@ -165,14 +318,52 @@ export default function AmigosPage() {
       .order("puntos", { ascending: false })
       .limit(24);
 
-    setResults((data as any[]) ?? []);
+    return ((data as any[]) ?? [])
+      .map((u) => normalizarUsuario(u))
+      .filter(Boolean) as Usuario[];
+  };
+
+  const refreshAll = async (myId: string, meOverride?: Usuario | null) => {
+    const [friendsData, pendingData, sentData, resultsData] = await Promise.all([
+      fetchFriends(myId),
+      fetchPending(myId),
+      fetchSentRequests(myId),
+      fetchDefaultResults(myId),
+    ]);
+
+    const meData = meOverride ?? me;
+
+    setFriends(friendsData);
+    setPending(pendingData);
+    setSentRequests(sentData);
+    setResults(resultsData);
+
+    guardarCache(myId, {
+      me: meData,
+      friends: friendsData,
+      pending: pendingData,
+      sentRequests: sentData,
+      results: resultsData,
+    });
   };
 
   const doSearch = async () => {
     if (!me) return;
+
     const term = search.trim();
+
     if (!term) {
-      await loadDefaultResults(me.id);
+      const defaultResults = await fetchDefaultResults(me.id);
+      setResults(defaultResults);
+
+      guardarCache(me.id, {
+        me,
+        friends,
+        pending,
+        sentRequests,
+        results: defaultResults,
+      });
+
       return;
     }
 
@@ -185,7 +376,11 @@ export default function AmigosPage() {
       .order("puntos", { ascending: false })
       .limit(50);
 
-    setResults((data as any[]) ?? []);
+    const parsed = ((data as any[]) ?? [])
+      .map((u) => normalizarUsuario(u))
+      .filter(Boolean) as Usuario[];
+
+    setResults(parsed);
   };
 
   const sendRequest = async (toUser: Usuario) => {
@@ -197,10 +392,24 @@ export default function AmigosPage() {
 
     if (error) {
       toast.error("No se pudo enviar la solicitud.");
-    } else {
-      toast.success("Solicitud enviada.");
-      setSentRequests((prev) => new Set([...Array.from(prev), toUser.id]));
+      return;
     }
+
+    toast.success("Solicitud enviada.");
+
+    setSentRequests((prev) => {
+      const next = new Set([...Array.from(prev), toUser.id]);
+
+      guardarCache(me.id, {
+        me,
+        friends,
+        pending,
+        sentRequests: next,
+        results,
+      });
+
+      return next;
+    });
   };
 
   const acceptRequest = async (req: Solicitud) => {
@@ -216,10 +425,9 @@ export default function AmigosPage() {
       return;
     }
 
-    const { data: insertData, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from("amistades")
-      .insert([{ usuario_id: req.solicitante_id, amigo_id: req.destinatario_id }])
-      .select();
+      .insert([{ usuario_id: req.solicitante_id, amigo_id: req.destinatario_id }]);
 
     if (insertError) {
       console.error("Error insertando amistad:", insertError);
@@ -227,26 +435,21 @@ export default function AmigosPage() {
       return;
     }
 
-    // Verificar logros de ambos usuarios
     try {
       const { verificarLogros } = await import("@/utils/verificarLogros");
 
-      // Verificar logros para quien aceptó
       const { count: countAceptante } = await supabase
         .from("amistades")
         .select("*", { count: "exact" })
         .or(`usuario_id.eq.${me.id},amigo_id.eq.${me.id}`);
-      const nuevosAceptante = await verificarLogros(
-        me.id,
-        "amistades",
-        countAceptante ?? 0
-      );
+
+      await verificarLogros(me.id, "amistades", countAceptante ?? 0);
     } catch (err) {
       console.error("Error verificando logros de amistad:", err);
     }
 
     toast.success("Ahora son amigos 🎉");
-    await refreshAll(me.id);
+    await refreshAll(me.id, me);
   };
 
   const rejectRequest = async (req: Solicitud) => {
@@ -259,15 +462,25 @@ export default function AmigosPage() {
 
     if (error) {
       toast.error("No se pudo rechazar.");
-    } else {
-      toast("Solicitud rechazada.");
-      await refreshAll(me.id);
+      return;
     }
+
+    toast("Solicitud rechazada.");
+    await refreshAll(me.id, me);
   };
 
   const openAmigo = async (u: Usuario) => {
     setSelectedAmigo(u);
-    setLogros([]);
+
+    const cache = leerLogrosCache(u.id);
+
+    if (cache) {
+      setLogros(cache);
+      setLoadingLogros(false);
+    } else {
+      setLogros([]);
+      setLoadingLogros(true);
+    }
 
     const { data: relaciones, error: errorRelaciones } = await supabase
       .from("logros_usuarios")
@@ -276,11 +489,14 @@ export default function AmigosPage() {
 
     if (errorRelaciones) {
       console.error("Error obteniendo relaciones:", errorRelaciones);
+      setLoadingLogros(false);
       return;
     }
 
     if (!relaciones || relaciones.length === 0) {
       setLogros([]);
+      guardarLogrosCache(u.id, []);
+      setLoadingLogros(false);
       return;
     }
 
@@ -293,17 +509,20 @@ export default function AmigosPage() {
 
     if (errorLogros) {
       console.error("Error obteniendo logros:", errorLogros);
+      setLoadingLogros(false);
       return;
     }
 
-    setLogros(
-      (logrosData ?? []).map((l: any) => ({
-        id: l.id,
-        titulo: l.nombre,
-        descripcion: l.descripcion,
-        icono_url: l.icono_url,
-      }))
-    );
+    const parsed = (logrosData ?? []).map((l: any) => ({
+      id: l.id,
+      titulo: l.nombre,
+      descripcion: l.descripcion,
+      icono_url: l.icono_url,
+    }));
+
+    setLogros(parsed);
+    guardarLogrosCache(u.id, parsed);
+    setLoadingLogros(false);
   };
 
   const defaultAvatar: AvatarConfig = {
@@ -322,15 +541,74 @@ export default function AmigosPage() {
   if (loading) {
     return (
       <LayoutGeneral rol="estudiante">
-        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
-          <div
-            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-            style={{
-              borderColor: "var(--color-primary)",
-              borderTopColor: "transparent",
-            }}
-          />
-          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+        <div className="space-y-6">
+          <h1
+            className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center"
+            style={{ color: "var(--color-heading)" }}
+          >
+            Amigos
+          </h1>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 min-w-0">
+            <section className="lg:col-span-2 min-w-0">
+              <div
+                className="h-7 rounded w-32 mb-3 animate-pulse"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="p-4 rounded-lg shadow animate-pulse flex items-center gap-4"
+                    style={{ backgroundColor: "var(--color-card)" }}
+                  >
+                    <div
+                      className="h-20 w-20 rounded-full"
+                      style={{ backgroundColor: "var(--color-border)" }}
+                    />
+                    <div className="space-y-3 flex-1">
+                      <div
+                        className="h-5 rounded w-2/3"
+                        style={{ backgroundColor: "var(--color-border)" }}
+                      />
+                      <div
+                        className="h-4 rounded w-1/2"
+                        style={{ backgroundColor: "var(--color-border)" }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div
+                className="h-7 rounded w-48 mb-3 animate-pulse"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+              <div
+                className="h-24 rounded-lg shadow animate-pulse"
+                style={{ backgroundColor: "var(--color-card)" }}
+              />
+            </section>
+          </div>
+
+          <section className="mt-6">
+            <div
+              className="h-7 rounded w-44 mb-3 animate-pulse"
+              style={{ backgroundColor: "var(--color-border)" }}
+            />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div
+                className="h-10 rounded flex-1 animate-pulse"
+                style={{ backgroundColor: "var(--color-card)" }}
+              />
+              <div
+                className="h-10 rounded-lg w-full sm:w-24 animate-pulse"
+                style={{ backgroundColor: "var(--color-card)" }}
+              />
+            </div>
+          </section>
         </div>
       </LayoutGeneral>
     );
@@ -339,16 +617,22 @@ export default function AmigosPage() {
   return (
     <LayoutGeneral rol="estudiante">
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
+        <h1
+          className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center"
+          style={{ color: "var(--color-heading)" }}
+        >
           Amigos
         </h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 min-w-0">
-          {/* Amigos */}
           <section className="lg:col-span-2 min-w-0">
-            <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
+            <h2
+              className="text-xl font-semibold mb-3"
+              style={{ color: "var(--color-heading)" }}
+            >
               Tu lista
             </h2>
+
             {friends.length === 0 ? (
               <p style={{ color: "var(--color-muted)" }}>
                 Aún no has agregado amigos. Busca estudiantes abajo y envía una solicitud.
@@ -369,11 +653,19 @@ export default function AmigosPage() {
                       config={u.avatar_config ?? defaultAvatar}
                       size={100}
                     />
+
                     <div>
-                      <div className="text-lg sm:text-xl font-semibold break-words" style={{ color: "var(--color-heading)" }}>
+                      <div
+                        className="text-lg sm:text-xl font-semibold break-words"
+                        style={{ color: "var(--color-heading)" }}
+                      >
                         {u.nombre}
                       </div>
-                      <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+
+                      <div
+                        className="text-sm"
+                        style={{ color: "var(--color-muted)" }}
+                      >
                         Nivel {u.nivel ?? 0} • {u.puntos ?? 0} pts
                       </div>
                     </div>
@@ -383,13 +675,18 @@ export default function AmigosPage() {
             )}
           </section>
 
-          {/* Solicitudes */}
           <section>
-            <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
+            <h2
+              className="text-xl font-semibold mb-3"
+              style={{ color: "var(--color-heading)" }}
+            >
               Solicitudes recibidas
             </h2>
+
             {pending.length === 0 ? (
-              <p style={{ color: "var(--color-muted)" }}>No tienes solicitudes pendientes.</p>
+              <p style={{ color: "var(--color-muted)" }}>
+                No tienes solicitudes pendientes.
+              </p>
             ) : (
               <div className="space-y-3">
                 {pending.map((req) => (
@@ -406,15 +703,25 @@ export default function AmigosPage() {
                         config={req.solicitante?.avatar_config ?? defaultAvatar}
                         size={50}
                       />
+
                       <div>
-                        <div className="font-medium" style={{ color: "var(--color-heading)" }}>
+                        <div
+                          className="font-medium"
+                          style={{ color: "var(--color-heading)" }}
+                        >
                           {req.solicitante?.nombre}
                         </div>
-                        <div className="text-sm" style={{ color: "var(--color-muted)" }}>
-                          Nivel {req.solicitante?.nivel ?? 0} • {req.solicitante?.puntos ?? 0} pts
+
+                        <div
+                          className="text-sm"
+                          style={{ color: "var(--color-muted)" }}
+                        >
+                          Nivel {req.solicitante?.nivel ?? 0} •{" "}
+                          {req.solicitante?.puntos ?? 0} pts
                         </div>
                       </div>
                     </div>
+
                     <div className="flex gap-2">
                       <button
                         className="px-3 py-1 rounded-lg bg-green-600 hover:bg-green-500 text-white"
@@ -422,6 +729,7 @@ export default function AmigosPage() {
                       >
                         Aceptar
                       </button>
+
                       <button
                         className="px-3 py-1 rounded-lg"
                         style={{
@@ -441,11 +749,14 @@ export default function AmigosPage() {
           </section>
         </div>
 
-        {/* Buscador */}
         <section className="mt-6">
-          <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
+          <h2
+            className="text-xl font-semibold mb-3"
+            style={{ color: "var(--color-heading)" }}
+          >
             Buscar estudiantes
           </h2>
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -464,6 +775,7 @@ export default function AmigosPage() {
                 color: "var(--color-text)",
               }}
             />
+
             <button
               type="submit"
               className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition"
@@ -495,11 +807,19 @@ export default function AmigosPage() {
                       config={u.avatar_config ?? defaultAvatar}
                       size={100}
                     />
+
                     <div>
-                      <div className="text-lg sm:text-xl font-medium break-words" style={{ color: "var(--color-heading)" }}>
+                      <div
+                        className="text-lg sm:text-xl font-medium break-words"
+                        style={{ color: "var(--color-heading)" }}
+                      >
                         {u.nombre}
                       </div>
-                      <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+
+                      <div
+                        className="text-sm"
+                        style={{ color: "var(--color-muted)" }}
+                      >
                         Nivel {u.nivel ?? 0} • {u.puntos ?? 0} pts
                       </div>
                     </div>
@@ -527,7 +847,7 @@ export default function AmigosPage() {
           </div>
         </section>
       </div>
-      
+
       {selectedAmigo &&
         typeof document !== "undefined" &&
         createPortal(
@@ -537,55 +857,82 @@ export default function AmigosPage() {
           >
             <div
               className="p-4 sm:p-6 rounded-2xl w-[92vw] max-w-[720px] max-h-[90dvh] overflow-y-auto shadow-lg relative"
-              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
+              style={{
+                backgroundColor: "var(--color-card)",
+                color: "var(--color-text)",
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-            <button
-              className="absolute top-3 right-3 hover:opacity-80"
-              onClick={() => setSelectedAmigo(null)}
-              aria-label="Cerrar"
-              style={{ color: "var(--color-muted)" }}
-            >
-              ✕
-            </button>
+              <button
+                className="absolute top-3 right-3 hover:opacity-80"
+                onClick={() => setSelectedAmigo(null)}
+                aria-label="Cerrar"
+                style={{ color: "var(--color-muted)" }}
+              >
+                ✕
+              </button>
 
-            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left min-w-0">
-              <div className="scale-[0.75] sm:scale-100 -my-8 sm:my-0">
-                <RenderizadorAvatar
-                  config={selectedAmigo.avatar_config ?? defaultAvatar}
-                  size={250}
-                />
-              </div>
-              <div>
-                <h3 className="text-2xl sm:text-4xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
-                  {selectedAmigo.nombre}
-                </h3>
-                <div className="text-lg" style={{ color: "var(--color-muted)" }}>
-                  Nivel {selectedAmigo.nivel ?? 0} • {selectedAmigo.puntos ?? 0} pts
+              <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left min-w-0">
+                <div className="scale-[0.75] sm:scale-100 -my-8 sm:my-0">
+                  <RenderizadorAvatar
+                    config={selectedAmigo.avatar_config ?? defaultAvatar}
+                    size={250}
+                  />
+                </div>
+
+                <div>
+                  <h3
+                    className="text-2xl sm:text-4xl font-bold break-words"
+                    style={{ color: "var(--color-heading)" }}
+                  >
+                    {selectedAmigo.nombre}
+                  </h3>
+
+                  <div
+                    className="text-lg"
+                    style={{ color: "var(--color-muted)" }}
+                  >
+                    Nivel {selectedAmigo.nivel ?? 0} • {selectedAmigo.puntos ?? 0} pts
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-6">
-              <h4 className="text-xl font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
-                Logros desbloqueados
-              </h4>
-              {logros.length === 0 ? (
-                <p style={{ color: "var(--color-muted)" }}>Este usuario aún no tiene logros.</p>
-              ) : (
-                <GridLogros
-                  logros={logros.map((l) => ({
-                    ...l,
-                    descripcion: l.descripcion ?? "",
-                    desbloqueado: true,
-                  }))}
-                />
-              )}
+              <div className="mt-6">
+                <h4
+                  className="text-xl font-semibold mb-3"
+                  style={{ color: "var(--color-heading)" }}
+                >
+                  Logros desbloqueados
+                </h4>
+
+                {loadingLogros ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {[1, 2, 3].map((item) => (
+                      <div
+                        key={item}
+                        className="h-24 rounded-lg animate-pulse"
+                        style={{ backgroundColor: "var(--color-bg)" }}
+                      />
+                    ))}
+                  </div>
+                ) : logros.length === 0 ? (
+                  <p style={{ color: "var(--color-muted)" }}>
+                    Este usuario aún no tiene logros.
+                  </p>
+                ) : (
+                  <GridLogros
+                    logros={logros.map((l) => ({
+                      ...l,
+                      descripcion: l.descripcion ?? "",
+                      desbloqueado: true,
+                    }))}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </LayoutGeneral>
   );
 }

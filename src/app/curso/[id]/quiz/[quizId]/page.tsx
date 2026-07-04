@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import katex from "katex";
 import { useParams, useRouter } from "next/navigation";
@@ -18,7 +18,130 @@ import "katex/dist/katex.min.css";
 type Pregunta = { id: string; enunciado: string };
 type Respuesta = { id: string; texto: string; es_correcta: boolean };
 
+type QuizInfo = {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  xp: number | null;
+  intentos_max: number | null;
+  tiempo_limite_min: number | null;
+};
+
 type EstadoQuiz = "intro" | "en_curso" | "finalizado";
+
+type QuizStaticCache = {
+  timestamp: number;
+  quizInfo: QuizInfo | null;
+  preguntas: Pregunta[];
+  respuestas: Record<string, Respuesta[]>;
+};
+
+type QuizUserCache = {
+  timestamp: number;
+  rol: string;
+  intentosRealizados: number;
+  mejorPuntaje: number;
+  esPreview: boolean;
+};
+
+const STATIC_CACHE_KEY_BASE = "fcc_academy_quiz_static_v1";
+const USER_CACHE_KEY_BASE = "fcc_academy_quiz_user_v1";
+
+function getStaticCacheKey(quizId: string) {
+  return `${STATIC_CACHE_KEY_BASE}_${quizId}`;
+}
+
+function getUserCacheKey(userId: string, quizId: string) {
+  return `${USER_CACHE_KEY_BASE}_${userId}_${quizId}`;
+}
+
+function guardarStaticCache(quizId: string, cache: Omit<QuizStaticCache, "timestamp">) {
+  try {
+    sessionStorage.setItem(
+      getStaticCacheKey(quizId),
+      JSON.stringify({
+        timestamp: Date.now(),
+        ...cache,
+      })
+    );
+  } catch {}
+}
+
+function leerStaticCache(quizId: string): QuizStaticCache | null {
+  try {
+    const raw = sessionStorage.getItem(getStaticCacheKey(quizId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed?.preguntas)) return null;
+    if (!parsed?.respuestas || typeof parsed.respuestas !== "object") return null;
+
+    return {
+      timestamp: Number(parsed.timestamp) || Date.now(),
+      quizInfo: parsed.quizInfo ?? null,
+      preguntas: parsed.preguntas,
+      respuestas: parsed.respuestas,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function guardarUserCache(
+  userId: string,
+  quizId: string,
+  cache: Omit<QuizUserCache, "timestamp">
+) {
+  try {
+    sessionStorage.setItem(
+      getUserCacheKey(userId, quizId),
+      JSON.stringify({
+        timestamp: Date.now(),
+        ...cache,
+      })
+    );
+  } catch {}
+}
+
+function leerUserCache(userId: string, quizId: string): QuizUserCache | null {
+  try {
+    const raw = sessionStorage.getItem(getUserCacheKey(userId, quizId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    return {
+      timestamp: Number(parsed.timestamp) || Date.now(),
+      rol: parsed.rol ?? "estudiante",
+      intentosRealizados: Number(parsed.intentosRealizados) || 0,
+      mejorPuntaje: Number(parsed.mejorPuntaje) || 0,
+      esPreview: Boolean(parsed.esPreview),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function limpiarCachesDerivados() {
+  try {
+    const prefixes = [
+      "fcc_academy_visualizador_curso_",
+      "fcc_academy_cursos_estudiante_",
+      "fcc_academy_ranking_estudiante_",
+      "fcc_academy_ranking_profesor_",
+      "fcc_academy_widget_ranking_top5_",
+      "fcc_academy_perfil_estudiante_",
+      "fcc_academy_amigos_estudiante_",
+    ];
+
+    Object.keys(sessionStorage).forEach((key) => {
+      if (prefixes.some((prefix) => key.startsWith(prefix))) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
 
 export default function ResolverQuizPage() {
   const params = useParams();
@@ -34,7 +157,8 @@ export default function ResolverQuizPage() {
   const [envioAutomaticoPorTiempo, setEnvioAutomaticoPorTiempo] = useState(false);
   const [mostrarAvisoTiempo, setMostrarAvisoTiempo] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [quizInfo, setQuizInfo] = useState<any>(null);
+  const [verificandoIntentos, setVerificandoIntentos] = useState(true);
+  const [quizInfo, setQuizInfo] = useState<QuizInfo | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [rol, setRol] = useState<string>("estudiante");
   const [intentosRealizados, setIntentosRealizados] = useState<number>(0);
@@ -50,80 +174,177 @@ export default function ResolverQuizPage() {
   const [mejorPuntaje, setMejorPuntaje] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  useLayoutEffect(() => {
+    if (!quizId) return;
+
+    const staticCache = leerStaticCache(quizId);
+
+    if (staticCache) {
+      setQuizInfo(staticCache.quizInfo);
+      setPreguntas(staticCache.preguntas);
+      setRespuestas(staticCache.respuestas);
+      setLoading(false);
+    }
+
+    const usuarioLocal = localStorage.getItem("user_id");
+
+    if (usuarioLocal) {
+      setUserId(usuarioLocal);
+
+      const userCache = leerUserCache(usuarioLocal, quizId);
+
+      if (userCache) {
+        setRol(userCache.rol);
+        setIntentosRealizados(userCache.intentosRealizados);
+        setMejorPuntaje(userCache.mejorPuntaje);
+        setEsPreview(userCache.esPreview);
+      }
+    }
+  }, [quizId]);
+
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      try {
+        if (!quizId) return;
 
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData?.user) {
-        router.push("/login");
-        return;
-      }
-      setUserId(userData.user.id);
+        const staticCache = leerStaticCache(quizId);
 
-      const { data: perfil } = await supabase
-        .from("usuarios")
-        .select("rol")
-        .eq("id", userData.user.id)
-        .single();
-      const rolUser = perfil?.rol || "estudiante";
-      setRol(rolUser);
+        if (staticCache) {
+          setQuizInfo(staticCache.quizInfo);
+          setPreguntas(staticCache.preguntas);
+          setRespuestas(staticCache.respuestas);
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
 
-      const { data: qz } = await supabase
-        .from("quizzes")
-        .select("id,titulo,descripcion,xp,intentos_max,tiempo_limite_min")
-        .eq("id", quizId)
-        .single();
-      setQuizInfo(qz);
+        setVerificandoIntentos(true);
 
-      const { count: intentosCount } = await supabase
-        .from("intentos_quiz")
-        .select("id", { count: "exact", head: true })
-        .eq("quiz_id", quizId)
-        .eq("usuario_id", userData.user.id);
+        const { data: userData } = await supabase.auth.getUser();
 
-      setIntentosRealizados(intentosCount || 0);
+        if (!userData?.user) {
+          router.push("/login");
+          return;
+        }
 
-      const { data: bestIntento } = await supabase
-        .from("intentos_quiz")
-        .select("puntaje")
-        .eq("quiz_id", quizId)
-        .eq("usuario_id", userData.user.id)
-        .order("puntaje", { ascending: false })
-        .limit(1);
+        const currentUserId = userData.user.id;
+        setUserId(currentUserId);
 
-      setMejorPuntaje(bestIntento?.[0]?.puntaje || 0);
+        const paramsUrl = new URLSearchParams(window.location.search);
+        const previewPorUrl = paramsUrl.get("preview") === "1";
 
-      const { data: preg } = await supabase
-        .from("preguntas")
-        .select("id,enunciado")
-        .eq("quiz_id", quizId)
-        .order("orden", { ascending: true });
+        const [
+          { data: perfil },
+          { data: qz, error: quizError },
+          { count: intentosCount },
+          { data: bestIntento },
+          { data: preg, error: preguntasError },
+        ] = await Promise.all([
+          supabase
+            .from("usuarios")
+            .select("rol")
+            .eq("id", currentUserId)
+            .single(),
 
-      if (!preg) {
+          supabase
+            .from("quizzes")
+            .select("id,titulo,descripcion,xp,intentos_max,tiempo_limite_min")
+            .eq("id", quizId)
+            .single(),
+
+          supabase
+            .from("intentos_quiz")
+            .select("id", { count: "exact", head: true })
+            .eq("quiz_id", quizId)
+            .eq("usuario_id", currentUserId),
+
+          supabase
+            .from("intentos_quiz")
+            .select("puntaje")
+            .eq("quiz_id", quizId)
+            .eq("usuario_id", currentUserId)
+            .order("puntaje", { ascending: false })
+            .limit(1),
+
+          supabase
+            .from("preguntas")
+            .select("id,enunciado")
+            .eq("quiz_id", quizId)
+            .order("orden", { ascending: true }),
+        ]);
+
+        if (quizError) {
+          console.error("Error cargando quiz:", quizError);
+        }
+
+        if (preguntasError) {
+          console.error("Error cargando preguntas:", preguntasError);
+        }
+
+        const rolUser = perfil?.rol || "estudiante";
+        const preview = rolUser === "profesor" || previewPorUrl;
+        const preguntasData = (preg as Pregunta[]) ?? [];
+        const mapa: Record<string, Respuesta[]> = {};
+
+        if (preguntasData.length > 0) {
+          const preguntaIds = preguntasData.map((p) => p.id);
+
+          const { data: respuestasData, error: respuestasError } = await supabase
+            .from("respuestas")
+            .select("id,texto,es_correcta,orden,pregunta_id")
+            .in("pregunta_id", preguntaIds)
+            .order("orden", { ascending: true });
+
+          if (respuestasError) {
+            console.error("Error cargando respuestas:", respuestasError);
+          }
+
+          preguntasData.forEach((p) => {
+            mapa[p.id] = [];
+          });
+
+          ((respuestasData as any[]) ?? []).forEach((r) => {
+            if (!mapa[r.pregunta_id]) {
+              mapa[r.pregunta_id] = [];
+            }
+
+            mapa[r.pregunta_id].push({
+              id: r.id,
+              texto: r.texto,
+              es_correcta: r.es_correcta,
+            });
+          });
+        }
+
+        const intentos = intentosCount || 0;
+        const best = bestIntento?.[0]?.puntaje || 0;
+
+        setRol(rolUser);
+        setEsPreview(preview);
+        setQuizInfo((qz as QuizInfo) ?? null);
+        setPreguntas(preguntasData);
+        setRespuestas(mapa);
+        setIntentosRealizados(intentos);
+        setMejorPuntaje(best);
+
+        guardarStaticCache(quizId, {
+          quizInfo: (qz as QuizInfo) ?? null,
+          preguntas: preguntasData,
+          respuestas: mapa,
+        });
+
+        guardarUserCache(currentUserId, quizId, {
+          rol: rolUser,
+          intentosRealizados: intentos,
+          mejorPuntaje: best,
+          esPreview: preview,
+        });
+      } catch (e) {
+        console.error("Error inicializando quiz:", e);
+      } finally {
         setLoading(false);
-        return;
+        setVerificandoIntentos(false);
       }
-
-      setPreguntas(preg as Pregunta[]);
-
-      const mapa: Record<string, Respuesta[]> = {};
-      for (const p of preg as Pregunta[]) {
-        const { data: resp } = await supabase
-        .from("respuestas")
-        .select("id,texto,es_correcta,orden")
-        .eq("pregunta_id", p.id)
-        .order("orden", { ascending: true });
-        mapa[p.id] = (resp || []) as Respuesta[];
-      }
-      setRespuestas(mapa);
-
-      const paramsUrl = new URLSearchParams(window.location.search);
-      if (rolUser === "profesor" || paramsUrl.get("preview") === "1") {
-        setEsPreview(true);
-      }
-
-      setLoading(false);
     };
 
     fetchData();
@@ -151,15 +372,33 @@ export default function ResolverQuizPage() {
     return () => clearTimeout(timer);
   }, [estado, envioAutomaticoPorTiempo]);
 
+  const seleccionarRespuesta = (preguntaId: string, respuestaId: string) => {
+    const next = {
+      ...seleccionadasRef.current,
+      [preguntaId]: respuestaId,
+    };
+
+    seleccionadasRef.current = next;
+    setSeleccionadas(next);
+  };
+
   const iniciar = () => {
     setEnvioAutomaticoPorTiempo(false);
     setMostrarAvisoTiempo(false);
 
+    if (verificandoIntentos && !esPreview) {
+      alert("Espera un momento. Estamos verificando tus intentos disponibles.");
+      return;
+    }
+
     if (esPreview) {
+      enviadoRef.current = false;
       setEstado("en_curso");
+
       if (quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0) {
         setTimeLeftSec(quizInfo.tiempo_limite_min * 60);
       }
+
       arrancarCronometro();
       return;
     }
@@ -169,24 +408,33 @@ export default function ResolverQuizPage() {
       return;
     }
 
+    enviadoRef.current = false;
     setEstado("en_curso");
+
     if (quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0) {
       setTimeLeftSec(quizInfo.tiempo_limite_min * 60);
     }
+
     arrancarCronometro();
   };
 
   const arrancarCronometro = () => {
     if (!quizInfo?.tiempo_limite_min || quizInfo.tiempo_limite_min <= 0) return;
+
     if (intervalRef.current) clearInterval(intervalRef.current);
+
     intervalRef.current = setInterval(() => {
       setTimeLeftSec((prev) => {
         if (prev === null) return null;
+
         if (prev <= 1) {
           clearInterval(intervalRef.current as NodeJS.Timeout);
+
           if (!enviadoRef.current) enviarQuiz(true);
+
           return 0;
         }
+
         return prev - 1;
       });
     }, 1000);
@@ -224,6 +472,7 @@ export default function ResolverQuizPage() {
 
     setResultado({ correctas, total });
     setEstado("finalizado");
+
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (esPreview || !userId || !quizInfo) return;
@@ -233,7 +482,7 @@ export default function ResolverQuizPage() {
       return;
     }
 
-    const puntaje = Math.round((correctas / total) * 100);
+    const puntaje = total > 0 ? Math.round((correctas / total) * 100) : 0;
 
     const { data: bestPrev } = await supabase
       .from("intentos_quiz")
@@ -256,7 +505,17 @@ export default function ResolverQuizPage() {
       completado: quizCompletado,
     });
 
-    setIntentosRealizados((prev) => prev + 1);
+    const nuevoMejor = Math.max(prevBest, puntaje);
+
+    setIntentosRealizados(intentosDespuesDeEste);
+    setMejorPuntaje(nuevoMejor);
+
+    guardarUserCache(userId, quizId, {
+      rol,
+      intentosRealizados: intentosDespuesDeEste,
+      mejorPuntaje: nuevoMejor,
+      esPreview,
+    });
 
     const xpQuiz = quizInfo.xp ?? 0;
     const xpNuevo = Math.round((xpQuiz * puntaje) / 100);
@@ -264,21 +523,19 @@ export default function ResolverQuizPage() {
     const delta = Math.max(xpNuevo - xpPrev, 0);
 
     if (delta > 0) {
-      const { data, error } = await supabase.rpc("sumar_xp", { 
-        user_id: userId, 
-        xp_extra: delta 
+      const { data, error } = await supabase.rpc("sumar_xp", {
+        user_id: userId,
+        xp_extra: delta,
       });
 
       if (error) {
         console.error("Error al sumar XP:", error);
-      } else {
-        console.log("XP actualizado:", data);
-
-        if (data?.nuevo_nivel === true) {
-          window.dispatchEvent(new CustomEvent("nivelSubido", { detail: data.nivel_actual }));
-        }
+      } else if (data?.nuevo_nivel === true) {
+        window.dispatchEvent(
+          new CustomEvent("nivelSubido", { detail: data.nivel_actual })
+        );
       }
-    } 
+    }
 
     setXpGanado(Math.max(xpNuevo, xpPrev));
 
@@ -290,32 +547,36 @@ export default function ResolverQuizPage() {
     const totalQuizzes = (quizzesMateria || []).length;
     const quizIdsMateria = (quizzesMateria || []).map((q) => q.id);
 
-    const { data: intentosUsuario } = await supabase
-      .from("intentos_quiz")
-      .select("quiz_id,puntaje")
-      .eq("usuario_id", userId)
-      .in("quiz_id", quizIdsMateria);
+    let progreso = 0;
 
-    const completadosSet = new Set<string>();
+    if (quizIdsMateria.length > 0) {
+      const { data: intentosUsuario } = await supabase
+        .from("intentos_quiz")
+        .select("quiz_id,puntaje")
+        .eq("usuario_id", userId)
+        .in("quiz_id", quizIdsMateria);
 
-    for (const quizMateria of quizzesMateria || []) {
-      const intentosDelQuiz = (intentosUsuario || []).filter(
-        (i) => i.quiz_id === quizMateria.id
-      );
+      const completadosSet = new Set<string>();
 
-      const tiene100 = intentosDelQuiz.some((i) => i.puntaje === 100);
-      const agotoIntentos =
-        intentosDelQuiz.length >= (quizMateria.intentos_max ?? 1);
+      for (const quizMateria of quizzesMateria || []) {
+        const intentosDelQuiz = (intentosUsuario || []).filter(
+          (i) => i.quiz_id === quizMateria.id
+        );
 
-      if (tiene100 || agotoIntentos) {
-        completadosSet.add(quizMateria.id);
+        const tiene100 = intentosDelQuiz.some((i) => i.puntaje === 100);
+        const agotoIntentos =
+          intentosDelQuiz.length >= (quizMateria.intentos_max ?? 1);
+
+        if (tiene100 || agotoIntentos) {
+          completadosSet.add(quizMateria.id);
+        }
       }
-    }
 
-    const progreso =
-      totalQuizzes > 0
-        ? Math.min(100, Math.round((completadosSet.size / totalQuizzes) * 100))
-        : 0;
+      progreso =
+        totalQuizzes > 0
+          ? Math.min(100, Math.round((completadosSet.size / totalQuizzes) * 100))
+          : 0;
+    }
 
     await supabase
       .from("progreso")
@@ -323,13 +584,12 @@ export default function ResolverQuizPage() {
       .eq("usuario_id", userId)
       .eq("materia_id", materiaId);
 
-    // Verificar logros de quiz y curso en una sola emisión
+    limpiarCachesDerivados();
+
     try {
       const { verificarLogros } = await import("@/utils/verificarLogros");
-      const nuevosLogros: any[] = [];
       const porcentaje = puntaje;
 
-      // Logros por quiz al 100 %
       if (porcentaje === 100) {
         const { count: completados100 } = await supabase
           .from("intentos_quiz")
@@ -341,7 +601,6 @@ export default function ResolverQuizPage() {
         await verificarLogros(userId, "quiz_100", completados100 ?? 0);
       }
 
-      // Logros por quiz ≥ 75 %
       if (porcentaje >= 75) {
         const { count: completados75 } = await supabase
           .from("intentos_quiz")
@@ -353,7 +612,6 @@ export default function ResolverQuizPage() {
         await verificarLogros(userId, "quiz_75", completados75 ?? 0);
       }
 
-      // Logros por curso completado
       if (progreso === 100) {
         const { count: cursosCompletos } = await supabase
           .from("progreso")
@@ -366,6 +624,19 @@ export default function ResolverQuizPage() {
     } catch (error) {
       console.error("Error al verificar logros del quiz o curso:", error);
     }
+  };
+
+  const reiniciarQuiz = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    seleccionadasRef.current = {};
+    setSeleccionadas({});
+    setEstado("intro");
+    setResultado(null);
+    setTimeLeftSec(null);
+    setEnvioAutomaticoPorTiempo(false);
+    setMostrarAvisoTiempo(false);
+    enviadoRef.current = false;
   };
 
   const mmss = (s: number) => {
@@ -458,25 +729,55 @@ export default function ResolverQuizPage() {
     }
   };
 
-    if (loading) {
-      return (
-        <LayoutGeneral rol={rol}>
-          <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+  if (loading) {
+    return (
+      <LayoutGeneral rol={rol}>
+        <div className="p-4 sm:p-6 rounded-xl shadow space-y-5 sm:space-y-6 min-w-0 overflow-hidden animate-pulse"
+          style={{
+            backgroundColor: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
+          <div
+            className="h-8 rounded w-2/3 mx-auto"
+            style={{ backgroundColor: "var(--color-border)" }}
+          />
+
+          <div
+            className="h-4 rounded w-1/2 mx-auto"
+            style={{ backgroundColor: "var(--color-border)" }}
+          />
+
+          <div
+            className="p-4 rounded-lg space-y-3"
+            style={{
+              backgroundColor: "var(--color-card)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
             <div
-              className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-              style={{
-                borderColor: "var(--color-primary)",
-                borderTopColor: "transparent",
-              }}
+              className="h-5 rounded w-44 mx-auto"
+              style={{ backgroundColor: "var(--color-border)" }}
             />
-            <p style={{ color: "var(--color-muted)" }}>Cargando quiz...</p>
+            <div
+              className="h-5 rounded w-32 mx-auto"
+              style={{ backgroundColor: "var(--color-border)" }}
+            />
+            <div
+              className="h-10 rounded w-28 mx-auto"
+              style={{ backgroundColor: "var(--color-border)" }}
+            />
           </div>
-        </LayoutGeneral>
-      );
-    }
+        </div>
+      </LayoutGeneral>
+    );
+  }
 
   const intentosMax = quizInfo?.intentos_max ?? 1;
-  const sinMasIntentos = !esPreview && (intentosRealizados >= intentosMax || mejorPuntaje === 100);
+  const sinMasIntentos =
+    !esPreview &&
+    !verificandoIntentos &&
+    (intentosRealizados >= intentosMax || mejorPuntaje === 100);
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: "var(--color-card)",
@@ -513,10 +814,11 @@ export default function ResolverQuizPage() {
         )}
 
         <p className="text-sm text-center" style={{ color: "var(--color-muted)" }}>
-          Intentos realizados: {intentosRealizados} / {intentosMax}
+          {verificandoIntentos && !esPreview
+            ? "Verificando intentos disponibles..."
+            : `Intentos realizados: ${intentosRealizados} / ${intentosMax}`}
         </p>
 
-        {/* Intro */}
         {estado === "intro" && (
           <div
             className="p-4 rounded-lg space-y-3 text-center flex flex-col items-center"
@@ -531,16 +833,20 @@ export default function ResolverQuizPage() {
             <div className="flex flex-col items-center gap-3">
               <button
                 onClick={iniciar}
-                disabled={sinMasIntentos}
-                className="px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
+                disabled={verificandoIntentos || sinMasIntentos}
+                className="px-4 py-2 rounded text-white hover:opacity-90 disabled:opacity-60 w-full sm:w-auto"
                 style={{
-                  backgroundColor: sinMasIntentos
-                    ? "var(--color-secondary)"
-                    : "var(--color-primary)",
-                  cursor: sinMasIntentos ? "not-allowed" : "pointer",
+                  backgroundColor:
+                    verificandoIntentos || sinMasIntentos
+                      ? "var(--color-secondary)"
+                      : "var(--color-primary)",
+                  cursor:
+                    verificandoIntentos || sinMasIntentos
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
-                Iniciar
+                {verificandoIntentos && !esPreview ? "Verificando..." : "Iniciar"}
               </button>
 
               {sinMasIntentos && (
@@ -558,19 +864,15 @@ export default function ResolverQuizPage() {
           </div>
         )}
 
-        {/* Cronómetro */}
-        {estado === "en_curso" && timeLeftSec !== null && quizInfo?.tiempo_limite_min > 0 && (
-          <>
-            <div
-              className="text-center text-lg font-semibold"
-              style={{ color: timeLeftSec <= 60 ? "var(--color-danger)" : "var(--color-heading)" }}
-            >
-              ⏳ {mmss(timeLeftSec)}
-            </div>
-          </>
+        {estado === "en_curso" && timeLeftSec !== null && quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0 && (
+          <div
+            className="text-center text-lg font-semibold"
+            style={{ color: timeLeftSec <= 60 ? "var(--color-danger)" : "var(--color-heading)" }}
+          >
+            ⏳ {mmss(timeLeftSec)}
+          </div>
         )}
 
-        {/* Preguntas */}
         {(estado === "en_curso" || estado === "finalizado") && (
           <div className="space-y-4">
             {preguntas.map((p, idx) => (
@@ -602,9 +904,7 @@ export default function ResolverQuizPage() {
                           value={r.id}
                           checked={selected}
                           disabled={disabled}
-                          onChange={() =>
-                            setSeleccionadas((prev) => ({ ...prev, [p.id]: r.id }))
-                          }
+                          onChange={() => seleccionarRespuesta(p.id, r.id)}
                           className="shrink-0"
                         />
 
@@ -631,7 +931,6 @@ export default function ResolverQuizPage() {
           </div>
         )}
 
-        {/* Botón enviar */}
         {estado === "en_curso" && (
           <div className="flex justify-center">
             <button
@@ -644,13 +943,11 @@ export default function ResolverQuizPage() {
           </div>
         )}
 
-        {/* Resultado */}
         {resultado && (
           <div
             className="mt-4 p-3 sm:p-4 rounded-lg space-y-3 min-w-0 overflow-hidden text-center"
             style={cardStyle}
           >
-            
             <p style={{ color: "var(--color-text)" }}>
               Respuestas correctas:{" "}
               <span style={{ color: "var(--color-success)", fontWeight: "bold" }}>
@@ -658,10 +955,14 @@ export default function ResolverQuizPage() {
               </span>{" "}
               de {resultado.total}
             </p>
+
             <p style={{ color: "var(--color-text)" }}>
               Puntaje final:{" "}
               <span style={{ color: "var(--color-primary)", fontWeight: "bold" }}>
-                {Math.round((resultado.correctas / resultado.total) * 100)}%
+                {resultado.total > 0
+                  ? Math.round((resultado.correctas / resultado.total) * 100)
+                  : 0}
+                %
               </span>
             </p>
 
@@ -693,14 +994,7 @@ export default function ResolverQuizPage() {
             {!esPreview && !sinMasIntentos && resultado.correctas < resultado.total && (
               <div className="flex justify-center">
                 <button
-                  onClick={() => {
-                    setEstado("intro");
-                    setResultado(null);
-                    setSeleccionadas({});
-                    setEnvioAutomaticoPorTiempo(false);
-                    setMostrarAvisoTiempo(false);
-                    enviadoRef.current = false;
-                  }}
+                  onClick={reiniciarQuiz}
                   className="mt-3 px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
                   style={{ backgroundColor: "var(--color-primary)" }}
                 >
@@ -714,7 +1008,8 @@ export default function ResolverQuizPage() {
 
       {estado === "en_curso" &&
         timeLeftSec !== null &&
-        quizInfo?.tiempo_limite_min > 0 &&
+        quizInfo?.tiempo_limite_min &&
+        quizInfo.tiempo_limite_min > 0 &&
         timeLeftSec <= 60 &&
         createPortal(
           <div
@@ -731,51 +1026,51 @@ export default function ResolverQuizPage() {
           document.body
         )}
 
-        {mostrarAvisoTiempo &&
-          createPortal(
-            <div
-              className="fixed z-[140] rounded-lg px-4 py-3 shadow-lg font-semibold pointer-events-none text-sm leading-snug"
-              style={{
-                top: "24px",
-                right: "24px",
-                width: "min(520px, calc(100vw - 48px))",
-                backgroundColor: "var(--color-danger)",
-                color: "#fff",
-              }}
-            >
-              ⏳ Se terminó el tiempo. Se enviaron automáticamente las respuestas que alcanzaste a seleccionar.
-            </div>,
-            document.body
-      )}
+      {mostrarAvisoTiempo &&
+        createPortal(
+          <div
+            className="fixed z-[140] rounded-lg px-4 py-3 shadow-lg font-semibold pointer-events-none text-sm leading-snug"
+            style={{
+              top: "24px",
+              right: "24px",
+              width: "min(520px, calc(100vw - 48px))",
+              backgroundColor: "var(--color-danger)",
+              color: "#fff",
+            }}
+          >
+            ⏳ Se terminó el tiempo. Se enviaron automáticamente las respuestas que alcanzaste a seleccionar.
+          </div>,
+          document.body
+        )}
 
       {previewImage &&
-      createPortal(
-        <div
-          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[140] p-3"
-          onClick={() => setPreviewImage(null)}
-        >
+        createPortal(
           <div
-            className="relative max-w-[92vw] max-h-[92vh]"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[140] p-3"
+            onClick={() => setPreviewImage(null)}
           >
-            <button
-              type="button"
-              onClick={() => setPreviewImage(null)}
-              className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg flex items-center justify-center"
-              aria-label="Cerrar imagen"
+            <div
+              className="relative max-w-[92vw] max-h-[92vh]"
+              onClick={(e) => e.stopPropagation()}
             >
-              ×
-            </button>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg flex items-center justify-center"
+                aria-label="Cerrar imagen"
+              >
+                ×
+              </button>
 
-            <img
-              src={previewImage}
-              className="max-w-full max-h-[90vh] rounded-lg"
-              alt="Vista ampliada"
-            />
-          </div>
-        </div>,
-        document.body
-      )}
+              <img
+                src={previewImage}
+                className="max-w-full max-h-[90vh] rounded-lg"
+                alt="Vista ampliada"
+              />
+            </div>
+          </div>,
+          document.body
+        )}
     </LayoutGeneral>
   );
 }

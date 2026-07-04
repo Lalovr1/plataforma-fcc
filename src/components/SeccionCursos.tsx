@@ -86,16 +86,34 @@ export default function SeccionCursos({ initialCourses, userId }: Props) {
   return (
     <div className="mt-6">
       <h3
-        className="text-2xl font-bold mb-4"
+        className="text-2xl font-bold mb-4 text-center"
         style={{ color: "var(--color-heading)" }}
       >
         Cursos
       </h3>
 
       {misCursos.length === 0 ? (
-        <p style={{ color: "var(--color-muted)" }}>
-          Aún no tienes cursos asignados
-        </p>
+        <div className="py-4 flex flex-col items-center text-center">
+          <p
+            className="font-semibold"
+            style={{ color: "var(--color-heading)" }}
+          >
+            Aún no tienes cursos en tu inicio
+          </p>
+
+          <p
+            className="text-sm mt-1 mb-4"
+            style={{ color: "var(--color-muted)" }}
+          >
+            Explora la sección de cursos para encontrar materias y agregarlas aquí.
+          </p>
+
+          <Link href="/dashboard/estudiante/cursos">
+            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium mx-auto">
+              Ir a cursos
+            </button>
+          </Link>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {misCursos.map((curso) => (

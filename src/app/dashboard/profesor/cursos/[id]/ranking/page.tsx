@@ -7,65 +7,171 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 import RankingCurso from "@/components/RankingCurso";
 
+type CursoRanking = {
+  id: string;
+  nombre: string;
+};
+
+const CACHE_KEY_BASE = "fcc_academy_ranking_curso_profesor_v1";
+
+function getCacheKey(usuarioId: string, cursoId: string) {
+  return `${CACHE_KEY_BASE}_${usuarioId}_${cursoId}`;
+}
+
+function guardarCache(usuarioId: string, cursoId: string, curso: CursoRanking) {
+  try {
+    sessionStorage.setItem(
+      getCacheKey(usuarioId, cursoId),
+      JSON.stringify({
+        timestamp: Date.now(),
+        curso,
+      })
+    );
+  } catch {}
+}
+
+function leerCache(usuarioId: string, cursoId: string): CursoRanking | null {
+  try {
+    const raw = sessionStorage.getItem(getCacheKey(usuarioId, cursoId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed?.curso?.id || !parsed?.curso?.nombre) return null;
+
+    return parsed.curso;
+  } catch {
+    return null;
+  }
+}
+
 export default function RankingCursoPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params?.id as string;
 
-  const [curso, setCurso] = useState<{ id: string; nombre: string } | null>(null);
+  const id = typeof params?.id === "string" ? params.id : "";
+
+  const [curso, setCurso] = useState<CursoRanking | null>(null);
   const [filtroMatricula, setFiltroMatricula] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
+  useLayoutEffect(() => {
+    if (!id) return;
+
+    const usuarioLocal = localStorage.getItem("user_id");
+    if (!usuarioLocal) return;
+
+    const cache = leerCache(usuarioLocal, id);
+    if (!cache) return;
+
+    setCurso(cache);
+    setCargando(false);
+  }, [id]);
+
   useEffect(() => {
     const run = async () => {
-      const { data: materia, error } = await supabase
-        .from("materias")
-        .select("id, nombre, profesor_id")
-        .eq("id", id)
-        .single();
+      if (!id) return;
 
-      if (error || !materia) {
-        toast.error("No se pudo cargar el curso");
+      try {
+        const usuarioLocal = localStorage.getItem("user_id");
+
+        if (usuarioLocal) {
+          const cache = leerCache(usuarioLocal, id);
+
+          if (cache) {
+            setCurso(cache);
+            setCargando(false);
+          }
+        }
+
+        const [
+          {
+            data: { user },
+          },
+          { data: materia, error: materiaError },
+        ] = await Promise.all([
+          supabase.auth.getUser(),
+          supabase
+            .from("materias")
+            .select("id, nombre, profesor_id")
+            .eq("id", id)
+            .single(),
+        ]);
+
+        if (materiaError || !materia) {
+          toast.error("No se pudo cargar el curso");
+          router.push("/dashboard/profesor");
+          return;
+        }
+
+        if (!user || user.id !== materia.profesor_id) {
+          toast.error("No tienes permiso para ver este ranking");
+          router.push("/dashboard/profesor");
+          return;
+        }
+
+        const cursoData = {
+          id: materia.id,
+          nombre: materia.nombre,
+        };
+
+        setCurso(cursoData);
+        guardarCache(user.id, id, cursoData);
+      } catch (e) {
+        console.error("Error cargando ranking del curso:", e);
+        toast.error("No se pudo cargar el ranking del curso");
         router.push("/dashboard/profesor");
-        return;
+      } finally {
+        setCargando(false);
       }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user || user.id !== materia.profesor_id) {
-        toast.error("No tienes permiso para ver este ranking");
-        router.push("/dashboard/profesor");
-        return;
-      }
-
-      setCurso({ id: materia.id, nombre: materia.nombre });
-      setCargando(false);
     };
 
     run();
   }, [id, router]);
 
-  if (cargando) {
+  if (cargando && !curso) {
     return (
       <LayoutGeneral rol="profesor">
-        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+        <div className="space-y-6">
           <div
-            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+            className="h-11 rounded max-w-xl mx-auto animate-pulse"
+            style={{ backgroundColor: "var(--color-border)" }}
+          />
+
+          <div
+            className="p-4 rounded-lg shadow animate-pulse"
             style={{
-              borderColor: "var(--color-primary)",
-              borderTopColor: "transparent",
+              backgroundColor: "var(--color-card)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <div
+                className="h-10 rounded flex-1"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+
+              <div
+                className="h-10 rounded w-full sm:w-24"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+            </div>
+          </div>
+
+          <div
+            className="min-h-[260px] rounded-xl shadow animate-pulse"
+            style={{
+              backgroundColor: "var(--color-card)",
+              border: "1px solid var(--color-border)",
             }}
           />
-          <p style={{ color: "var(--color-muted)" }}>Cargando ranking...</p>
         </div>
       </LayoutGeneral>
     );
@@ -90,11 +196,23 @@ export default function RankingCursoPage() {
         >
           📊 Ranking del curso: {curso.nombre}
         </h1>
-        <div className="bg-white p-4 rounded-lg shadow border border-gray-200 mb-4">
+
+        <div
+          className="p-4 rounded-lg shadow mb-4"
+          style={{
+            backgroundColor: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+            color: "var(--color-text)",
+          }}
+        >
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const input = (e.target as HTMLFormElement).querySelector("input");
+
+              const input = (e.currentTarget as HTMLFormElement).querySelector(
+                "input"
+              );
+
               const matricula = input?.value?.trim() || null;
               setFiltroMatricula(matricula);
             }}
@@ -104,7 +222,12 @@ export default function RankingCursoPage() {
               type="text"
               placeholder="Buscar alumno por matrícula"
               defaultValue={filtroMatricula || ""}
-              className="flex-1 p-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: "var(--color-bg)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text)",
+              }}
             />
 
             <button
@@ -119,18 +242,21 @@ export default function RankingCursoPage() {
                 type="button"
                 onClick={() => {
                   setFiltroMatricula(null);
+
                   const input = document.querySelector<HTMLInputElement>(
                     'input[placeholder="Buscar alumno por matrícula"]'
                   );
+
                   if (input) input.value = "";
                 }}
-                className="w-full sm:w-auto px-3 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded font-semibold"
+                className="w-full sm:w-auto px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded font-semibold"
               >
                 Quitar filtro
               </button>
             )}
           </form>
         </div>
+
         <RankingCurso materiaId={curso.id} filtroMatricula={filtroMatricula} />
       </div>
     </LayoutGeneral>

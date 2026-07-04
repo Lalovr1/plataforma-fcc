@@ -1,155 +1,167 @@
 /**
  * Página de Configuración de Usuario
  * - Cambiar tema (oscuro/claro)
- * - Cambiar tamaño de letra con previsualización en vivo
- * - Guardar preferencias en Supabase (configuraciones_usuario)
+ * - Previsualizar cambios al instante
+ * - Guardar en Supabase una sola vez al salir de configuración si hubo cambios
  */
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
-import toast from "react-hot-toast";
 
 type Tema = "oscuro" | "claro";
-type Tamano = "pequena" | "mediana" | "grande";
+
+function esTemaValido(valor: any): valor is Tema {
+  return valor === "oscuro" || valor === "claro";
+}
+
+function leerTemaDesdeLocalStorage(): Tema | null {
+  try {
+    const saved = localStorage.getItem("preferencias_usuario");
+    if (!saved) return null;
+
+    const prefs = JSON.parse(saved);
+    if (esTemaValido(prefs.tema)) return prefs.tema;
+  } catch {}
+
+  return null;
+}
+
+function leerTemaActual(): Tema {
+  const temaLocal = leerTemaDesdeLocalStorage();
+  if (temaLocal) return temaLocal;
+
+  try {
+    if (
+      document.documentElement.classList.contains("theme-oscuro") ||
+      document.body.classList.contains("theme-oscuro")
+    ) {
+      return "oscuro";
+    }
+  } catch {}
+
+  return "claro";
+}
+
+function aplicarTemaEnApp(nuevoTema: Tema) {
+  localStorage.setItem(
+    "preferencias_usuario",
+    JSON.stringify({ tema: nuevoTema })
+  );
+
+  window.dispatchEvent(
+    new CustomEvent("app:preferencias", {
+      detail: { tema: nuevoTema },
+    })
+  );
+}
 
 export default function PaginaConfiguracion() {
-  const [cargandoTodo, setCargandoTodo] = useState(true);
   const [rol, setRol] = useState<"estudiante" | "profesor">("estudiante");
+  const [tema, setTema] = useState<Tema | null>(null);
 
-  const [tema, setTema] = useState<Tema>(() => {
-    try {
-      const saved = localStorage.getItem("preferencias_usuario");
-      if (saved) {
-        const prefs = JSON.parse(saved);
-        if (prefs.tema === "oscuro" || prefs.tema === "claro") {
-          return prefs.tema;
-        }
-      }
-    } catch {}
-    return "claro"; 
-  });
+  const temaActualRef = useRef<Tema | null>(null);
+  const temaGuardadoRef = useRef<Tema | null>(null);
+  const userIdRef = useRef<string | null>(null);
 
-  const [tamano, setTamano] = useState<Tamano>("mediana");
+  useLayoutEffect(() => {
+    const temaInicial = leerTemaActual();
 
-  const fontClass = useMemo(() => {
-    if (tamano === "pequena") return "text-[15px]";
-    if (tamano === "grande") return "text-lg";
-    return "text-base";
-  }, [tamano]);
+    setTema(temaInicial);
+    temaActualRef.current = temaInicial;
+  }, []);
 
   useEffect(() => {
     async function init() {
       try {
+        const temaLocal = leerTemaDesdeLocalStorage();
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
-        if (!user) {
-          setCargandoTodo(false);
-          return;
-        }
+
+        if (!user) return;
+
+        userIdRef.current = user.id;
 
         const { data: u } = await supabase
           .from("usuarios")
           .select("rol")
           .eq("id", user.id)
           .single();
+
         if (u?.rol === "profesor") setRol("profesor");
 
         const { data: pref } = await supabase
           .from("configuraciones_usuario")
-          .select("tema, tamano_fuente")
+          .select("tema")
           .eq("usuario_id", user.id)
           .maybeSingle();
 
-        if (pref) {
-          if (pref.tema === "oscuro" || pref.tema === "claro") {
-            setTema(pref.tema);
-          }
-          if (["pequena", "mediana", "grande"].includes(pref.tamano_fuente)) {
-            setTamano(pref.tamano_fuente as Tamano);
-          }
-        }
+        if (esTemaValido(pref?.tema)) {
+          temaGuardadoRef.current = pref.tema;
 
-        window.dispatchEvent(
-          new CustomEvent("app:preferencias", {
-            detail: {
-              tema: pref?.tema ?? tema,
-              tamano_fuente: pref?.tamano_fuente ?? tamano,
-            },
-          })
-        );
+          if (!temaLocal) {
+            setTema(pref.tema);
+            temaActualRef.current = pref.tema;
+            aplicarTemaEnApp(pref.tema);
+          }
+        } else {
+          temaGuardadoRef.current = temaActualRef.current ?? leerTemaActual();
+        }
       } catch (e) {
         console.error(e);
-      } finally {
-        setCargandoTodo(false);
       }
     }
 
     init();
+
+    return () => {
+      const temaFinal = temaActualRef.current;
+      const temaGuardado = temaGuardadoRef.current;
+
+      if (!temaFinal || temaFinal === temaGuardado) return;
+
+      void guardarTemaEnSupabase(temaFinal);
+    };
   }, []);
 
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("app:preferencias", {
-        detail: { tema, tamano_fuente: tamano },
-      })
-    );
-    localStorage.setItem(
-      "preferencias_usuario",
-      JSON.stringify({ tema, tamano_fuente: tamano })
-    );
-  }, [tema, tamano]);
-
-  async function guardar() {
+  async function guardarTemaEnSupabase(temaParaGuardar: Tema) {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("No hay usuario autenticado");
-        return;
+      let userId = userIdRef.current;
+
+      if (!userId) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        userId = user?.id ?? null;
       }
+
+      if (!userId) return;
 
       const { error } = await supabase.from("configuraciones_usuario").upsert(
         {
-          usuario_id: user.id,
-          tema,
-          tamano_fuente: tamano,
+          usuario_id: userId,
+          tema: temaParaGuardar,
         },
         { onConflict: "usuario_id" }
       );
 
       if (error) throw error;
-      toast.success("Preferencias guardadas");
-    } catch (e: any) {
-      console.error(e);
-      toast.error("No se pudieron guardar las preferencias");
+
+      temaGuardadoRef.current = temaParaGuardar;
+    } catch (e) {
+      console.error("No se pudo guardar el tema:", e);
     }
   }
 
-  function resetLocal() {
-    setTema("claro");
-    setTamano("mediana");
-  }
-
-  if (cargandoTodo) {
-    return (
-      <LayoutGeneral rol={rol}>
-        <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
-          <div
-            className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-            style={{
-              borderColor: "var(--color-primary)",
-              borderTopColor: "transparent",
-            }}
-          />
-          <p style={{ color: "var(--color-muted)" }}>Cargando configuración...</p>
-        </div>
-      </LayoutGeneral>
-    );
+  function aplicarTemaSeleccionado(nuevoTema: Tema) {
+    setTema(nuevoTema);
+    temaActualRef.current = nuevoTema;
+    aplicarTemaEnApp(nuevoTema);
   }
 
   const getButtonStyle = (isActive: boolean) => ({
@@ -162,7 +174,10 @@ export default function PaginaConfiguracion() {
   return (
     <LayoutGeneral rol={rol}>
       <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6 min-w-0">
-        <h1 className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center" style={{ color: "var(--color-heading)" }}>
+        <h1
+          className="text-2xl font-bold pl-14 lg:pl-0 min-h-11 flex items-center"
+          style={{ color: "var(--color-heading)" }}
+        >
           Configuración
         </h1>
 
@@ -174,19 +189,24 @@ export default function PaginaConfiguracion() {
             border: "1px solid var(--color-border)",
           }}
         >
-          <h2 className="font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
+          <h2
+            className="font-semibold mb-3"
+            style={{ color: "var(--color-heading)" }}
+          >
             Tema
           </h2>
+
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              onClick={() => setTema("oscuro")}
+              onClick={() => aplicarTemaSeleccionado("oscuro")}
               className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tema === "oscuro")}
             >
               Oscuro
             </button>
+
             <button
-              onClick={() => setTema("claro")}
+              onClick={() => aplicarTemaSeleccionado("claro")}
               className="px-4 py-2 rounded-lg w-full sm:w-auto"
               style={getButtonStyle(tema === "claro")}
             >
@@ -195,7 +215,7 @@ export default function PaginaConfiguracion() {
           </div>
         </section>
 
-        {/* Tamaño de letra */}
+        {/* Vista previa */}
         <section
           className="rounded-xl p-4"
           style={{
@@ -203,66 +223,165 @@ export default function PaginaConfiguracion() {
             border: "1px solid var(--color-border)",
           }}
         >
-          <h2 className="font-semibold mb-3" style={{ color: "var(--color-heading)" }}>
-            Tamaño de letra
+          <h2
+            className="font-semibold mb-3"
+            style={{ color: "var(--color-heading)" }}
+          >
+            Vista previa
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              onClick={() => setTamano("pequena")}
-              className="px-4 py-2 rounded-lg w-full sm:w-auto"
-              style={getButtonStyle(tamano === "pequena")}
-            >
-              Pequeña
-            </button>
-            <button
-              onClick={() => setTamano("mediana")}
-              className="px-4 py-2 rounded-lg w-full sm:w-auto"
-              style={getButtonStyle(tamano === "mediana")}
-            >
-              Mediana
-            </button>
-            <button
-              onClick={() => setTamano("grande")}
-              className="px-4 py-2 rounded-lg w-full sm:w-auto"
-              style={getButtonStyle(tamano === "grande")}
-            >
-              Grande
-            </button>
-          </div>
 
           <div
-            className={`mt-4 rounded-lg border p-4 ${fontClass}`}
-            style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg)" }}
-          >
-            <div className="font-semibold mb-1" style={{ color: "var(--color-heading)" }}>
-              Vista previa
-            </div>
-            <p style={{ color: "var(--color-text)" }}>
-              Este es un ejemplo de párrafo con el tamaño de letra seleccionado.
-            </p>
-          </div>
-        </section>
-
-        {/* Acciones */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={guardar}
-            className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white w-full sm:w-auto"
-          >
-            Guardar
-          </button>
-          <button
-            onClick={resetLocal}
-            className="px-5 py-2 rounded-lg w-full sm:w-auto"
+            className="rounded-xl overflow-hidden border"
             style={{
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-              backgroundColor: "var(--color-card)",
+              backgroundColor: "var(--color-bg)",
+              borderColor: "var(--color-border)",
             }}
           >
-            Restablecer
-          </button>
-        </div>
+            <div className="grid grid-cols-[72px_1fr] min-h-[260px]">
+              <div
+                className="p-3 border-r flex flex-col gap-3"
+                style={{
+                  backgroundColor: "var(--color-card)",
+                  borderColor: "var(--color-border)",
+                }}
+              >
+                <div
+                  className="h-8 rounded"
+                  style={{ backgroundColor: "var(--color-primary)" }}
+                />
+
+                <div className="space-y-2 mt-2">
+                  <div
+                    className="h-3 rounded"
+                    style={{ backgroundColor: "var(--color-border)" }}
+                  />
+                  <div
+                    className="h-3 rounded"
+                    style={{ backgroundColor: "var(--color-border)" }}
+                  />
+                  <div
+                    className="h-3 rounded"
+                    style={{ backgroundColor: "var(--color-border)" }}
+                  />
+                  <div
+                    className="h-3 rounded"
+                    style={{ backgroundColor: "var(--color-border)" }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div
+                      className="text-lg font-bold"
+                      style={{ color: "var(--color-heading)" }}
+                    >
+                      Inicio
+                    </div>
+                    <div
+                      className="text-sm"
+                      style={{ color: "var(--color-muted)" }}
+                    >
+                      Así se verían tus tarjetas y contenido principal.
+                    </div>
+                  </div>
+
+                  <div
+                    className="w-12 h-12 rounded-full"
+                    style={{ backgroundColor: "var(--color-primary)" }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    className="rounded-lg p-3 border"
+                    style={{
+                      backgroundColor: "var(--color-card)",
+                      borderColor: "var(--color-border)",
+                    }}
+                  >
+                    <div
+                      className="text-sm font-semibold"
+                      style={{ color: "var(--color-heading)" }}
+                    >
+                      Curso en progreso
+                    </div>
+                    <div
+                      className="text-xs mt-1"
+                      style={{ color: "var(--color-muted)" }}
+                    >
+                      Matemáticas discretas
+                    </div>
+
+                    <div
+                      className="mt-3 h-2 rounded-full overflow-hidden"
+                      style={{ backgroundColor: "var(--color-border)" }}
+                    >
+                      <div
+                        className="h-full w-2/3 rounded-full"
+                        style={{ backgroundColor: "var(--color-primary)" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-lg p-3 border"
+                    style={{
+                      backgroundColor: "var(--color-card)",
+                      borderColor: "var(--color-border)",
+                    }}
+                  >
+                    <div
+                      className="text-sm font-semibold"
+                      style={{ color: "var(--color-heading)" }}
+                    >
+                      Ranking global
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      <div
+                        className="h-3 rounded"
+                        style={{ backgroundColor: "var(--color-border)" }}
+                      />
+                      <div
+                        className="h-3 rounded w-4/5"
+                        style={{ backgroundColor: "var(--color-border)" }}
+                      />
+                      <div
+                        className="h-3 rounded w-2/3"
+                        style={{ backgroundColor: "var(--color-border)" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-lg p-3 border"
+                  style={{
+                    backgroundColor: "var(--color-card)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
+                  <div
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--color-heading)" }}
+                  >
+                    Cursos
+                  </div>
+
+                  <div
+                    className="text-xs mt-1"
+                    style={{ color: "var(--color-muted)" }}
+                  >
+                    Los colores de fondo, tarjetas, texto y bordes cambian con
+                    el tema seleccionado.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </LayoutGeneral>
   );

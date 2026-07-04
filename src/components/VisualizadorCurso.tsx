@@ -7,7 +7,7 @@
 
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import CirculoProgreso from "@/components/CirculoProgreso";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
@@ -68,6 +68,113 @@ type ContextoRankingCurso = {
   periodoNombre: string | null;
   seccionNombre: string | null;
 };
+type VisualizadorCursoCache = {
+  timestamp: number;
+  materia: any;
+  progreso: number;
+  bloques: Bloque[];
+  unidades: Unidad[];
+  formulas: Formula[];
+  fileMaps: Record<string, Record<string, { name: string; url: string }>>;
+  rankingTopCurso: RankingCursoUsuario[];
+  contextoRankingCurso: ContextoRankingCurso;
+};
+
+const CURSO_CACHE_KEY_BASE = "fcc_academy_visualizador_curso_v1";
+
+const getCursoCacheKey = (materiaId: string, userId: string, rol: Rol) =>
+  `${CURSO_CACHE_KEY_BASE}_${rol}_${userId}_${materiaId}`;
+
+const parseAvatarConfig = (value: any): AvatarConfig | null => {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return value;
+};
+
+const normalizarMateriaCache = (materia: any) => {
+  if (!materia) return materia;
+
+  const profesor = Array.isArray(materia.profesor)
+    ? materia.profesor[0]
+    : materia.profesor;
+
+  return {
+    ...materia,
+    profesor: profesor
+      ? {
+          ...profesor,
+          avatar_config: parseAvatarConfig(profesor.avatar_config),
+        }
+      : profesor,
+  };
+};
+
+const guardarCursoCache = (
+  materiaId: string,
+  userId: string,
+  rol: Rol,
+  data: Omit<VisualizadorCursoCache, "timestamp">
+) => {
+  try {
+    sessionStorage.setItem(
+      getCursoCacheKey(materiaId, userId, rol),
+      JSON.stringify({
+        timestamp: Date.now(),
+        ...data,
+      })
+    );
+  } catch {}
+};
+
+const leerCursoCache = (
+  materiaId: string,
+  userId: string,
+  rol: Rol
+): VisualizadorCursoCache | null => {
+  try {
+    const raw = sessionStorage.getItem(getCursoCacheKey(materiaId, userId, rol));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed?.materia) return null;
+    if (!Array.isArray(parsed?.bloques)) return null;
+    if (!Array.isArray(parsed?.unidades)) return null;
+    if (!Array.isArray(parsed?.formulas)) return null;
+
+    return {
+      timestamp: Number(parsed.timestamp) || Date.now(),
+      materia: normalizarMateriaCache(parsed.materia),
+      progreso: Number(parsed.progreso ?? 0),
+      bloques: parsed.bloques,
+      unidades: parsed.unidades,
+      formulas: parsed.formulas,
+      fileMaps: parsed.fileMaps ?? {},
+      rankingTopCurso: Array.isArray(parsed.rankingTopCurso)
+        ? parsed.rankingTopCurso
+        : [],
+      contextoRankingCurso: parsed.contextoRankingCurso ?? {
+        esVisitante: false,
+        tieneInscripcion: false,
+        carreraNombre: null,
+        semestre: null,
+        periodoNombre: null,
+        seccionNombre: null,
+      },
+    };
+  } catch {
+    return null;
+  }
+};
+
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
 const isVideo = (name: string) => /\.(mp4|webm|ogg|mov|mkv)$/i.test(name);
@@ -194,10 +301,59 @@ export default function VisualizadorCurso({
     periodoNombre: null,
     seccionNombre: null,
   });
+  const cacheAplicadoRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const cache = leerCursoCache(materiaId, userId, rol);
+
+    if (!cache) return;
+
+    cacheAplicadoRef.current = true;
+
+    setMateria(cache.materia);
+    setProgreso(cache.progreso);
+    setBloques(cache.bloques);
+    setUnidades(cache.unidades);
+    setFormulas(cache.formulas);
+    setFileMaps(cache.fileMaps);
+    setRankingTopCurso(cache.rankingTopCurso);
+    setContextoRankingCurso(cache.contextoRankingCurso);
+    setLoading(false);
+  }, [materiaId, userId, rol]);
+
+  useEffect(() => {
+    if (loading || !materia) return;
+
+    guardarCursoCache(materiaId, userId, rol, {
+      materia,
+      progreso,
+      bloques,
+      unidades,
+      formulas,
+      fileMaps,
+      rankingTopCurso,
+      contextoRankingCurso,
+    });
+  }, [
+    materiaId,
+    userId,
+    rol,
+    loading,
+    materia,
+    progreso,
+    bloques,
+    unidades,
+    formulas,
+    fileMaps,
+    rankingTopCurso,
+    contextoRankingCurso,
+  ]);
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      if (!cacheAplicadoRef.current) {
+        setLoading(true);
+      }
 
       const { data: mat } = await supabase
         .from("materias")
@@ -213,7 +369,7 @@ export default function VisualizadorCurso({
         `)
         .eq("id", materiaId)
         .single();
-      setMateria(mat);
+      setMateria(normalizarMateriaCache(mat));
 
             if (rol === "estudiante") {
               const { data: quizzesMateria } = await supabase
@@ -500,23 +656,38 @@ export default function VisualizadorCurso({
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
 
-      let bloquesConQuizzes: Bloque[] = [];
-      if (bl) {
-        bloquesConQuizzes = await Promise.all(
-          bl.map(async (b: any) => {
-            const { data: quizzes } = await supabase
-              .from("quizzes")
-              .select("id, titulo, descripcion, xp, orden")
-              .eq("bloque_id", b.id)
-              .order("orden", { ascending: true });
-
-            return { ...b, quizzes: (quizzes || []) as Bloque["quizzes"] };
-          })
-        );
-      }
-      setBloques(bloquesConQuizzes);
-
       const bloqueIds = (bl || []).map((b: any) => b.id);
+
+      let quizzesPorBloque: Record<string, Bloque["quizzes"]> = {};
+
+      if (bloqueIds.length > 0) {
+        const { data: quizzesBloques } = await supabase
+          .from("quizzes")
+          .select("id, titulo, descripcion, xp, orden, bloque_id")
+          .in("bloque_id", bloqueIds)
+          .order("orden", { ascending: true });
+
+        (quizzesBloques || []).forEach((q: any) => {
+          if (!quizzesPorBloque[q.bloque_id]) {
+            quizzesPorBloque[q.bloque_id] = [];
+          }
+
+          quizzesPorBloque[q.bloque_id]?.push({
+            id: q.id,
+            titulo: q.titulo,
+            descripcion: q.descripcion,
+            xp: q.xp,
+            orden: q.orden,
+          });
+        });
+      }
+
+      const bloquesConQuizzes: Bloque[] = ((bl || []) as Bloque[]).map((b) => ({
+        ...b,
+        quizzes: quizzesPorBloque[b.id] ?? [],
+      }));
+
+      setBloques(bloquesConQuizzes);
       const { data: fm } = await supabase
         .from("curso_formulas")
         .select("id, titulo, ecuacion, descripcion, bloque_id, publica, created_at, orden")

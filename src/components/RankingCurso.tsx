@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 
@@ -19,15 +19,81 @@ type Inscrito = {
   usuario_id: string;
   nombre: string;
   avatar_config: AvatarConfig | null;
-  carrera_id: number | null; 
+  carrera_id: number | null;
   periodo_id: string | null;
   seccion_id: string | null;
   rol: string;
   matricula?: string | null;
 };
 
-type Quiz = { id: string; titulo: string };
+type Quiz = { id: string; titulo: string; xp: number };
 type IntentoStats = { best: number; total: number; tries: number };
+
+type RankingCursoCache = {
+  timestamp: number;
+  periodos: PeriodoOpt[];
+  secciones: SeccionOpt[];
+  inscritos: Inscrito[];
+  quizzes: Quiz[];
+  intentosMap: Record<string, Record<string, IntentoStats>>;
+};
+
+const CACHE_KEY_BASE = "fcc_academy_ranking_curso_component_v1";
+
+function getCacheKey(materiaId: string) {
+  return `${CACHE_KEY_BASE}_${materiaId}`;
+}
+
+function parseAvatarConfig(value: any): AvatarConfig | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return value;
+}
+
+function guardarCache(materiaId: string, data: RankingCursoCache) {
+  try {
+    sessionStorage.setItem(
+      getCacheKey(materiaId),
+      JSON.stringify({
+        ...data,
+        timestamp: Date.now(),
+      })
+    );
+  } catch {}
+}
+
+function leerCache(materiaId: string): RankingCursoCache | null {
+  try {
+    const raw = sessionStorage.getItem(getCacheKey(materiaId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed?.periodos)) return null;
+    if (!Array.isArray(parsed?.secciones)) return null;
+    if (!Array.isArray(parsed?.inscritos)) return null;
+    if (!Array.isArray(parsed?.quizzes)) return null;
+
+    return {
+      timestamp: Number(parsed.timestamp) || Date.now(),
+      periodos: parsed.periodos,
+      secciones: parsed.secciones,
+      inscritos: parsed.inscritos,
+      quizzes: parsed.quizzes,
+      intentosMap: parsed.intentosMap ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default function RankingCurso({
   materiaId,
@@ -36,7 +102,6 @@ export default function RankingCurso({
   materiaId: string;
   filtroMatricula?: string | null;
 }) {
-
   const [cargando, setCargando] = useState(true);
 
   const [periodos, setPeriodos] = useState<PeriodoOpt[]>([]);
@@ -47,50 +112,124 @@ export default function RankingCurso({
 
   const [inscritos, setInscritos] = useState<Inscrito[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [quizSel, setQuizSel] = useState<string>(""); // "" = Todos
+  const [quizSel, setQuizSel] = useState<string>("");
 
   const [intentosMap, setIntentosMap] = useState<
     Record<string, Record<string, IntentoStats>>
   >({});
 
-  const cargarPeriodoSecciones = async () => {
-    const { data: cc } = await supabase
-      .from("curso_carreras")
-      .select(`
-        id,
-        carrera_id,
-        curso_periodos (
-          id, nombre, anio,
-          curso_secciones ( id, nombre )
+  const aplicarDatos = (data: RankingCursoCache) => {
+    setPeriodos(data.periodos);
+    setSecciones(data.secciones);
+    setInscritos(data.inscritos);
+    setQuizzes(data.quizzes);
+    setIntentosMap(data.intentosMap);
+  };
+
+  useLayoutEffect(() => {
+    if (!materiaId) return;
+
+    const cache = leerCache(materiaId);
+    if (!cache) return;
+
+    aplicarDatos(cache);
+    setCargando(false);
+  }, [materiaId]);
+
+  const cargarDatosRanking = async (): Promise<RankingCursoCache> => {
+    const [
+      { data: cursoCarreras },
+      { data: progresoRows },
+      { data: quizzesRows },
+    ] = await Promise.all([
+      supabase
+        .from("curso_carreras")
+        .select(
+          `
+          id,
+          carrera_id,
+          curso_periodos (
+            id,
+            nombre,
+            anio,
+            curso_secciones (
+              id,
+              nombre
+            )
+          )
+        `
         )
-      `)
-      .eq("curso_id", materiaId);
+        .eq("curso_id", materiaId),
 
-    const p: PeriodoOpt[] = [];
-    const s: SeccionOpt[] = [];
+      supabase
+        .from("progreso")
+        .select("usuario_id, periodo_id, seccion_id, carrera_id")
+        .eq("materia_id", materiaId),
 
-    (cc || []).forEach((c: any) => {
-      (c.curso_periodos || []).forEach((p0: any) => {
+      supabase
+        .from("quizzes")
+        .select("id, titulo, xp, created_at")
+        .eq("materia_id", materiaId)
+        .order("created_at", { ascending: true }),
+    ]);
+
+    const periodosData: PeriodoOpt[] = [];
+    const seccionesData: SeccionOpt[] = [];
+
+    (cursoCarreras ?? []).forEach((c: any) => {
+      (c.curso_periodos ?? []).forEach((p0: any) => {
         const etiqueta = `${p0.nombre} ${p0.anio}`;
-        p.push({ id: p0.id, etiqueta, carrera_id: c.carrera_id }); 
-        (p0.curso_secciones || []).forEach((sec: any) => {
-          s.push({ id: sec.id, nombre: sec.nombre, periodo_id: p0.id });
+
+        periodosData.push({
+          id: p0.id,
+          etiqueta,
+          carrera_id: c.carrera_id,
+        });
+
+        (p0.curso_secciones ?? []).forEach((sec: any) => {
+          seccionesData.push({
+            id: sec.id,
+            nombre: sec.nombre,
+            periodo_id: p0.id,
+          });
         });
       });
     });
 
-    setPeriodos(p);
-    setSecciones(s);
-  };
+    const quizzesData: Quiz[] = ((quizzesRows as any[]) ?? []).map((q) => ({
+      id: q.id,
+      titulo: q.titulo || "Quiz",
+      xp: Number(q.xp ?? 0),
+    }));
 
-  const cargarInscritos = async () => {
-    const { data: prog } = await supabase
-      .from("progreso")
-      .select("usuario_id, periodo_id, seccion_id, carrera_id")
-      .eq("materia_id", materiaId);
+    const quizXpMap = new Map<string, number>();
+    quizzesData.forEach((q) => {
+      quizXpMap.set(q.id, q.xp);
+    });
 
-    const userIds = (prog || []).map((r: any) => r.usuario_id);
-    let usersById: Record<
+    const userIds = Array.from(
+      new Set(((progresoRows as any[]) ?? []).map((r) => r.usuario_id).filter(Boolean))
+    );
+
+    const quizIds = quizzesData.map((q) => q.id);
+
+    const [{ data: usuariosRows }, { data: intentosRows }] = await Promise.all([
+      userIds.length > 0
+        ? supabase
+            .from("usuarios")
+            .select("id, nombre, avatar_config, rol, carrera_id, matricula")
+            .in("id", userIds)
+        : Promise.resolve({ data: [] as any[] }),
+
+      quizIds.length > 0
+        ? supabase
+            .from("intentos_quiz")
+            .select("quiz_id, usuario_id, puntaje")
+            .in("quiz_id", quizIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    const usersById: Record<
       string,
       {
         nombre: string;
@@ -101,32 +240,20 @@ export default function RankingCurso({
       }
     > = {};
 
-    if (userIds.length) {
-      const { data: us } = await supabase
-        .from("usuarios")
-        .select("id, nombre, avatar_config, rol, carrera_id, matricula")
-        .in("id", userIds);
+    ((usuariosRows as any[]) ?? []).forEach((u) => {
+      usersById[u.id] = {
+        nombre: u.nombre ?? "Sin nombre",
+        avatar_config: parseAvatarConfig(u.avatar_config),
+        rol: u.rol ?? "estudiante",
+        carrera_id: u.carrera_id ?? null,
+        matricula: u.matricula ?? null,
+      };
+    });
 
-      if (us) {
-        usersById = Object.fromEntries(
-          us.map((u: any) => [
-            u.id,
-            {
-              nombre: u.nombre ?? "Sin nombre",
-              avatar_config: u.avatar_config ?? null,
-              rol: u.rol ?? "estudiante",
-              carrera_id: u.carrera_id ?? null,
-              matricula: u.matricula ?? null,
-            },
-          ])
-        );
-      }
-    }
-
-    const parsed: Inscrito[] = (prog || [])
-      .map((r: any) => ({
+    const inscritosData: Inscrito[] = ((progresoRows as any[]) ?? [])
+      .map((r) => ({
         usuario_id: r.usuario_id,
-        carrera_id: r.carrera_id ?? null,
+        carrera_id: r.carrera_id ?? usersById[r.usuario_id]?.carrera_id ?? null,
         periodo_id: r.periodo_id ?? null,
         seccion_id: r.seccion_id ?? null,
         nombre: usersById[r.usuario_id]?.nombre ?? "Sin nombre",
@@ -136,62 +263,66 @@ export default function RankingCurso({
       }))
       .filter((r) => r.rol === "estudiante");
 
-    setInscritos(parsed);
-  };
+    const intentosData: Record<string, Record<string, IntentoStats>> = {};
 
-  const cargarQuizzes = async () => {
-    const { data } = await supabase
-      .from("quizzes")
-      .select("id, titulo")
-      .eq("materia_id", materiaId)
-      .order("created_at", { ascending: true });
-
-    const qs = (data || []).map((q: any) => ({
-      id: q.id,
-      titulo: q.titulo || "Quiz",
-    }));
-    setQuizzes(qs);
-    setQuizSel(""); 
-  };
-
-  const cargarIntentos = async () => {
-    const { data } = await supabase
-      .from("intentos_quiz")
-      .select("quiz_id, usuario_id, puntaje, quizzes(id, materia_id, xp)")
-      .eq("quizzes.materia_id", materiaId);
-
-    const acc: Record<string, Record<string, IntentoStats>> = {};
-    (data || []).forEach((row: any) => {
+    ((intentosRows as any[]) ?? []).forEach((row) => {
       const qid = row.quiz_id as string;
       const uid = row.usuario_id as string;
       const score = Number(row.puntaje ?? 0);
-
-      if (!acc[qid]) acc[qid] = {};
-      const xpQuiz = row.quizzes?.xp ?? 0;
+      const xpQuiz = quizXpMap.get(qid) ?? 0;
       const puntos = Math.round((xpQuiz * score) / 100);
 
-      if (!acc[qid][uid]) acc[qid][uid] = { best: puntos, total: puntos, tries: 1 };
-      else {
-        acc[qid][uid].tries += 1;
-        acc[qid][uid].total += puntos;
-        if (puntos > acc[qid][uid].best) acc[qid][uid].best = puntos;
+      if (!intentosData[qid]) intentosData[qid] = {};
+
+      if (!intentosData[qid][uid]) {
+        intentosData[qid][uid] = {
+          best: puntos,
+          total: puntos,
+          tries: 1,
+        };
+      } else {
+        intentosData[qid][uid].tries += 1;
+        intentosData[qid][uid].total += puntos;
+
+        if (puntos > intentosData[qid][uid].best) {
+          intentosData[qid][uid].best = puntos;
+        }
       }
     });
 
-    setIntentosMap(acc);
+    return {
+      timestamp: Date.now(),
+      periodos: periodosData,
+      secciones: seccionesData,
+      inscritos: inscritosData,
+      quizzes: quizzesData,
+      intentosMap: intentosData,
+    };
   };
 
   useEffect(() => {
     const run = async () => {
-      setCargando(true);
-      await Promise.all([
-        cargarPeriodoSecciones(),
-        cargarInscritos(),
-        cargarQuizzes(),
-        cargarIntentos(),
-      ]);
-      setCargando(false);
+      try {
+        const cache = leerCache(materiaId);
+
+        if (cache) {
+          aplicarDatos(cache);
+          setCargando(false);
+        } else {
+          setCargando(true);
+        }
+
+        const data = await cargarDatosRanking();
+
+        aplicarDatos(data);
+        guardarCache(materiaId, data);
+      } catch (e) {
+        console.error("Error cargando ranking del curso:", e);
+      } finally {
+        setCargando(false);
+      }
     };
+
     run();
   }, [materiaId]);
 
@@ -215,10 +346,9 @@ export default function RankingCurso({
   }, [inscritos, carreraSel, periodoSel, seccionSel]);
 
   const ranking = useMemo(() => {
-    if (quizSel === null) return [];
-
     if (quizSel === "") {
       const acc: Record<string, number> = {};
+
       Object.keys(intentosMap).forEach((qid) => {
         Object.entries(intentosMap[qid]).forEach(([uid, st]) => {
           acc[uid] = (acc[uid] || 0) + st.best;
@@ -231,21 +361,27 @@ export default function RankingCurso({
           total: acc[i.usuario_id] || 0,
         }))
         .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
-    } else {
-      const rows = inscritosFiltrados.map((i) => {
-        const st = intentosMap[quizSel || ""]?.[i.usuario_id] || {
-          best: 0,
-          total: 0,
-          tries: 0,
-        };
-        return { ...i, best: st.best, tries: st.tries };
-      });
-      return rows.sort((a, b) => {
-        if (b.best !== a.best) return b.best - a.best;
-        if (a.tries !== b.tries) return a.tries - b.tries;
-        return a.nombre.localeCompare(b.nombre);
-      });
     }
+
+    const rows = inscritosFiltrados.map((i) => {
+      const st = intentosMap[quizSel]?.[i.usuario_id] || {
+        best: 0,
+        total: 0,
+        tries: 0,
+      };
+
+      return {
+        ...i,
+        best: st.best,
+        tries: st.tries,
+      };
+    });
+
+    return rows.sort((a, b) => {
+      if (b.best !== a.best) return b.best - a.best;
+      if (a.tries !== b.tries) return a.tries - b.tries;
+      return a.nombre.localeCompare(b.nombre);
+    });
   }, [inscritosFiltrados, intentosMap, quizSel]);
 
   const rankingFiltrado = useMemo(() => {
@@ -255,7 +391,6 @@ export default function RankingCurso({
 
   return (
     <div className="space-y-6">
-      {/* Filtros */}
       <div
         className="p-4 rounded-xl shadow flex flex-col md:flex-row gap-3 md:items-end"
         style={{
@@ -270,9 +405,14 @@ export default function RankingCurso({
           >
             Carrera
           </label>
+
           <select
             value={carreraSel || ""}
-            onChange={(e) => setCarreraSel(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => {
+              setCarreraSel(e.target.value ? Number(e.target.value) : null);
+              setPeriodoSel(null);
+              setSeccionSel(null);
+            }}
             className="w-full p-2 rounded"
             style={{
               backgroundColor: "var(--color-bg)",
@@ -288,6 +428,7 @@ export default function RankingCurso({
             <option value={5}>Ingeniería en Tecnologías de la Información</option>
           </select>
         </div>
+
         <div className="flex-1">
           <label
             className="block text-sm mb-1"
@@ -295,6 +436,7 @@ export default function RankingCurso({
           >
             Período
           </label>
+
           <select
             value={periodoSel || ""}
             onChange={(e) => {
@@ -302,7 +444,7 @@ export default function RankingCurso({
               setPeriodoSel(val);
               setSeccionSel(null);
             }}
-            disabled={!carreraSel} 
+            disabled={!carreraSel}
             className="w-full p-2 rounded"
             style={{
               backgroundColor: "var(--color-bg)",
@@ -326,6 +468,7 @@ export default function RankingCurso({
           >
             Sección
           </label>
+
           <select
             value={seccionSel || ""}
             onChange={(e) => setSeccionSel(e.target.value || null)}
@@ -337,18 +480,12 @@ export default function RankingCurso({
               border: "1px solid var(--color-border)",
             }}
           >
-            {!periodoSel ? (
-              <option value="">Todas</option>
-            ) : (
-              <>
-                <option value="">Todas</option>
-                {seccionesFiltradas.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}
-                  </option>
-                ))}
-              </>
-            )}
+            <option value="">Todas</option>
+            {seccionesFiltradas.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -359,8 +496,9 @@ export default function RankingCurso({
           >
             Quiz
           </label>
+
           <select
-            value={quizSel || ""}
+            value={quizSel}
             onChange={(e) => setQuizSel(e.target.value)}
             className="w-full p-2 rounded"
             style={{
@@ -383,7 +521,6 @@ export default function RankingCurso({
         </div>
       </div>
 
-      {/* Ranking */}
       <div
         className="p-6 rounded-xl shadow space-y-4"
         style={{
@@ -402,21 +539,30 @@ export default function RankingCurso({
         </h2>
 
         {cargando ? (
-          <p style={{ color: "var(--color-muted)" }}>Cargando...</p>
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="h-16 rounded-lg animate-pulse"
+                style={{ backgroundColor: "var(--color-bg)" }}
+              />
+            ))}
+          </div>
         ) : ranking.length === 0 ? (
           <p style={{ color: "var(--color-muted)" }}>
             No hay datos para estos filtros.
           </p>
         ) : rankingFiltrado.length === 0 && filtroMatricula ? (
           <p style={{ color: "var(--color-muted)" }}>
-            No se encontró ningún alumno con la matrícula <b>{filtroMatricula}</b>.
+            No se encontró ningún alumno con la matrícula{" "}
+            <b>{filtroMatricula}</b>.
           </p>
         ) : (
           <div className="space-y-2">
             {rankingFiltrado.map((user: any, index: number) => (
               <div
                 key={user.usuario_id}
-                className="flex items-center justify-between rounded-lg p-3"
+                className="flex items-center justify-between rounded-lg p-3 gap-3 min-w-0"
                 style={{
                   backgroundColor:
                     index === 0
@@ -428,9 +574,9 @@ export default function RankingCurso({
                       : "var(--color-bg)",
                 }}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                   <span
-                    className="font-bold"
+                    className="font-bold shrink-0"
                     style={{
                       fontSize: index < 3 ? "1.25rem" : "1rem",
                       color: "var(--color-heading)",
@@ -444,13 +590,17 @@ export default function RankingCurso({
                       ? "🥉"
                       : `#${index + 1}`}
                   </span>
-                  <RenderizadorAvatar
-                    config={user.avatar_config}
-                    size={index < 3 ? 48 : 32}
-                  />
-                  <div className="flex flex-col">
+
+                  <div className="shrink-0">
+                    <RenderizadorAvatar
+                      config={user.avatar_config}
+                      size={index < 3 ? 48 : 32}
+                    />
+                  </div>
+
+                  <div className="flex flex-col min-w-0">
                     <span
-                      className="font-semibold"
+                      className="font-semibold break-words"
                       style={{
                         color: "var(--color-heading)",
                         fontSize: index < 3 ? "1.125rem" : "1rem",
@@ -458,6 +608,7 @@ export default function RankingCurso({
                     >
                       {user.nombre}
                     </span>
+
                     {quizSel !== "" && (
                       <span
                         className="text-xs"
@@ -472,14 +623,14 @@ export default function RankingCurso({
 
                 {quizSel === "" ? (
                   <span
-                    className="font-bold whitespace-nowrap"
+                    className="font-bold whitespace-nowrap shrink-0"
                     style={{ color: "var(--color-primary)" }}
                   >
                     {user.total} pts
                   </span>
                 ) : (
                   <span
-                    className="font-bold whitespace-nowrap"
+                    className="font-bold whitespace-nowrap shrink-0"
                     style={{ color: "var(--color-primary)" }}
                   >
                     {user.best} pts

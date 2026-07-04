@@ -13,7 +13,8 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 
 export default async function ProfesorDashboard() {
-  const supabase = createServerComponentClient({ cookies });
+  const cookieStore = await cookies();
+  const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   const {
     data: { user },
@@ -27,29 +28,33 @@ export default async function ProfesorDashboard() {
     );
   }
 
-  const { data: profesor } = await supabase
-    .from("usuarios")
-    .select("id, nombre, avatar_config")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profesor }, { data: cursos }] = await Promise.all([
+    supabase
+      .from("usuarios")
+      .select("id, nombre, avatar_config")
+      .eq("id", user.id)
+      .single(),
 
-  const { data: cursos } = await supabase
-    .from("materias")
-    .select(`
-      id,
-      nombre,
-      curso_carreras (
+    supabase
+      .from("materias")
+      .select(
+        `
         id,
-        semestre,
-        carrera:carreras (id, nombre)
+        nombre,
+        curso_carreras (
+          id,
+          semestre,
+          carrera:carreras (id, nombre)
+        )
+      `
       )
-    `)
-    .eq("profesor_id", user.id);
+      .eq("profesor_id", user.id)
+      .order("nombre", { ascending: true }),
+  ]);
 
   return (
     <LayoutGeneral rol="profesor">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 min-w-0">
-        {/* Columna izquierda */}
         <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
           <TarjetaUsuario
             name={profesor?.nombre ?? "Profesor"}
@@ -58,7 +63,6 @@ export default async function ProfesorDashboard() {
             rol="profesor"
           />
 
-          {/* Cursos creados */}
           <div
             className="p-4 sm:p-6 rounded-xl shadow min-w-0 overflow-hidden"
             style={{
@@ -73,9 +77,10 @@ export default async function ProfesorDashboard() {
             >
               Mis Cursos
             </h2>
+
             {cursos && cursos.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {cursos.map((c) => (
+                {cursos.map((c: any) => (
                   <div
                     key={c.id}
                     className="p-4 rounded-lg shadow flex flex-col justify-between"
@@ -143,7 +148,6 @@ export default async function ProfesorDashboard() {
           </div>
         </div>
 
-        {/* Columna derecha */}
         <div className="space-y-4 md:space-y-6 min-w-0">
           <WidgetRanking />
         </div>

@@ -1,6 +1,7 @@
 /**
  * RootLayout:
  * - Define la fuente principal y estilos globales.
+ * - Aplica el tema guardado antes de renderizar la app.
  * - Incluye el Toaster para mostrar notificaciones en toda la app.
  */
 
@@ -16,20 +17,54 @@ export const metadata: Metadata = {
   description: "Plataforma educativa FCC",
 };
 
+const themeScript = `
+(function () {
+  try {
+    var tema = "claro";
+    var saved = localStorage.getItem("preferencias_usuario");
+
+    if (saved) {
+      var prefs = JSON.parse(saved);
+      if (prefs && (prefs.tema === "oscuro" || prefs.tema === "claro")) {
+        tema = prefs.tema;
+      }
+    }
+
+    document.documentElement.classList.remove("theme-claro", "theme-oscuro");
+    document.documentElement.classList.add("theme-" + tema);
+
+    if (document.body) {
+      document.body.classList.remove("theme-claro", "theme-oscuro");
+      document.body.classList.add("theme-" + tema);
+    }
+  } catch (e) {
+    document.documentElement.classList.remove("theme-claro", "theme-oscuro");
+    document.documentElement.classList.add("theme-claro");
+
+    if (document.body) {
+      document.body.classList.remove("theme-claro", "theme-oscuro");
+      document.body.classList.add("theme-claro");
+    }
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="es"
-      className="theme-claro" // 🚀 Arranca siempre en tema claro por defecto
-      suppressHydrationWarning
-    >
+    <html lang="es" suppressHydrationWarning>
       <body
-        className={`${inter.className} bg-[#f8fafc] text-gray-900 overflow-x-hidden min-w-0`}
+        className={`${inter.className} overflow-x-hidden min-w-0`}
+        style={{
+          backgroundColor: "var(--color-bg)",
+          color: "var(--color-text)",
+        }}
+        suppressHydrationWarning
       >
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
         <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
       </body>

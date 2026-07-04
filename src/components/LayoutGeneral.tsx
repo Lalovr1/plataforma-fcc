@@ -6,11 +6,27 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import MenuLateral from "./MenuLateral";
 import TutorialInicio from "./TutorialInicio";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
+
+type Tema = "oscuro" | "claro";
+
+function esTemaValido(valor: any): valor is Tema {
+  return valor === "oscuro" || valor === "claro";
+}
+
+function aplicarTema(tema: Tema) {
+  if (typeof document === "undefined") return;
+
+  document.documentElement.classList.remove("theme-oscuro", "theme-claro");
+  document.documentElement.classList.add(`theme-${tema}`);
+
+  document.body.classList.remove("theme-oscuro", "theme-claro");
+  document.body.classList.add(`theme-${tema}`);
+}
 
 function VerificarTutorial() {
   const [mostrar, setMostrar] = useState(false);
@@ -51,23 +67,45 @@ export default function LayoutGeneral({
   children: React.ReactNode;
   rol?: string;
 }) {
-  const [tema, setTema] = useState<"oscuro" | "claro">(() => {
-    if (typeof window !== "undefined") {
+  // Cambio de tema
+  useLayoutEffect(() => {
+    function guardarTemaLocal(tema: Tema) {
       try {
         const saved = localStorage.getItem("preferencias_usuario");
-        if (saved) {
-          const prefs = JSON.parse(saved);
-          if (prefs.tema === "oscuro" || prefs.tema === "claro") {
-            return prefs.tema;
-          }
+        const prefs = saved ? JSON.parse(saved) : {};
+
+        localStorage.setItem(
+          "preferencias_usuario",
+          JSON.stringify({ tema })
+        );
+      } catch {
+        localStorage.setItem(
+          "preferencias_usuario",
+          JSON.stringify({ tema })
+        );
+      }
+    }
+
+    function cargarPreferenciasLocales(): Tema | null {
+      try {
+        const saved = localStorage.getItem("preferencias_usuario");
+        if (!saved) {
+          aplicarTema("claro");
+          return null;
+        }
+
+        const prefs = JSON.parse(saved);
+
+        if (esTemaValido(prefs.tema)) {
+          aplicarTema(prefs.tema);
+          return prefs.tema;
         }
       } catch {}
-    }
-    return "claro";
-  });
 
-  // Cambio de tema
-  useEffect(() => {
+      aplicarTema("claro");
+      return null;
+    }
+
     async function cargarPreferenciasDesdeSupabase() {
       try {
         const { supabase } = await import("@/utils/supabaseClient");
@@ -80,39 +118,19 @@ export default function LayoutGeneral({
 
         const { data: pref } = await supabase
           .from("configuraciones_usuario")
-          .select("tema, tamano_fuente")
+          .select("tema")
           .eq("usuario_id", user.id)
           .maybeSingle();
 
-        if (!pref) return;
+        if (!pref || !esTemaValido(pref.tema)) return;
 
-        const temaGuardado =
-          pref.tema === "oscuro" || pref.tema === "claro"
-            ? pref.tema
-            : "claro";
-
-        const tamanoGuardado =
-          pref.tamano_fuente === "pequena" ||
-          pref.tamano_fuente === "mediana" ||
-          pref.tamano_fuente === "grande"
-            ? pref.tamano_fuente
-            : "mediana";
-
-        localStorage.setItem(
-          "preferencias_usuario",
-          JSON.stringify({
-            tema: temaGuardado,
-            tamano_fuente: tamanoGuardado,
-          })
-        );
-
-        setTema(temaGuardado);
+        guardarTemaLocal(pref.tema);
+        aplicarTema(pref.tema);
 
         window.dispatchEvent(
           new CustomEvent("app:preferencias", {
             detail: {
-              tema: temaGuardado,
-              tamano_fuente: tamanoGuardado,
+              tema: pref.tema,
             },
           })
         );
@@ -122,22 +140,22 @@ export default function LayoutGeneral({
     }
 
     function handler(e: any) {
-      if (e.detail?.tema === "oscuro" || e.detail?.tema === "claro") {
-        setTema(e.detail.tema);
+      if (esTemaValido(e.detail?.tema)) {
+        guardarTemaLocal(e.detail.tema);
+        aplicarTema(e.detail.tema);
       }
     }
 
-    cargarPreferenciasDesdeSupabase();
+    const temaLocal = cargarPreferenciasLocales();
 
     window.addEventListener("app:preferencias", handler);
 
+    if (!temaLocal) {
+      cargarPreferenciasDesdeSupabase();
+    }
+
     return () => window.removeEventListener("app:preferencias", handler);
   }, []);
-
-  useEffect(() => {
-    document.body.classList.remove("theme-oscuro", "theme-claro");
-    document.body.classList.add(`theme-${tema}`);
-  }, [tema]);
 
   useEffect(() => {
     (window as any).__tutorialActivo = false;

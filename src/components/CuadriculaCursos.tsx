@@ -16,8 +16,21 @@ interface Props {
   userId: string;
 }
 
+function prepararMateriasIniciales(materias: any[]) {
+  return (materias ?? []).map((m) => ({
+    ...m,
+    progresoEstado:
+      m.progresoEstado ??
+      (m.yaInscrito
+        ? { exists: true, visible: true }
+        : { exists: false, visible: false }),
+  }));
+}
+
 export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
-  const [materiasConEstado, setMateriasConEstado] = useState<any[]>([]);
+  const [materiasConEstado, setMateriasConEstado] = useState<any[]>(() =>
+    prepararMateriasIniciales(materias)
+  );
   const [selected, setSelected] = useState<any | null>(null);
   const [selectedCarrera, setSelectedCarrera] = useState<string | null>(null);
   const [periodos, setPeriodos] = useState<any[]>([]);
@@ -28,6 +41,11 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let cancelado = false;
+
+    const base = prepararMateriasIniciales(materias);
+    setMateriasConEstado(base);
+
     const fetchProgresos = async () => {
       if (!userId || !materias || materias.length === 0) return;
 
@@ -36,8 +54,10 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         .select("materia_id, visible")
         .eq("usuario_id", userId);
 
+      if (cancelado) return;
+
       if (progresos) {
-        const materiasConEstado = materias.map((m) => {
+        const materiasActualizadas = materias.map((m) => {
           const progresoRow = progresos.find((p) => p.materia_id === m.id);
           return {
             ...m,
@@ -46,13 +66,16 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
               : { exists: false, visible: false },
           };
         });
-        setMateriasConEstado(materiasConEstado);
-      } else {
-        setMateriasConEstado(materias);
+
+        setMateriasConEstado(materiasActualizadas);
       }
     };
 
     fetchProgresos();
+
+    return () => {
+      cancelado = true;
+    };
   }, [materias, userId]);
 
   useEffect(() => {
@@ -61,12 +84,15 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         setSecciones([]);
         return;
       }
+
       const { data } = await supabase
         .from("curso_secciones")
         .select("id, nombre")
         .eq("periodo_id", selectedPeriodo);
+
       if (data) setSecciones(data);
     };
+
     fetchSecciones();
   }, [selectedPeriodo]);
 
@@ -167,6 +193,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         setSelectedCarrera(null);
         setSelectedPeriodo(null);
         setSelectedSeccion(null);
+        setVisitante(false);
       }}
     >
       <div className="flex justify-between items-start">
@@ -182,6 +209,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
             Inscrito
           </span>
         )}
+
         {m.progresoEstado?.exists && !m.progresoEstado.visible && (
           <span className="bg-yellow-600 text-white text-xs font-semibold px-2 py-1 rounded">
             Oculto
@@ -209,6 +237,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   );
 
   const grouped: Record<string, any[]> = {};
+
   if (groupBy !== "none") {
     materiasConEstado.forEach((m) => {
       if (!m.curso_carreras || m.curso_carreras.length === 0) {
@@ -223,17 +252,20 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
               if (!grouped[key]) grouped[key] = [];
               if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
             });
-          } 
+          }
+
           if (groupBy === "semestre") {
             const key = `📘 Semestre ${cc.semestre ?? "N/A"}`;
             if (!grouped[key]) grouped[key] = [];
             if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
           }
+
           if (groupBy === "carrera") {
             const key = `🎓 ${cc.carrera?.nombre ?? "Carrera desconocida"}`;
             if (!grouped[key]) grouped[key] = [];
             if (!grouped[key].some((x) => x.id === m.id)) grouped[key].push(m);
           }
+
           if (groupBy === "area") {
             const key = `📂 ${cc.area ?? "Área desconocida"}`;
             if (!grouped[key]) grouped[key] = [];
@@ -274,7 +306,6 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         </div>
       )}
 
-      {/* Modal */}
       {selected &&
         typeof document !== "undefined" &&
         createPortal(
@@ -287,178 +318,45 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
               style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
               onClick={(e) => e.stopPropagation()}
             >
-            <button
-              className="absolute top-3 right-3"
-              style={{ color: "var(--color-muted)" }}
-              onClick={() => setSelected(null)}
-            >
-              ✕
-            </button>
+              <button
+                className="absolute top-3 right-3"
+                style={{ color: "var(--color-muted)" }}
+                onClick={() => setSelected(null)}
+              >
+                ✕
+              </button>
 
-            <h3
-              className="text-2xl font-bold text-center"
-              style={{ color: "var(--color-heading)" }}
-            >
-              {selected.nombre}
-            </h3>
+              <h3
+                className="text-2xl font-bold text-center"
+                style={{ color: "var(--color-heading)" }}
+              >
+                {selected.nombre}
+              </h3>
 
-            <div className="text-left space-y-2">
-              {selected.curso_carreras && selected.curso_carreras.length > 0 ? (
-                selected.curso_carreras.map((cc: any, idx: number) => (
-                  <div key={idx} className="text-sm" style={{ color: "var(--color-muted)" }}>
-                    <p>Carrera: {cc.carrera?.nombre ?? "Desconocida"}</p>
-                    <p>Semestre: {cc.semestre ?? "N/A"}</p>
-                  </div>
-                ))
-              ) : (
+              <div className="text-left space-y-2">
+                {selected.curso_carreras && selected.curso_carreras.length > 0 ? (
+                  selected.curso_carreras.map((cc: any, idx: number) => (
+                    <div key={idx} className="text-sm" style={{ color: "var(--color-muted)" }}>
+                      <p>Carrera: {cc.carrera?.nombre ?? "Desconocida"}</p>
+                      <p>Semestre: {cc.semestre ?? "N/A"}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                    Sin carreras ligadas
+                  </p>
+                )}
+
                 <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                  Sin carreras ligadas
+                  Profesor: {selected.profesor?.nombre ?? "Aún no hay profesor asignado"}
                 </p>
-              )}
-
-              <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                Profesor: {selected.profesor?.nombre ?? "Aún no hay profesor asignado"}
-              </p>
-            </div>
-
-            {selected.progresoEstado?.exists && selected.progresoEstado.visible ? (
-              <p className="text-green-500 font-semibold text-center">
-                Ya está en tu inicio
-              </p>
-            ) : selected.progresoEstado?.exists ? (
-              <div className="flex justify-center gap-3 pt-2">
-                <button
-                  className="px-4 py-2 rounded"
-                  style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
-                  onClick={() => setSelected(null)}
-                  disabled={loading}
-                >
-                  Volver
-                </button>
-                <button
-                  className="px-3 py-1 rounded bg-yellow-600 hover:bg-yellow-500 text-white"
-                  onClick={inscribirse}
-                  disabled={loading}
-                >
-                  {loading ? "Guardando..." : "Reactivar curso"}
-                </button>
               </div>
-            ) : (
-              <>
-                <div>
-                  <label
-                    className="block text-sm mb-1"
-                    style={{ color: "var(--color-heading)" }}
-                  >
-                    Selecciona carrera:
-                  </label>
-                  <select
-                    value={selectedCarrera ?? ""}
-                    onChange={(e) => {
-                      setSelectedCarrera(e.target.value || null);
-                      setSelectedPeriodo(null);
-                      setSelectedSeccion(null);
-                      if (e.target.value) {
-                        const carrera = selected.curso_carreras.find(
-                          (cc: any) => String(cc.carrera?.id) === e.target.value
-                        );
-                        setPeriodos(carrera?.curso_periodos || []);
-                      } else {
-                        setPeriodos([]);
-                      }
-                    }}
-                    disabled={visitante}
-                    className="w-full p-2 rounded"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      color: "var(--color-text)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    {selected.curso_carreras.map((cc: any) => (
-                      <option key={cc.id} value={cc.carrera?.id}>
-                        {cc.carrera?.nombre} (Semestre {cc.semestre})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {selectedCarrera && (
-                  <div>
-                    <label
-                      className="block text-sm mb-1"
-                      style={{ color: "var(--color-heading)" }}
-                    >
-                      Selecciona período:
-                    </label>
-                    <select
-                      value={selectedPeriodo ?? ""}
-                      onChange={(e) => setSelectedPeriodo(e.target.value || null)}
-                      disabled={visitante}
-                      className="w-full p-2 rounded"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        color: "var(--color-text)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {periodos.map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.nombre} {p.anio}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
-                {selectedPeriodo && (
-                  <div>
-                    <label
-                      className="block text-sm mb-1"
-                      style={{ color: "var(--color-heading)" }}
-                    >
-                      Selecciona sección:
-                    </label>
-                    <select
-                      value={selectedSeccion ?? ""}
-                      onChange={(e) => setSelectedSeccion(e.target.value || null)}
-                      disabled={visitante}
-                      className="w-full p-2 rounded"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        color: "var(--color-text)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {secciones.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 mt-3">
-                  <input
-                    type="checkbox"
-                    checked={visitante}
-                    onChange={(e) => {
-                      setVisitante(e.target.checked);
-                      if (e.target.checked) {
-                        setSelectedCarrera(null);
-                        setSelectedPeriodo(null);
-                        setSelectedSeccion(null);
-                      }
-                    }}
-                  />
-                  <label className="text-sm" style={{ color: "var(--color-muted)" }}>
-                    Tomar curso como visitante
-                  </label>
-                </div>
-
+              {selected.progresoEstado?.exists && selected.progresoEstado.visible ? (
+                <p className="text-green-500 font-semibold text-center">
+                  Ya está en tu inicio
+                </p>
+              ) : selected.progresoEstado?.exists ? (
                 <div className="flex justify-center gap-3 pt-2">
                   <button
                     className="px-4 py-2 rounded"
@@ -469,19 +367,154 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                     Volver
                   </button>
                   <button
-                    className="px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                    className="px-3 py-1 rounded bg-yellow-600 hover:bg-yellow-500 text-white"
                     onClick={inscribirse}
                     disabled={loading}
                   >
-                    {loading ? "Guardando..." : "Inscribirse"}
+                    {loading ? "Guardando..." : "Reactivar curso"}
                   </button>
                 </div>
-              </>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+              ) : (
+                <>
+                  <div>
+                    <label
+                      className="block text-sm mb-1"
+                      style={{ color: "var(--color-heading)" }}
+                    >
+                      Selecciona carrera:
+                    </label>
+                    <select
+                      value={selectedCarrera ?? ""}
+                      onChange={(e) => {
+                        setSelectedCarrera(e.target.value || null);
+                        setSelectedPeriodo(null);
+                        setSelectedSeccion(null);
+
+                        if (e.target.value) {
+                          const carrera = selected.curso_carreras.find(
+                            (cc: any) => String(cc.carrera?.id) === e.target.value
+                          );
+                          setPeriodos(carrera?.curso_periodos || []);
+                        } else {
+                          setPeriodos([]);
+                        }
+                      }}
+                      disabled={visitante}
+                      className="w-full p-2 rounded"
+                      style={{
+                        backgroundColor: "var(--color-card)",
+                        color: "var(--color-text)",
+                        border: "1px solid var(--color-border)",
+                      }}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {selected.curso_carreras.map((cc: any) => (
+                        <option key={cc.id} value={cc.carrera?.id}>
+                          {cc.carrera?.nombre} (Semestre {cc.semestre})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedCarrera && (
+                    <div>
+                      <label
+                        className="block text-sm mb-1"
+                        style={{ color: "var(--color-heading)" }}
+                      >
+                        Selecciona período:
+                      </label>
+                      <select
+                        value={selectedPeriodo ?? ""}
+                        onChange={(e) => setSelectedPeriodo(e.target.value || null)}
+                        disabled={visitante}
+                        className="w-full p-2 rounded"
+                        style={{
+                          backgroundColor: "var(--color-card)",
+                          color: "var(--color-text)",
+                          border: "1px solid var(--color-border)",
+                        }}
+                      >
+                        <option value="">-- Seleccionar --</option>
+                        {periodos.map((p: any) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre} {p.anio}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedPeriodo && (
+                    <div>
+                      <label
+                        className="block text-sm mb-1"
+                        style={{ color: "var(--color-heading)" }}
+                      >
+                        Selecciona sección:
+                      </label>
+                      <select
+                        value={selectedSeccion ?? ""}
+                        onChange={(e) => setSelectedSeccion(e.target.value || null)}
+                        disabled={visitante}
+                        className="w-full p-2 rounded"
+                        style={{
+                          backgroundColor: "var(--color-card)",
+                          color: "var(--color-text)",
+                          border: "1px solid var(--color-border)",
+                        }}
+                      >
+                        <option value="">-- Seleccionar --</option>
+                        {secciones.map((s: any) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-3">
+                    <input
+                      type="checkbox"
+                      checked={visitante}
+                      onChange={(e) => {
+                        setVisitante(e.target.checked);
+                        if (e.target.checked) {
+                          setSelectedCarrera(null);
+                          setSelectedPeriodo(null);
+                          setSelectedSeccion(null);
+                        }
+                      }}
+                    />
+                    <label className="text-sm" style={{ color: "var(--color-muted)" }}>
+                      Tomar curso como visitante
+                    </label>
+                  </div>
+
+                  <div className="flex justify-center gap-3 pt-2">
+                    <button
+                      className="px-4 py-2 rounded"
+                      style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                      onClick={() => setSelected(null)}
+                      disabled={loading}
+                    >
+                      Volver
+                    </button>
+                    <button
+                      className="px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                      onClick={inscribirse}
+                      disabled={loading}
+                    >
+                      {loading ? "Guardando..." : "Inscribirse"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

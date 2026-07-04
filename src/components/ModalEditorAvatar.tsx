@@ -207,7 +207,7 @@ export default function ModalEditorAvatar({
                 key: "sueter_simple",
                 label: "Prendas especiales",
                 get items() {
-                  return ["none", "ChaquetaNegra", "ArmaduraNegra", "PlayeraNeon", "SudaderaBuap", "SudaderaBuap2"];
+                  return ["none", "Uniforme_Gris", "ChaquetaNegra", "ArmaduraNegra", "PlayeraNeon", "SudaderaBuap", "SudaderaBuap2", "Sudadera_Negro_Naranja", "Uniforme_Naranja_Azul", "Playera_Seleccion", "Uniforme_Negro_Rojo", "Uniforme_Azul", "Uniforme_Cafe" ];
                 },
               },
             ],

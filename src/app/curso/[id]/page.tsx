@@ -11,8 +11,14 @@ interface Params {
   id: string;
 }
 
-export default async function CursoPage({ params }: { params: Params }) {
-  const cookieStore = cookies();
+export default async function CursoPage({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  const { id } = await params;
+
+  const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   const {
@@ -37,7 +43,7 @@ export default async function CursoPage({ params }: { params: Params }) {
 
   return (
     <LayoutGeneral rol={rol}>
-      <VisualizadorCurso materiaId={params.id} userId={user.id} rol={rol} />
+      <VisualizadorCurso materiaId={id} userId={user.id} rol={rol} />
     </LayoutGeneral>
   );
 }

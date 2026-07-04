@@ -5,6 +5,7 @@
  * - Si el correo no está confirmado, permite reenviar confirmación.
  * - Si la contraseña falla, permite solicitar restablecimiento.
  * - Busca el rol en la tabla `usuarios` y redirige al dashboard correspondiente.
+ * - Carga el tema del usuario antes de redirigir para evitar parpadeo claro/oscuro.
  */
 
 "use client";
@@ -14,6 +15,24 @@ import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 
 type TipoMensaje = "error" | "success" | "info";
+type Tema = "oscuro" | "claro";
+
+function esTemaValido(valor: any): valor is Tema {
+  return valor === "oscuro" || valor === "claro";
+}
+
+function aplicarTemaAntesDeEntrar(tema: Tema) {
+  localStorage.setItem(
+    "preferencias_usuario",
+    JSON.stringify({ tema })
+  );
+
+  document.documentElement.classList.remove("theme-claro", "theme-oscuro");
+  document.documentElement.classList.add(`theme-${tema}`);
+
+  document.body.classList.remove("theme-claro", "theme-oscuro");
+  document.body.classList.add(`theme-${tema}`);
+}
 
 export default function LoginPage() {
   const [correo, setCorreo] = useState("");
@@ -122,11 +141,19 @@ export default function LoginPage() {
 
       localStorage.setItem("user_id", data.user.id);
 
-      const { data: usuario, error: usuarioError } = await supabase
-        .from("usuarios")
-        .select("rol")
-        .eq("id", data.user.id)
-        .single();
+      const [{ data: usuario, error: usuarioError }, { data: preferencias }] =
+        await Promise.all([
+          supabase
+            .from("usuarios")
+            .select("rol")
+            .eq("id", data.user.id)
+            .single(),
+          supabase
+            .from("configuraciones_usuario")
+            .select("tema")
+            .eq("usuario_id", data.user.id)
+            .maybeSingle(),
+        ]);
 
       if (usuarioError || !usuario) {
         console.error(usuarioError);
@@ -135,6 +162,12 @@ export default function LoginPage() {
         );
         return;
       }
+
+      const temaUsuario = esTemaValido(preferencias?.tema)
+        ? preferencias.tema
+        : "claro";
+
+      aplicarTemaAntesDeEntrar(temaUsuario);
 
       localStorage.setItem("rol_usuario", usuario.rol);
 

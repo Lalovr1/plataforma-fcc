@@ -37,8 +37,6 @@ export default function MenuLateral({ rol }: Props) {
     typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
   );
 
-  const [temaOscuro, setTemaOscuro] = useState(false);
-
   useEffect(() => {
     const handler = (e: any) => setTutorialActivo(!!e.detail?.activo);
     window.addEventListener("tutorial:estado", handler);
@@ -47,43 +45,35 @@ export default function MenuLateral({ rol }: Props) {
       typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
     );
 
-    const actualizarTema = () => {
-      const preferenciasGuardadas = localStorage.getItem("preferencias_usuario");
-
-      let temaActual = "claro";
-
-      if (preferenciasGuardadas) {
-        try {
-          const prefs = JSON.parse(preferenciasGuardadas);
-          if (prefs.tema === "oscuro" || prefs.tema === "claro") {
-            temaActual = prefs.tema;
-          }
-        } catch {}
-      }
-
-      setTemaOscuro(temaActual === "oscuro");
-    };
-
-    const handlerPreferencias = (e: any) => {
-      if (e.detail?.tema === "oscuro" || e.detail?.tema === "claro") {
-        setTemaOscuro(e.detail.tema === "oscuro");
-      }
-    };
-
-    actualizarTema();
-
-    window.addEventListener("storage", actualizarTema);
-    window.addEventListener("app:preferencias", handlerPreferencias);
-
     return () => {
       window.removeEventListener("tutorial:estado", handler);
-      window.removeEventListener("storage", actualizarTema);
-      window.removeEventListener("app:preferencias", handlerPreferencias);
     };
   }, []);
 
     return (
       <>
+        <style>{`
+          html.theme-claro .logo-fcc-claro,
+          body.theme-claro .logo-fcc-claro {
+            opacity: 1;
+          }
+
+          html.theme-claro .logo-fcc-oscuro,
+          body.theme-claro .logo-fcc-oscuro {
+            opacity: 0;
+          }
+
+          html.theme-oscuro .logo-fcc-claro,
+          body.theme-oscuro .logo-fcc-claro {
+            opacity: 0;
+          }
+
+          html.theme-oscuro .logo-fcc-oscuro,
+          body.theme-oscuro .logo-fcc-oscuro {
+            opacity: 1;
+          }
+        `}</style>
+
         <button
           type="button"
           onClick={() => setMenuAbierto(true)}
@@ -122,11 +112,23 @@ export default function MenuLateral({ rol }: Props) {
           className="relative flex items-center justify-center p-4 border-b"
           style={{ borderColor: "var(--color-border)" }}
         >
-          <img
-            src={temaOscuro ? "/logoOscuro.png" : "/logoClaro.png"}
-            alt="FCC Academy"
-            className="w-full max-w-[170px] h-auto mx-auto"
-          />
+          <div className="grid place-items-center w-full">
+            <img
+              src="/logoClaro.png"
+              alt="FCC Academy"
+              className="logo-fcc-claro col-start-1 row-start-1 w-full max-w-[170px] h-auto mx-auto"
+              loading="eager"
+              decoding="sync"
+            />
+            <img
+              src="/logoOscuro.png"
+              alt=""
+              aria-hidden="true"
+              className="logo-fcc-oscuro col-start-1 row-start-1 w-full max-w-[170px] h-auto mx-auto"
+              loading="eager"
+              decoding="sync"
+            />
+          </div>
             <button
               type="button"
               onClick={() => setMenuAbierto(false)}
