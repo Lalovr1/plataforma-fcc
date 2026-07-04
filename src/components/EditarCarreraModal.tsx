@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface Seccion {
   id?: string;
@@ -43,12 +44,30 @@ export default function EditarCarreraModal({
   onSave,
 }: Props) {
   const [localCarrera, setLocalCarrera] = useState<CursoCarrera | null>(carrera);
+  const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
     setLocalCarrera(carrera);
   }, [carrera]);
 
-  if (!open || !localCarrera) return null;
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  if (!open || !localCarrera || !portalReady || typeof document === "undefined") {
+    return null;
+  }
 
   const handlePeriodoChange = (idx: number, patch: Partial<Periodo>) => {
     setLocalCarrera({
@@ -126,21 +145,25 @@ export default function EditarCarreraModal({
       alert("Debes seleccionar una carrera y un semestre");
       return;
     }
+
     onSave(localCarrera);
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
       <div
-        className="rounded-xl p-6 w-full max-w-2xl space-y-4"
+        className="rounded-xl p-4 sm:p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto"
         style={{
           backgroundColor: "var(--color-card)",
           border: "1px solid var(--color-border)",
           color: "var(--color-text)",
         }}
       >
-        <h2 className="text-lg font-bold" style={{ color: "var(--color-heading)" }}>
+        <h2
+          className="text-lg font-bold"
+          style={{ color: "var(--color-heading)" }}
+        >
           Editar carrera
         </h2>
 
@@ -221,6 +244,7 @@ export default function EditarCarreraModal({
         {/* Períodos */}
         <div>
           <label className="block text-sm">Períodos</label>
+
           {localCarrera.periodos.map((p, pIdx) => (
             <div
               key={pIdx}
@@ -230,7 +254,7 @@ export default function EditarCarreraModal({
                 border: "1px solid var(--color-border)",
               }}
             >
-              <div className="flex gap-2 items-center">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                 <select
                   value={p.nombre}
                   onChange={(e) =>
@@ -249,32 +273,37 @@ export default function EditarCarreraModal({
                   <option value="Verano">Verano</option>
                   <option value="Otoño">Otoño</option>
                 </select>
+
                 <input
                   type="number"
                   value={p.anio}
                   onChange={(e) =>
                     handlePeriodoChange(pIdx, { anio: Number(e.target.value) })
                   }
-                  className="w-24 p-1 rounded"
+                  className="w-full sm:w-24 p-1 rounded"
                   style={{
                     backgroundColor: "var(--color-bg)",
                     border: "1px solid var(--color-border)",
                     color: "var(--color-text)",
                   }}
                 />
+
                 <button
                   type="button"
                   onClick={() => removePeriodo(pIdx)}
-                  className="bg-red-600 px-2 rounded text-white"
+                  className="bg-red-600 px-2 py-1 rounded text-white"
                 >
                   ❌
                 </button>
               </div>
 
               {/* Secciones */}
-              <div className="ml-4 space-y-1">
+              <div className="sm:ml-4 space-y-1">
                 {p.secciones.map((s, sIdx) => (
-                  <div key={sIdx} className="flex gap-2 items-center">
+                  <div
+                    key={sIdx}
+                    className="flex flex-col sm:flex-row gap-2 sm:items-center"
+                  >
                     <input
                       type="text"
                       value={s.nombre}
@@ -289,25 +318,28 @@ export default function EditarCarreraModal({
                         color: "var(--color-text)",
                       }}
                     />
+
                     <button
                       type="button"
                       onClick={() => removeSeccion(pIdx, sIdx)}
-                      className="bg-red-600 px-2 rounded text-white"
+                      className="bg-red-600 px-2 py-1 rounded text-white"
                     >
                       ❌
                     </button>
                   </div>
                 ))}
+
                 <button
                   type="button"
                   onClick={() => addSeccion(pIdx)}
-                  className="mt-1 bg-blue-600 px-2 rounded text-xs text-white"
+                  className="mt-1 bg-blue-600 px-2 py-1 rounded text-xs text-white"
                 >
                   ➕ Agregar sección
                 </button>
               </div>
             </div>
           ))}
+
           <button
             type="button"
             onClick={addPeriodo}
@@ -318,7 +350,7 @@ export default function EditarCarreraModal({
         </div>
 
         {/* Botones */}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col sm:flex-row justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
@@ -326,6 +358,7 @@ export default function EditarCarreraModal({
           >
             Cancelar
           </button>
+
           <button
             type="button"
             onClick={handleSave}
@@ -335,6 +368,7 @@ export default function EditarCarreraModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

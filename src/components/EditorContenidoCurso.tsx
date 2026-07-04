@@ -55,6 +55,7 @@ declare global {
 const uid = () =>
   `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
+const FORMULA_IMAGEN_SOLO_LOCAL = process.env.NODE_ENV === "development";
 
 const convertFromCustomfile = (md: string) => {
   return md.replace(/<customfile data='([^']+)'><\/customfile>/g, (_, json) => {
@@ -157,10 +158,17 @@ export default function EditorContenidoCurso({
   const [formulaEcuacion, setFormulaEcuacion] = useState("");
   const [formulaTitulo, setFormulaTitulo] = useState("");
   const [formulaDescripcion, setFormulaDescripcion] = useState("");
+  const [formulaPublica, setFormulaPublica] = useState(false);
   const [targetTextarea, setTargetTextarea] = useState<HTMLTextAreaElement | null>(null);
 
   const [inlineFormulaTitles, setInlineFormulaTitles] = useState<
-    { scope: "intro" | string; ecuacion: string; titulo: string }[]
+    {
+      scope: "intro" | string;
+      ecuacion: string;
+      titulo: string;
+      descripcion: string;
+      publica: boolean;
+    }[]
   >([]);
 
 
@@ -433,41 +441,57 @@ export default function EditorContenidoCurso({
         if (blockError) throw blockError;
         if (!insertedBlock) throw new Error("No se pudo insertar el bloque.");
 
-        // --- Prepara popTitle ---
         const titlesSnapshot = [...inlineFormulaTitles];
-        const popTitle = (scope: "intro" | string, ecuacion: string) => {
-          const i = titlesSnapshot.findIndex(
-            t => t.scope === scope && t.ecuacion.trim() === ecuacion.trim()
-          );
-          if (i >= 0) {
-            const t = titlesSnapshot[i];
-            titlesSnapshot.splice(i, 1);
-            return t.titulo;
-          }
-          return null;
+        const popFormulaMeta = (scope: "intro" | string, ecuacion: string) => {
+        const i = titlesSnapshot.findIndex(
+          (t) => t.scope === scope && t.ecuacion.trim() === ecuacion.trim()
+        );
+
+        if (i >= 0) {
+          const t = titlesSnapshot[i];
+          titlesSnapshot.splice(i, 1);
+
+          return {
+            titulo: t.titulo?.trim() || null,
+            descripcion: t.descripcion?.trim() || null,
+            publica: Boolean(t.publica),
+          };
+        }
+
+        return {
+          titulo: null,
+          descripcion: null,
+          publica: false,
         };
+      };
 
         let ordenFormula = 0;
 
         const introFormulas = extractLatexFormulas(intro);
         for (const ecuacion of introFormulas) {
           if (!ecuacion.trim()) continue;
+          const meta = popFormulaMeta("intro", ecuacion);
+
           await supabase.from("curso_formulas").insert({
             bloque_id: insertedBlock.id,
-            titulo: popTitle("intro", ecuacion), 
+            titulo: meta.titulo,
             ecuacion,
-            publica: false,
+            descripcion: meta.descripcion,
+            publica: meta.publica,
             orden: ordenFormula++,
           });
         }
         const contenidoPrincipalFormulas = extractLatexFormulas(contenidoPrincipal);
         for (const ecuacion of contenidoPrincipalFormulas) {
           if (!ecuacion.trim()) continue;
+          const meta = popFormulaMeta("contenido-principal", ecuacion);
+
           await supabase.from("curso_formulas").insert({
             bloque_id: insertedBlock.id,
-            titulo: popTitle("contenido-principal", ecuacion),
+            titulo: meta.titulo,
             ecuacion,
-            publica: false,
+            descripcion: meta.descripcion,
+            publica: meta.publica,
             orden: ordenFormula++,
           });
         }
@@ -547,6 +571,66 @@ export default function EditorContenidoCurso({
       return;
     }
     fetchBlocks();
+  };
+
+  const handleDeleteUnidad = async (unidadId: string) => {
+    if (unidades.length <= 1) {
+      alert("No puedes eliminar la única unidad del curso.");
+      return;
+    }
+
+    const bloquesLocales = bloquesPorUnidad[unidadId] || [];
+
+    if (bloquesLocales.length > 0) {
+      alert("Solo puedes eliminar unidades vacías.");
+      return;
+    }
+
+    const { count, error: countError } = await supabase
+      .from("curso_contenido_bloques")
+      .select("id", { count: "exact", head: true })
+      .eq("materia_id", materiaId)
+      .eq("unidad_id", unidadId);
+
+    if (countError) {
+      console.error(countError);
+      alert("No se pudo verificar si la unidad está vacía.");
+      return;
+    }
+
+    if ((count || 0) > 0) {
+      alert("Solo puedes eliminar unidades vacías.");
+      await fetchBlocks();
+      return;
+    }
+
+    if (!confirm("¿Eliminar esta unidad vacía?")) return;
+
+    const { error } = await supabase
+      .from("curso_unidades")
+      .delete()
+      .eq("id", unidadId)
+      .eq("materia_id", materiaId);
+
+    if (error) {
+      console.error(error);
+      alert("No se pudo eliminar la unidad.");
+      return;
+    }
+
+    const unidadesRestantes = unidades.filter((u) => u.id !== unidadId);
+
+    setUnidades(unidadesRestantes);
+
+    if (unidad === unidadId) {
+      setUnidad(unidadesRestantes[0]?.id || "");
+    }
+
+    if (unidadAbiertaId === unidadId) {
+      setUnidadAbiertaId(null);
+    }
+
+    setToast({ message: "Unidad eliminada correctamente", type: "success" });
   };
 
   const move = async (id: string, dir: "up" | "down") => {
@@ -952,9 +1036,24 @@ export default function EditorContenidoCurso({
               {abierta && (
                 <div className="p-3 space-y-3">
                   {bloquesUnidad.length === 0 ? (
-                    <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                      Esta unidad aún no tiene bloques.
-                    </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                        Esta unidad aún no tiene bloques.
+                      </p>
+
+                      {unidades.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteUnidad(u.id);
+                          }}
+                          className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm w-full sm:w-auto"
+                        >
+                          Eliminar unidad
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     bloquesUnidad.map((b) => (
                       <div
@@ -1376,6 +1475,7 @@ export default function EditorContenidoCurso({
                               setFormulaTitulo(f.titulo);
                               setFormulaEcuacion(f.ecuacion);
                               setFormulaDescripcion(f.descripcion || "");
+                              setFormulaPublica(Boolean(f.publica));
                               setShowFormulaModal(true);
                             }}
                             className="px-2 py-1 rounded bg-yellow-500 text-white text-xs"
@@ -1405,6 +1505,8 @@ export default function EditorContenidoCurso({
                     setTargetFormulaId(uid());
                     setFormulaTitulo("");
                     setFormulaEcuacion("");
+                    setFormulaDescripcion("");
+                    setFormulaPublica(false);
                     setShowFormulaModal(true);
                   }}
                   className="w-full rounded bg-blue-600 text-white py-2 text-sm font-semibold"
@@ -1455,6 +1557,11 @@ export default function EditorContenidoCurso({
                 className={`px-3 py-1 rounded ${formulaMode === "image" ? "bg-blue-600 text-white" : ""}`}
                 style={formulaMode !== "image" ? { backgroundColor: "var(--color-border)", color: "var(--color-text)" } : {}}
                 onClick={() => setFormulaMode("image")}
+                title={
+                  FORMULA_IMAGEN_SOLO_LOCAL
+                    ? "Convertir imagen a LaTeX"
+                    : "Esta herramienta solo está disponible en entorno local."
+                }
               >
                 Imagen
               </button>
@@ -1493,6 +1600,18 @@ export default function EditorContenidoCurso({
                   }}
                 />
 
+                <label
+                  className="flex items-center gap-2 text-sm mb-3"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formulaPublica}
+                    onChange={(e) => setFormulaPublica(e.target.checked)}
+                  />
+                  Visible para estudiantes
+                </label>
+
                 <div
                   className="rounded p-3 text-center"
                   style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
@@ -1514,12 +1633,31 @@ export default function EditorContenidoCurso({
                 </div>
               </>
             ) : (
-              <OcrFormula
-                onResult={(titulo, ecuacion) => {
-                  setFormulaTitulo(titulo);
-                  setFormulaEcuacion(ecuacion);
-                }}
-              />
+              FORMULA_IMAGEN_SOLO_LOCAL ? (
+                <OcrFormula
+                  onResult={(titulo, ecuacion) => {
+                    setFormulaTitulo(titulo);
+                    setFormulaEcuacion(ecuacion);
+                  }}
+                />
+              ) : (
+                <div
+                  className="rounded-lg p-4 text-sm"
+                  style={{
+                    backgroundColor: "var(--color-bg)",
+                    color: "var(--color-text)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <p className="font-semibold mb-1">
+                    Herramienta disponible solo en entorno local.
+                  </p>
+                  <p style={{ color: "var(--color-muted)" }}>
+                    Por ahora, la conversión de imagen a fórmula requiere el servidor local de OCR.
+                    Usa la pestaña LaTeX para insertar fórmulas manualmente.
+                  </p>
+                </div>
+              )
             )}
 
             <div className="flex justify-end gap-2 mt-4">
@@ -1531,7 +1669,8 @@ export default function EditorContenidoCurso({
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white"
+                className="px-3 py-1 rounded bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={formulaMode === "image" && !FORMULA_IMAGEN_SOLO_LOCAL}
                 onClick={() => {
                   if (targetTextarea) {
                     insertAtCursor(targetTextarea, `$$${formulaEcuacion}$$`);
@@ -1539,10 +1678,20 @@ export default function EditorContenidoCurso({
 
                     if (targetTextarea.placeholder?.includes("Texto introductorio")) {
                       setIntro(value);
-                      if (formulaTitulo.trim()) {
+                      if (
+                        formulaTitulo.trim() ||
+                        formulaDescripcion.trim() ||
+                        formulaPublica
+                      ) {
                         setInlineFormulaTitles(prev => [
                           ...prev,
-                          { scope: "intro", ecuacion: formulaEcuacion.trim(), titulo: formulaTitulo.trim() }
+                          {
+                            scope: "intro",
+                            ecuacion: formulaEcuacion.trim(),
+                            titulo: formulaTitulo.trim(),
+                            descripcion: formulaDescripcion.trim(),
+                            publica: formulaPublica,
+                          }
                         ]);
                       }
                     } else if (
@@ -1558,15 +1707,25 @@ export default function EditorContenidoCurso({
                             titulo: formulaTitulo,
                             ecuacion: formulaEcuacion,
                             descripcion: formulaDescripcion,
-                            publica: false,
+                            publica: formulaPublica,
                           }
                         ]);
                       } else {
                         setContenidoPrincipal(value);
-                        if (formulaTitulo.trim()) {
+                        if (
+                          formulaTitulo.trim() ||
+                          formulaDescripcion.trim() ||
+                          formulaPublica
+                        ) {
                           setInlineFormulaTitles(prev => [
                             ...prev,
-                            { scope: "contenido-principal", ecuacion: formulaEcuacion.trim(), titulo: formulaTitulo.trim() }
+                            {
+                              scope: "contenido-principal",
+                              ecuacion: formulaEcuacion.trim(),
+                              titulo: formulaTitulo.trim(),
+                              descripcion: formulaDescripcion.trim(),
+                              publica: formulaPublica,
+                            }
                           ]);
                         }
                       }
@@ -1574,13 +1733,19 @@ export default function EditorContenidoCurso({
                   } else if (!targetTextarea && !targetFormulaId && !editBlock) {
                       contenidoPrincipalEditorRef.current?.insertFormula(formulaEcuacion);
                       setContenidoPrincipal(contenidoPrincipalEditorRef.current?.getHTML() || "");
-                      if (formulaTitulo.trim()) {
+                      if (
+                        formulaTitulo.trim() ||
+                        formulaDescripcion.trim() ||
+                        formulaPublica
+                      ) {
                         setInlineFormulaTitles(prev => [
                           ...prev,
                           {
                             scope: "contenido-principal",
                             ecuacion: formulaEcuacion.trim(),
                             titulo: formulaTitulo.trim(),
+                            descripcion: formulaDescripcion.trim(),
+                            publica: formulaPublica,
                           },
                         ]);
                       }
@@ -1595,7 +1760,7 @@ export default function EditorContenidoCurso({
                           titulo: formulaTitulo,
                           ecuacion: formulaEcuacion,
                           descripcion: formulaDescripcion,
-                          publica: false,
+                          publica: formulaPublica,
                         },
                       ]);
                     } else if (targetFormulaId) {
@@ -1604,7 +1769,13 @@ export default function EditorContenidoCurso({
                       if (exists) {
                         return prev.map((f) =>
                           f.id === targetFormulaId
-                            ? { ...f, titulo: formulaTitulo, ecuacion: formulaEcuacion, descripcion: formulaDescripcion }
+                            ? {
+                              ...f,
+                              titulo: formulaTitulo,
+                              ecuacion: formulaEcuacion,
+                              descripcion: formulaDescripcion,
+                              publica: formulaPublica,
+                            }
                             : f
                         );
                       }
@@ -1615,7 +1786,7 @@ export default function EditorContenidoCurso({
                           titulo: formulaTitulo,
                           ecuacion: formulaEcuacion,
                           descripcion: formulaDescripcion,
-                          publica: false,
+                          publica: formulaPublica,
                         }
                       ];
                     });
@@ -1625,6 +1796,7 @@ export default function EditorContenidoCurso({
                   setFormulaEcuacion("");
                   setFormulaTitulo("");
                   setFormulaDescripcion("");
+                  setFormulaPublica(false);
                   setShowFormulaModal(false);
                 }}
               >

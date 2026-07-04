@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter, useParams } from "next/navigation";
 import toast from "react-hot-toast";
@@ -10,6 +10,7 @@ import EditorContenidoCurso from "@/components/EditorContenidoCurso";
 import ConstructorQuiz from "@/components/ConstructorQuiz";
 import EditarCarreraModal from "@/components/EditarCarreraModal";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 
 interface Carrera {
   id: number;
@@ -155,10 +156,31 @@ export default function EditarCursoPage() {
   const [carreras, setCarreras] = useState<Carrera[]>([]);
   const [cursoCarreras, setCursoCarreras] = useState<CursoCarrera[]>([]);
   const [nuevaCarrera, setNuevaCarrera] = useState<CursoCarrera | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [carreraEditando, setCarreraEditando] = useState<CursoCarrera | null>(null);
   const [bloquesVersion, setBloquesVersion] = useState(0);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!nuevaCarrera) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [nuevaCarrera]);
+
+  const renderPortal = (content: ReactNode) => {
+    if (!portalReady || typeof document === "undefined") return null;
+    return createPortal(content, document.body);
+  };
 
   const guardarCacheActual = (override?: Partial<Omit<CursoCache, "timestamp">>) => {
     const usuarioId = profesorId ?? localStorage.getItem("user_id");
@@ -724,177 +746,210 @@ export default function EditarCursoPage() {
                 })}
               </div>
 
-              {nuevaCarrera && (
-                <div
-                  className="rounded-lg p-3 mt-2 space-y-2"
-                  style={{
-                    backgroundColor: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  <select
-                    value={nuevaCarrera.carrera_id || ""}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        carrera_id: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    className="w-full p-2 rounded"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    <option value="">Seleccione carrera</option>
-                    {carreras.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
+              {nuevaCarrera &&
+                renderPortal(
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
+                    <div
+                      className="rounded-xl p-4 sm:p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+                      style={{
+                        backgroundColor: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      <h2 className="text-lg font-bold" style={{ color: "var(--color-heading)" }}>
+                        Agregar carrera
+                      </h2>
 
-                  <select
-                    value={nuevaCarrera.semestre || ""}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        semestre: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    className="w-full p-2 rounded"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    <option value="">Seleccione semestre</option>
-                    {[...Array(10)].map((_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        Semestre {i + 1}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={nuevaCarrera.area}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        area: e.target.value,
-                      })
-                    }
-                    className="w-full p-2 rounded"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    <option value="Ciencias Básicas">Ciencias Básicas</option>
-                    <option value="Computación">Computación</option>
-                  </select>
-
-                  <div className="space-y-2">
-                    <label className="block text-sm">Períodos</label>
-                    {nuevaCarrera.periodos.map((p, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2 rounded space-y-1"
+                      <select
+                        value={nuevaCarrera.carrera_id || ""}
+                        onChange={(e) =>
+                          setNuevaCarrera({
+                            ...nuevaCarrera,
+                            carrera_id: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                        className="w-full p-2 rounded"
                         style={{
                           backgroundColor: "var(--color-bg)",
                           border: "1px solid var(--color-border)",
+                          color: "var(--color-text)",
                         }}
                       >
-                        <div className="flex gap-2">
-                          <select
-                            value={p.nombre}
-                            onChange={(e) => {
-                              const val = e.target.value as Periodo["nombre"];
-                              setNuevaCarrera({
-                                ...nuevaCarrera,
-                                periodos: nuevaCarrera.periodos.map((x, i) =>
-                                  i === idx ? { ...x, nombre: val } : x
-                                ),
-                              });
-                            }}
-                            className="flex-1 p-1 rounded"
-                            style={{
-                              backgroundColor: "var(--color-bg)",
-                              border: "1px solid var(--color-border)",
-                              color: "var(--color-text)",
-                            }}
-                          >
-                            <option value="Primavera">Primavera</option>
-                            <option value="Verano">Verano</option>
-                            <option value="Otoño">Otoño</option>
-                          </select>
-                          <input
-                            type="number"
-                            value={p.anio}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setNuevaCarrera({
-                                ...nuevaCarrera,
-                                periodos: nuevaCarrera.periodos.map((x, i) =>
-                                  i === idx ? { ...x, anio: val } : x
-                                ),
-                              });
-                            }}
-                            className="w-24 p-1 rounded"
-                            placeholder="Año"
-                            style={{
-                              backgroundColor: "var(--color-bg)",
-                              border: "1px solid var(--color-border)",
-                              color: "var(--color-text)",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNuevaCarrera({
-                                ...nuevaCarrera,
-                                periodos: nuevaCarrera.periodos.filter((_, i) => i !== idx),
-                              })
-                            }
-                            className="bg-red-600 px-2 rounded text-white"
-                          >
-                            ❌
-                          </button>
-                        </div>
+                        <option value="">Seleccione carrera</option>
+                        {carreras.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nombre}
+                          </option>
+                        ))}
+                      </select>
 
-                        <div className="ml-4 space-y-1">
-                          {p.secciones.map((s, sidx) => (
-                            <div key={sidx} className="flex gap-2 items-center">
-                              <input
-                                type="text"
-                                value={s.nombre}
-                                onChange={(e) => {
-                                  const val = e.target.value;
+                      <select
+                        value={nuevaCarrera.semestre || ""}
+                        onChange={(e) =>
+                          setNuevaCarrera({
+                            ...nuevaCarrera,
+                            semestre: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                        className="w-full p-2 rounded"
+                        style={{
+                          backgroundColor: "var(--color-bg)",
+                          border: "1px solid var(--color-border)",
+                          color: "var(--color-text)",
+                        }}
+                      >
+                        <option value="">Seleccione semestre</option>
+                        {[...Array(10)].map((_, i) => (
+                          <option key={i + 1} value={i + 1}>
+                            Semestre {i + 1}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={nuevaCarrera.area}
+                        onChange={(e) =>
+                          setNuevaCarrera({ ...nuevaCarrera, area: e.target.value })
+                        }
+                        className="w-full p-2 rounded"
+                        style={{
+                          backgroundColor: "var(--color-bg)",
+                          border: "1px solid var(--color-border)",
+                          color: "var(--color-text)",
+                        }}
+                      >
+                        <option value="Ciencias Básicas">Ciencias Básicas</option>
+                        <option value="Computación">Computación</option>
+                      </select>
+
+                      <div>
+                        <label className="block text-sm mb-2">Períodos</label>
+
+                        {nuevaCarrera.periodos.map((p, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3 rounded space-y-2 mb-2"
+                            style={{
+                              backgroundColor: "var(--color-bg)",
+                              border: "1px solid var(--color-border)",
+                            }}
+                          >
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                              <select
+                                value={p.nombre}
+                                onChange={(e) =>
                                   setNuevaCarrera({
                                     ...nuevaCarrera,
                                     periodos: nuevaCarrera.periodos.map((x, i) =>
                                       i === idx
-                                        ? {
-                                            ...x,
-                                            secciones: x.secciones.map((y, j) =>
-                                              j === sidx ? { ...y, nombre: val } : y
-                                            ),
-                                          }
+                                        ? { ...x, nombre: e.target.value as Periodo["nombre"] }
                                         : x
                                     ),
-                                  });
-                                }}
+                                  })
+                                }
                                 className="flex-1 p-1 rounded"
-                                placeholder="Nombre sección"
+                                style={{
+                                  backgroundColor: "var(--color-bg)",
+                                  border: "1px solid var(--color-border)",
+                                  color: "var(--color-text)",
+                                }}
+                              >
+                                <option value="Primavera">Primavera</option>
+                                <option value="Verano">Verano</option>
+                                <option value="Otoño">Otoño</option>
+                              </select>
+
+                              <input
+                                type="number"
+                                value={p.anio}
+                                onChange={(e) =>
+                                  setNuevaCarrera({
+                                    ...nuevaCarrera,
+                                    periodos: nuevaCarrera.periodos.map((x, i) =>
+                                      i === idx ? { ...x, anio: Number(e.target.value) } : x
+                                    ),
+                                  })
+                                }
+                                className="w-full sm:w-24 p-1 rounded"
                                 style={{
                                   backgroundColor: "var(--color-bg)",
                                   border: "1px solid var(--color-border)",
                                   color: "var(--color-text)",
                                 }}
                               />
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNuevaCarrera({
+                                    ...nuevaCarrera,
+                                    periodos: nuevaCarrera.periodos.filter((_, i) => i !== idx),
+                                  })
+                                }
+                                className="bg-red-600 px-2 py-1 rounded text-white"
+                              >
+                                ❌
+                              </button>
+                            </div>
+
+                            <div className="sm:ml-4 space-y-1">
+                              {p.secciones.map((s, sIdx) => (
+                                <div
+                                  key={sIdx}
+                                  className="flex flex-col sm:flex-row gap-2 sm:items-center"
+                                >
+                                  <input
+                                    type="text"
+                                    value={s.nombre}
+                                    onChange={(e) =>
+                                      setNuevaCarrera({
+                                        ...nuevaCarrera,
+                                        periodos: nuevaCarrera.periodos.map((x, i) =>
+                                          i === idx
+                                            ? {
+                                                ...x,
+                                                secciones: x.secciones.map((sec, j) =>
+                                                  j === sIdx
+                                                    ? { ...sec, nombre: e.target.value }
+                                                    : sec
+                                                ),
+                                              }
+                                            : x
+                                        ),
+                                      })
+                                    }
+                                    className="flex-1 p-1 rounded"
+                                    placeholder="Nombre sección"
+                                    style={{
+                                      backgroundColor: "var(--color-bg)",
+                                      border: "1px solid var(--color-border)",
+                                      color: "var(--color-text)",
+                                    }}
+                                  />
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setNuevaCarrera({
+                                        ...nuevaCarrera,
+                                        periodos: nuevaCarrera.periodos.map((x, i) =>
+                                          i === idx
+                                            ? {
+                                                ...x,
+                                                secciones: x.secciones.filter((_, j) => j !== sIdx),
+                                              }
+                                            : x
+                                        ),
+                                      })
+                                    }
+                                    className="bg-red-600 px-2 py-1 rounded text-white"
+                                  >
+                                    ❌
+                                  </button>
+                                </div>
+                              ))}
+
                               <button
                                 type="button"
                                 onClick={() =>
@@ -902,81 +957,60 @@ export default function EditarCursoPage() {
                                     ...nuevaCarrera,
                                     periodos: nuevaCarrera.periodos.map((x, i) =>
                                       i === idx
-                                        ? {
-                                            ...x,
-                                            secciones: x.secciones.filter((_, j) => j !== sidx),
-                                          }
+                                        ? { ...x, secciones: [...x.secciones, { nombre: "" }] }
                                         : x
                                     ),
                                   })
                                 }
-                                className="bg-red-600 px-2 rounded text-white"
+                                className="mt-1 bg-blue-600 px-2 py-1 rounded text-xs text-white"
                               >
-                                ❌
+                                ➕ Agregar sección
                               </button>
                             </div>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNuevaCarrera({
-                                ...nuevaCarrera,
-                                periodos: nuevaCarrera.periodos.map((x, i) =>
-                                  i === idx
-                                    ? {
-                                        ...x,
-                                        secciones: [...x.secciones, { nombre: "" }],
-                                      }
-                                    : x
-                                ),
-                              })
-                            }
-                            className="mt-1 bg-blue-600 px-2 rounded text-xs text-white"
-                          >
-                            ➕ Agregar sección
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNuevaCarrera({
-                          ...nuevaCarrera,
-                          periodos: [
-                            ...nuevaCarrera.periodos,
-                            {
-                              nombre: "Primavera",
-                              anio: new Date().getFullYear(),
-                              secciones: [],
-                            },
-                          ],
-                        })
-                      }
-                      className="mt-2 bg-blue-600 px-3 py-1 rounded text-xs text-white"
-                    >
-                      ➕ Agregar período
-                    </button>
-                  </div>
+                          </div>
+                        ))}
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={agregarCarreraEnSupabase}
-                      className="flex-1 bg-green-600 py-1 rounded text-white"
-                    >
-                      Guardar carrera
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNuevaCarrera(null)}
-                      className="flex-1 bg-red-600 py-1 rounded text-white"
-                    >
-                      Cancelar
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNuevaCarrera({
+                              ...nuevaCarrera,
+                              periodos: [
+                                ...nuevaCarrera.periodos,
+                                {
+                                  nombre: "Primavera",
+                                  anio: new Date().getFullYear(),
+                                  secciones: [],
+                                },
+                              ],
+                            })
+                          }
+                          className="mt-2 bg-blue-600 px-3 py-1 rounded text-xs text-white"
+                        >
+                          ➕ Agregar período
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setNuevaCarrera(null)}
+                          className="px-4 py-2 bg-gray-600 rounded text-white"
+                        >
+                          Cancelar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={agregarCarreraEnSupabase}
+                          className="px-4 py-2 bg-green-600 rounded text-white"
+                        >
+                          Guardar carrera
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {!nuevaCarrera && (
                 <button

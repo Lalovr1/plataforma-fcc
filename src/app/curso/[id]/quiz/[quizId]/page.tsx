@@ -876,7 +876,11 @@ export default function ResolverQuizPage() {
         {(estado === "en_curso" || estado === "finalizado") && (
           <div className="space-y-4">
             {preguntas.map((p, idx) => (
-              <div key={p.id} className="p-3 sm:p-4 rounded-lg min-w-0 overflow-hidden" style={cardStyle}>
+              <div
+                key={p.id}
+                className="px-3 pt-8 pb-14 sm:px-4 sm:pt-8 sm:pb-14 rounded-lg min-w-0 overflow-hidden"
+                style={cardStyle}
+              >
                 <div
                   className="font-semibold mb-3 flex gap-2 min-w-0 items-start"
                   style={{ color: "var(--color-heading)" }}

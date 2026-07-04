@@ -12,6 +12,7 @@ import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
 
 type Tema = "oscuro" | "claro";
+type Rol = "estudiante" | "profesor";
 
 function esTemaValido(valor: any): valor is Tema {
   return valor === "oscuro" || valor === "claro";
@@ -59,7 +60,13 @@ function aplicarTemaEnApp(nuevoTema: Tema) {
 }
 
 export default function PaginaConfiguracion() {
-  const [rol, setRol] = useState<"estudiante" | "profesor">("estudiante");
+  const [rol, setRol] = useState<Rol>(() => {
+    if (typeof window === "undefined") return "estudiante";
+
+    const rolLocal = localStorage.getItem("rol_usuario");
+    return rolLocal === "profesor" ? "profesor" : "estudiante";
+  });
+
   const [tema, setTema] = useState<Tema | null>(null);
 
   const temaActualRef = useRef<Tema | null>(null);
@@ -82,7 +89,10 @@ export default function PaginaConfiguracion() {
           data: { user },
         } = await supabase.auth.getUser();
 
-        if (!user) return;
+        if (!user) {
+          setRol("estudiante");
+          return;
+        }
 
         userIdRef.current = user.id;
 
@@ -92,7 +102,10 @@ export default function PaginaConfiguracion() {
           .eq("id", user.id)
           .single();
 
-        if (u?.rol === "profesor") setRol("profesor");
+        const rolDetectado: Rol = u?.rol === "profesor" ? "profesor" : "estudiante";
+
+        setRol(rolDetectado);
+        localStorage.setItem("rol_usuario", rolDetectado);
 
         const { data: pref } = await supabase
           .from("configuraciones_usuario")

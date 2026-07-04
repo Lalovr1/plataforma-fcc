@@ -1,6 +1,12 @@
 "use client";
 
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -27,6 +33,263 @@ export type EditorBasicoRef = {
   insertDocumentLink: (url: string, name: string) => void;
   getHTML: () => string;
   setContent: (html: string) => void;
+};
+
+const escaparHtml = (text: string) =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const normalizarTextoPegado = (text: string) =>
+  text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\t/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/[ ]{2,}/g, " ").trim())
+    .join("\n");
+
+const normalizarTextoInlinePegado = (text: string) =>
+  text
+    .replace(/\r\n?/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\t/g, " ")
+    .replace(/\s+/g, " ");
+
+const convertirTextoPlanoAHtml = (text: string) => {
+  const limpio = normalizarTextoPegado(text);
+
+  if (!limpio.trim()) return "<p><br></p>";
+
+  return limpio
+    .split("\n")
+    .map((line) =>
+      line.trim() === "" ? "<p><br></p>" : `<p>${escaparHtml(line)}</p>`
+    )
+    .join("");
+};
+
+const compactarEspaciadoHtmlPegado = (html: string) =>
+  html
+    .replace(
+      /(?:<p[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>\s*){2,}/gi,
+      "<p><br></p>"
+    )
+    .replace(
+      /^(?:\s*<p[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>\s*)+/i,
+      ""
+    )
+    .replace(
+      /(?:\s*<p[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>)+\s*$/i,
+      ""
+    );
+
+const mapearFontSize = (
+  value: string | null
+): "12px" | "16px" | "22px" | "30px" | null => {
+  if (!value) return null;
+
+  const raw = value.trim().toLowerCase();
+  const num = parseFloat(raw);
+  if (Number.isNaN(num)) return null;
+
+  let px = num;
+
+  if (raw.endsWith("pt")) px = num * 1.333;
+  if (raw.endsWith("em") || raw.endsWith("rem")) px = num * 16;
+  if (raw.endsWith("%")) px = (num / 100) * 16;
+
+  if (px <= 14) return "12px";
+  if (px <= 19) return "16px";
+  if (px <= 26) return "22px";
+  return "30px";
+};
+
+const sanitizarUrl = (url: string | null) => {
+  if (!url) return "";
+
+  const value = url.trim();
+
+  if (
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("mailto:") ||
+    value.startsWith("/")
+  ) {
+    return value;
+  }
+
+  return "";
+};
+
+const sanitizarHtmlPegado = (html: string, fallbackText: string) => {
+  if (typeof window === "undefined" || !html.trim()) {
+    return convertirTextoPlanoAHtml(fallbackText);
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  const blockTags = new Set([
+    "P",
+    "DIV",
+    "SECTION",
+    "ARTICLE",
+    "HEADER",
+    "FOOTER",
+    "BLOCKQUOTE",
+    "PRE",
+    "LI",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6",
+  ]);
+
+  const ignoredTags = new Set([
+    "SCRIPT",
+    "STYLE",
+    "META",
+    "LINK",
+    "TITLE",
+    "HEAD",
+    "IFRAME",
+    "OBJECT",
+    "EMBED",
+    "BUTTON",
+    "INPUT",
+    "TEXTAREA",
+    "SELECT",
+    "OPTION",
+  ]);
+
+  const getFontSizeFromElement = (el: HTMLElement) => {
+    const tag = el.tagName;
+
+    if (tag === "H1") return "30px";
+    if (tag === "H2" || tag === "H3") return "22px";
+    if (tag === "H4" || tag === "H5" || tag === "H6") return "16px";
+
+    return mapearFontSize(el.style.fontSize || el.getAttribute("size"));
+  };
+
+  const aplicarFormatoInline = (el: HTMLElement, content: string) => {
+    if (!content) return "";
+
+    const tag = el.tagName;
+    const fontWeight = el.style.fontWeight || "";
+    const fontStyle = el.style.fontStyle || "";
+    const textDecoration = `${el.style.textDecoration || ""} ${
+      el.style.textDecorationLine || ""
+    }`;
+    const fontSize = getFontSizeFromElement(el);
+
+    const isHeading = /^H[1-6]$/.test(tag);
+    const isBold =
+      tag === "B" ||
+      tag === "STRONG" ||
+      isHeading ||
+      fontWeight === "bold" ||
+      Number(fontWeight) >= 600;
+
+    const isItalic = tag === "I" || tag === "EM" || fontStyle === "italic";
+    const isUnderline = tag === "U" || textDecoration.includes("underline");
+
+    let output = content;
+
+    if (fontSize) {
+      output = `<span style="font-size: ${fontSize}">${output}</span>`;
+    }
+
+    if (isUnderline) output = `<u>${output}</u>`;
+    if (isItalic) output = `<em>${output}</em>`;
+    if (isBold) output = `<strong>${output}</strong>`;
+
+    if (tag === "A") {
+      const href = sanitizarUrl(el.getAttribute("href"));
+      if (href) {
+        output = `<a href="${escaparHtml(
+          href
+        )}" target="_blank" rel="noopener noreferrer">${output}</a>`;
+      }
+    }
+
+    return output;
+  };
+
+  const tieneHijoBloque = (el: HTMLElement) =>
+    Array.from(el.childNodes).some(
+      (child) =>
+        child.nodeType === Node.ELEMENT_NODE &&
+        blockTags.has((child as HTMLElement).tagName)
+    );
+
+  const limpiarNodo = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const texto = normalizarTextoInlinePegado(node.textContent || "");
+      if (!texto.trim()) return "";
+      return escaparHtml(texto);
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+    const el = node as HTMLElement;
+    const tag = el.tagName;
+
+    if (ignoredTags.has(tag)) return "";
+    if (tag === "BR") return "<br>";
+
+    const children = Array.from(el.childNodes).map(limpiarNodo).join("");
+
+    if (blockTags.has(tag)) {
+      if (tieneHijoBloque(el) && !/^H[1-6]$/.test(tag) && tag !== "LI") {
+        return children;
+      }
+
+      let content = aplicarFormatoInline(el, children);
+
+      if (tag === "LI" && content.trim()) {
+        content = `• ${content}`;
+      }
+
+      const align = (el.style.textAlign || el.getAttribute("align") || "")
+        .trim()
+        .toLowerCase();
+
+      const alignValido = ["left", "center", "right", "justify"].includes(align)
+        ? align
+        : "";
+
+      const style = alignValido ? ` style="text-align: ${alignValido}"` : "";
+
+      const contentSinBr = content.replace(/<br\s*\/?>/gi, "").trim();
+
+      return contentSinBr === ""
+        ? `<p${style}><br></p>`
+        : `<p${style}>${content}</p>`;
+    }
+
+    return aplicarFormatoInline(el, children);
+  };
+
+  let result = Array.from(doc.body.childNodes).map(limpiarNodo).join("");
+
+  if (!result.trim()) {
+    return convertirTextoPlanoAHtml(fallbackText);
+  }
+
+  if (!/<p[\s>]/i.test(result)) {
+    result = `<p>${result}</p>`;
+  }
+
+  return compactarEspaciadoHtmlPegado(result);
 };
 
 interface Props {
@@ -68,14 +331,12 @@ const CustomImage = ImageBase.extend({
       {
         ...HTMLAttributes,
         "data-align": align,
-        style: 
-        `
+        style: `
           max-height:220px;
           max-width:100%;
           height:auto;
           border-radius:10px;
           margin:${margin};
-          margin:8px auto;
           display:block;
         `,
       },
@@ -164,9 +425,9 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
     editorProps: {
       attributes: {
         class:
-          "min-h-[220px] outline-none max-w-none [&_a]:text-blue-600 [&_a]:underline [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_p]:my-2 break-words",
+          "min-h-[220px] outline-none max-w-none [&_a]:text-blue-600 [&_a]:underline [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_p]:my-2 [&_p]:min-h-[1.5em] break-words",
       },
-      handlePaste(view, event) {
+      handlePaste(_view, event) {
         const items = event.clipboardData?.items;
 
         if (items && onPasteImage) {
@@ -197,11 +458,27 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           }
         }
 
-        const text = event.clipboardData?.getData("text/plain");
-        if (!text) return false;
+        const text = event.clipboardData?.getData("text/plain") || "";
+        const html = event.clipboardData?.getData("text/html") || "";
+
+        if (!text && !html) return false;
 
         event.preventDefault();
-        view.dispatch(view.state.tr.insertText(text));
+
+        const htmlLimpio = html
+          ? sanitizarHtmlPegado(html, text)
+          : convertirTextoPlanoAHtml(text);
+
+        editor
+          ?.chain()
+          .focus()
+          .insertContent(htmlLimpio, {
+            parseOptions: {
+              preserveWhitespace: "full",
+            },
+          })
+          .run();
+
         return true;
       },
     },
@@ -220,20 +497,20 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
   useImperativeHandle(
     ref,
     () => ({
-    insertFormula(latex: string) {
-      if (!editor || !latex.trim()) return;
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: "inlineMath",
-          attrs: {
-            latex: latex.trim(),
-          },
-        })
-        .run();
-      setEditorVersion((n) => n + 1);
-    },
+      insertFormula(latex: string) {
+        if (!editor || !latex.trim()) return;
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "inlineMath",
+            attrs: {
+              latex: latex.trim(),
+            },
+          })
+          .run();
+        setEditorVersion((n) => n + 1);
+      },
       insertLink(text: string, url: string) {
         if (!editor || !url.trim()) return;
         const finalText = text.trim() || url.trim();
@@ -318,8 +595,8 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
   });
 
   const editorShell = (
-      <div
-        className={`rounded-xl border overflow-hidden ${
+    <div
+      className={`rounded-xl border overflow-hidden ${
         isExpanded
           ? "fixed z-[100] flex flex-col top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-[980px] h-[92dvh] shadow-2xl"
           : ""
@@ -470,6 +747,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           >
             ➕ Fórmula
           </button>
+
           <button
             type="button"
             onClick={onRequestImage}
@@ -477,6 +755,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           >
             ➕ Imagen
           </button>
+
           <button
             type="button"
             onClick={onRequestVideo}
@@ -484,6 +763,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           >
             ➕ Video
           </button>
+
           <button
             type="button"
             onClick={onRequestDocument}
@@ -491,6 +771,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           >
             ➕ Documento
           </button>
+
           <button
             type="button"
             onClick={onRequestLink}
@@ -543,44 +824,46 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         <EditorContent editor={editor} />
       </div>
 
-      {preview && renderPortal(
-        <div
-          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[130] p-3"
-          onClick={() => setPreview(null)}
-        >
+      {preview &&
+        renderPortal(
           <div
-            className="max-w-[90vw] max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[130] p-3"
+            onClick={() => setPreview(null)}
           >
-            {preview.type === "image" && (
-              <img
-                src={preview.src}
-                className="max-w-full max-h-[90vh] rounded-lg"
-              />
-            )}
+            <div
+              className="max-w-[90vw] max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {preview.type === "image" && (
+                <img
+                  src={preview.src}
+                  className="max-w-full max-h-[90vh] rounded-lg"
+                />
+              )}
 
-            {preview.type === "video" && (
-              <video
-                src={preview.src}
-                controls
-                autoPlay
-                className="max-w-full max-h-[90vh] rounded-lg"
-              />
-            )}
+              {preview.type === "video" && (
+                <video
+                  src={preview.src}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-[90vh] rounded-lg"
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 
   return (
     <>
-      {isExpanded && renderPortal(
-        <div
-          className="fixed inset-0 bg-black bg-opacity-60 z-[90]"
-          onClick={() => setIsExpanded(false)}
-        />
-      )}
+      {isExpanded &&
+        renderPortal(
+          <div
+            className="fixed inset-0 bg-black bg-opacity-60 z-[90]"
+            onClick={() => setIsExpanded(false)}
+          />
+        )}
 
       {isExpanded ? renderPortal(editorShell) : editorShell}
     </>
