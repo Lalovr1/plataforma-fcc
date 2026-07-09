@@ -97,6 +97,11 @@ export default function RegisterPage() {
   return (
     <>
       <style>{`
+        .register-page,
+        .register-page * {
+          box-sizing: border-box;
+        }
+
         .register-page {
           min-height: 100dvh;
           display: grid;
@@ -390,6 +395,205 @@ export default function RegisterPage() {
           .register-form {
             padding: 14px;
             border-radius: 22px;
+          }
+        }
+
+        @media (max-height: 760px) {
+          .register-page {
+            padding-top: 14px;
+            padding-bottom: 14px;
+          }
+
+          .register-card {
+            width: min(100%, 410px);
+            border-radius: 30px;
+            padding: 22px 18px;
+          }
+
+          .register-card::after {
+            inset: 11px;
+            border-radius: 23px;
+          }
+
+          .register-content {
+            gap: 13px;
+          }
+
+          .register-title-wrap {
+            gap: 5px;
+          }
+
+          .register-kicker {
+            font-size: 0.64rem;
+            letter-spacing: 0.19em;
+          }
+
+          .register-title {
+            font-size: clamp(1.75rem, 4.2vw, 2.25rem);
+          }
+
+          .register-form {
+            gap: 10px;
+            padding: 13px;
+            border-radius: 22px;
+          }
+
+          .register-input,
+          .register-select {
+            min-height: 42px;
+            border-radius: 14px;
+            padding: 0 12px;
+            font-size: 0.88rem;
+          }
+
+          .register-button {
+            min-height: 44px;
+            border-radius: 15px;
+            font-size: 0.94rem;
+          }
+
+          .register-message {
+            border-radius: 15px;
+            padding: 9px 11px;
+            font-size: 0.8rem;
+          }
+
+          .register-login {
+            font-size: 0.84rem;
+          }
+        }
+
+        @media (max-height: 660px) {
+          .register-page {
+            padding: 10px 12px;
+          }
+
+          .register-card {
+            width: min(100%, 390px);
+            border-radius: 26px;
+            padding: 16px 14px;
+          }
+
+          .register-card::after {
+            inset: 9px;
+            border-radius: 20px;
+          }
+
+          .register-content {
+            gap: 9px;
+          }
+
+          .register-title-wrap {
+            gap: 3px;
+          }
+
+          .register-kicker {
+            gap: 7px;
+            font-size: 0.56rem;
+            letter-spacing: 0.17em;
+          }
+
+          .register-kicker::before,
+          .register-kicker::after {
+            width: 20px;
+          }
+
+          .register-title {
+            font-size: clamp(1.45rem, 3.7vw, 1.85rem);
+          }
+
+          .register-form {
+            gap: 7px;
+            padding: 9px;
+            border-radius: 18px;
+          }
+
+          .register-input,
+          .register-select {
+            min-height: 36px;
+            border-radius: 12px;
+            padding: 0 10px;
+            font-size: 0.8rem;
+          }
+
+          .register-button {
+            min-height: 38px;
+            border-radius: 13px;
+            font-size: 0.86rem;
+          }
+
+          .register-message {
+            border-radius: 13px;
+            padding: 7px 9px;
+            font-size: 0.74rem;
+            line-height: 1.3;
+          }
+
+          .register-login {
+            font-size: 0.76rem;
+          }
+        }
+
+        @media (max-height: 560px) {
+          .register-page {
+            padding: 8px 10px;
+          }
+
+          .register-card {
+            width: min(100%, 370px);
+            border-radius: 22px;
+            padding: 12px;
+          }
+
+          .register-card::after {
+            inset: 7px;
+            border-radius: 17px;
+          }
+
+          .register-content {
+            gap: 7px;
+          }
+
+          .register-kicker {
+            font-size: 0.5rem;
+            letter-spacing: 0.15em;
+          }
+
+          .register-kicker::before,
+          .register-kicker::after {
+            width: 16px;
+          }
+
+          .register-title {
+            font-size: clamp(1.25rem, 3.3vw, 1.55rem);
+          }
+
+          .register-form {
+            gap: 6px;
+            padding: 7px;
+            border-radius: 16px;
+          }
+
+          .register-input,
+          .register-select {
+            min-height: 32px;
+            border-radius: 10px;
+            font-size: 0.74rem;
+          }
+
+          .register-button {
+            min-height: 34px;
+            border-radius: 11px;
+            font-size: 0.8rem;
+          }
+
+          .register-message {
+            padding: 6px 8px;
+            font-size: 0.68rem;
+          }
+
+          .register-login {
+            font-size: 0.7rem;
           }
         }
       `}</style>

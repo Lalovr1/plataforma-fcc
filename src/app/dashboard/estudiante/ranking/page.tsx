@@ -1333,14 +1333,36 @@ export default function EstudianteRanking() {
 
           .ranking-user-card,
           .ranking-row {
-            grid-template-columns: auto minmax(0, 1fr) auto;
             gap: 10px;
-            padding: 14px;
+            padding: 16px;
           }
 
           .ranking-user-card {
+            position: relative;
             grid-template-columns: 1fr;
             justify-items: center;
+            text-align: center;
+            padding-top: 18px;
+          }
+
+          .ranking-user-card .ranking-position-pill {
+            position: absolute;
+            left: 18px;
+            top: 18px;
+            z-index: 3;
+            min-width: 72px;
+            min-height: 58px;
+            border-radius: 18px;
+            font-size: clamp(1.6rem, 8vw, 2.1rem);
+          }
+
+          .ranking-user-card .ranking-avatar-stage {
+            justify-self: center;
+          }
+
+          .ranking-user-card .ranking-user-name,
+          .ranking-user-card .ranking-points {
+            justify-self: center;
             text-align: center;
           }
 
@@ -1348,14 +1370,50 @@ export default function EstudianteRanking() {
             justify-self: center;
           }
 
-          .ranking-position-pill {
-            min-width: 92px;
-            min-height: 70px;
+          .ranking-row {
+            grid-template-columns: 1fr;
+            justify-items: center;
+            text-align: center;
+            padding: 18px 16px 16px;
+            min-height: 196px;
+          }
+
+          .ranking-row .ranking-medal {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            z-index: 3;
+            transform: translateY(-50%);
+            min-width: 54px;
+            min-height: 50px;
+          }
+
+          .ranking-row .ranking-avatar-stage {
+            justify-self: center;
+          }
+
+          .ranking-row .ranking-name-block {
+            justify-items: center;
+            text-align: center;
+          }
+
+          .ranking-row .ranking-name {
+            text-align: center;
+          }
+
+          .ranking-row .ranking-social-badge {
+            position: absolute;
+            right: 18px;
+            top: 50%;
+            z-index: 3;
+            transform: translateY(-50%);
+            width: max-content;
           }
 
           .ranking-row .ranking-points {
-            grid-column: 1 / -1;
+            grid-column: auto;
             justify-self: center;
+            text-align: center;
           }
 
           .ranking-profile-header {
@@ -1418,7 +1476,7 @@ export default function EstudianteRanking() {
                 <h2 className="ranking-section-title">{tituloMiPosicion}</h2>
 
                 <div className="ranking-user-card">
-                  <span className="ranking-position-pill">#{miPosicionVista}</span>
+                  <span className="ranking-position-pill"># {miPosicionVista}</span>
 
                   <AvatarRanking
                     config={miUsuario.avatar_config}

@@ -385,6 +385,9 @@ export default function ModalEditorAvatar({
     );
   }
 
+  const mostrarPaletaColor =
+    currentTab === "gender" || (currentTab === "ropa" && rolUsuario !== "profesor");
+
   return createPortal(
     <div
       className="avatar-editor-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-4"
@@ -413,13 +416,13 @@ export default function ModalEditorAvatar({
           <h2 className="avatar-editor-title">Editor de Avatar</h2>
         </div>
 
-        <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-6">
+        <div className="avatar-editor-body flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-6">
           <div className="avatar-editor-preview-shell flex w-full flex-shrink-0 flex-col items-center lg:w-[420px]">
             <div className="avatar-editor-avatar-stage relative flex items-center justify-center">
               <span className="avatar-editor-avatar-orbit" />
 
-              <div className="avatar-editor-avatar-render relative z-[2] scale-[0.74] sm:scale-[0.86] lg:scale-100">
-                <RenderizadorAvatar config={config} size={380} />
+              <div className="avatar-editor-avatar-render relative z-[2]">
+                <RenderizadorAvatar config={config} size={300} />
               </div>
             </div>
 
@@ -464,10 +467,20 @@ export default function ModalEditorAvatar({
                   ))}
                 </div>
               )}
+
+              {!mostrarPaletaColor && (
+                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
+                  <span
+                    className="avatar-editor-color-dot avatar-editor-color-none is-selected"
+                    aria-label="Sin color configurable"
+                    title="Sin color configurable"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="avatar-editor-controls flex min-w-0 flex-1 flex-col overflow-hidden">
             <div className="avatar-editor-tabs mb-4 flex justify-start gap-2 overflow-x-auto pb-2 lg:justify-center">
               {TABS.map((tab) => {
                 const isActive = currentTab === tab.key;
@@ -487,8 +500,13 @@ export default function ModalEditorAvatar({
             </div>
 
             <div
-              className="avatar-editor-options-scroll h-[320px] overflow-y-auto pr-2 sm:h-[400px]"
-              style={{ overflowX: "hidden", overflowY: "auto" }}
+              className={`avatar-editor-options-scroll h-[320px] overflow-y-auto pr-2 sm:h-[400px] ${
+                currentTab === "gender" ? "is-gender-tab" : ""
+              }`}
+              style={{
+                overflowX: "hidden",
+                overflowY: currentTab === "gender" ? "hidden" : "auto",
+              }}
             >
               {(() => {
                 const currentTabData = TABS.find((t) => t.key === currentTab);
@@ -728,7 +746,7 @@ export default function ModalEditorAvatar({
                   <div
                     className={
                       currentTab === "gender"
-                        ? "flex h-full items-stretch justify-between gap-3"
+                        ? "avatar-editor-gender-grid flex h-full items-stretch justify-between gap-3"
                         : "grid grid-cols-3 gap-3 px-2 pb-2 pt-2"
                     }
                   >
@@ -759,7 +777,6 @@ export default function ModalEditorAvatar({
                                   height: "220px",
                                   flex: "1 1 48%",
                                   maxWidth: "48%",
-                                  margin: "1%",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -868,7 +885,7 @@ export default function ModalEditorAvatar({
         </div>
 
         {/* Pie del modal */}
-        <div className="mt-4 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-6 sm:flex-row sm:items-center sm:gap-4">
+        <div className="avatar-editor-footer mt-4 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-6 sm:flex-row sm:items-center sm:gap-4">
           {!forzado && (
             <button
               type="button"
@@ -932,6 +949,8 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-modal {
+          height: auto;
+          max-height: calc(100dvh - 2rem);
           color: var(--fcc-premium-text);
           background:
             radial-gradient(
@@ -1011,11 +1030,19 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-avatar-stage {
+          --avatar-editor-stage-size: clamp(300px, 30vw, 420px);
+          --avatar-editor-render-scale: 1.28;
+          --avatar-editor-avatar-circle-size: 82%;
+          --avatar-editor-avatar-ring-size: 70%;
+          --avatar-editor-avatar-orbit-size: 66%;
+
           position: relative;
-          width: min(100%, 420px);
-          height: 420px;
+          flex: 0 0 auto;
+          width: var(--avatar-editor-stage-size);
+          height: var(--avatar-editor-stage-size);
+          max-width: 100%;
           display: grid;
-          place-items: center;
+          place-items: end center;
           overflow: visible;
           isolation: isolate;
         }
@@ -1023,9 +1050,12 @@ export default function ModalEditorAvatar({
         .avatar-editor-avatar-stage::before {
           content: "";
           position: absolute;
-          width: 82%;
-          height: 82%;
+          left: 50%;
+          top: 50%;
+          width: var(--avatar-editor-avatar-circle-size);
+          aspect-ratio: 1 / 1;
           border-radius: 999px;
+          transform: translate(-50%, -50%);
           background:
             radial-gradient(circle, var(--fcc-user-avatar-core), transparent 62%),
             conic-gradient(
@@ -1046,9 +1076,12 @@ export default function ModalEditorAvatar({
         .avatar-editor-avatar-stage::after {
           content: "";
           position: absolute;
-          width: 70%;
-          height: 70%;
+          left: 50%;
+          top: 50%;
+          width: var(--avatar-editor-avatar-ring-size);
+          aspect-ratio: 1 / 1;
           border-radius: 999px;
+          transform: translate(-50%, -50%);
           border: 1px solid var(--fcc-user-avatar-border);
           box-shadow:
             0 0 0 14px var(--fcc-user-avatar-shadow-a),
@@ -1058,9 +1091,13 @@ export default function ModalEditorAvatar({
 
         .avatar-editor-avatar-orbit {
           position: absolute;
-          inset: 17%;
+          left: 50%;
+          top: 50%;
+          width: var(--avatar-editor-avatar-orbit-size);
+          aspect-ratio: 1 / 1;
           z-index: -1;
           border-radius: 999px;
+          transform: translate(-50%, -50%) rotate(-18deg);
           background:
             linear-gradient(
               90deg,
@@ -1074,14 +1111,23 @@ export default function ModalEditorAvatar({
               var(--fcc-user-orbit-b) 60% 64%,
               transparent 64% 100%
             );
-          transform: rotate(-18deg);
           opacity: 0.95;
         }
 
         .avatar-editor-avatar-render {
-          position: relative;
+          position: absolute !important;
+          left: 50%;
+          bottom: 0;
           z-index: 2;
-          transform-origin: center;
+          display: grid;
+          place-items: center;
+          transform: translateX(-50%) scale(var(--avatar-editor-render-scale)) !important;
+          transform-origin: center bottom;
+        }
+
+        .avatar-editor-avatar-render > * {
+          max-width: none !important;
+          max-height: none !important;
         }
 
         .avatar-editor-color-slot {
@@ -1118,6 +1164,32 @@ export default function ModalEditorAvatar({
           transform: scale(1.08);
           border: 4px solid var(--fcc-premium-accent);
           box-shadow: none;
+        }
+
+        .avatar-editor-color-none {
+          position: relative;
+          cursor: default;
+          pointer-events: none;
+          opacity: 0.72;
+          background:
+            linear-gradient(
+              135deg,
+              transparent calc(50% - 1px),
+              var(--fcc-premium-muted) calc(50% - 1px) calc(50% + 1px),
+              transparent calc(50% + 1px)
+            ),
+            color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, white);
+          border-style: solid;
+        }
+
+        .avatar-editor-color-none.is-selected {
+          opacity: 1;
+          border-style: solid;
+          border-color: var(--fcc-premium-accent);
+        }
+
+        .avatar-editor-color-none:hover {
+          transform: none;
         }
 
         .avatar-editor-tabs {
@@ -1197,11 +1269,11 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-option.is-selected {
-          transform: translateY(-1px) scale(1.018);
+          transform: translateY(-1px);
           border-width: 2px;
           border-color: var(--fcc-premium-accent);
           box-shadow:
-            0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent),
+            inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent),
             inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
         }
 
@@ -1229,11 +1301,28 @@ export default function ModalEditorAvatar({
           font-weight: 700;
         }
 
+        .avatar-editor-options-scroll.is-gender-tab {
+          overflow-y: hidden !important;
+          padding: 0.35rem;
+        }
+
+        .avatar-editor-gender-grid {
+          min-height: 100%;
+          height: 100%;
+          align-items: stretch;
+          overflow: visible;
+          padding: 0.25rem;
+          box-sizing: border-box;
+        }
+
         .avatar-editor-gender-option {
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
           text-align: center;
+          height: 100% !important;
+          min-height: 220px;
+          box-sizing: border-box;
         }
 
         .avatar-editor-gender-label {
@@ -1306,14 +1395,438 @@ export default function ModalEditorAvatar({
           animation: avatar-editor-fade-in 0.3s ease-out;
         }
 
-        @media (max-width: 640px) {
-          .avatar-editor-avatar-stage {
-            width: min(100%, 320px);
-            height: 340px;
+        @media (min-width: 641px) and (max-width: 1023px) {
+          .avatar-editor-modal {
+            height: calc(100dvh - 1.5rem) !important;
+            max-height: calc(100dvh - 1.5rem) !important;
+          }
+
+          .avatar-editor-body {
+            min-height: 0;
+            flex: 1 1 auto;
+            gap: 0.75rem !important;
+            overflow: hidden !important;
           }
 
           .avatar-editor-preview-shell {
+            flex: 0 0 auto;
             margin: 0 auto;
+            overflow: visible;
+          }
+
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(58vw, 260px);
+            --avatar-editor-render-scale: 0.82;
+          }
+
+          .avatar-editor-color-slot {
+            min-height: 44px;
+            margin-top: 0.15rem;
+          }
+
+          .avatar-editor-color-dot {
+            width: 2rem;
+            height: 2rem;
+          }
+
+          .avatar-editor-controls {
+            min-height: 0;
+            flex: 1 1 auto;
+            overflow: hidden !important;
+          }
+
+          .avatar-editor-tabs {
+            flex: 0 0 auto;
+            margin-bottom: 0.5rem !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .avatar-editor-options-scroll {
+            min-height: 0;
+            height: auto !important;
+            flex: 1 1 auto;
+            padding: 0.25rem 0.35rem 0.55rem;
+            overflow-y: auto !important;
+          }
+
+          .avatar-editor-options-scroll.is-gender-tab {
+            padding: 0.35rem;
+            overflow-y: hidden !important;
+          }
+
+          .avatar-editor-options-scroll > .flex {
+            padding: 0.25rem;
+          }
+
+          .avatar-editor-option.is-selected {
+            transform: none;
+            box-shadow:
+              inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 24%, transparent),
+              inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+          }
+
+          .avatar-editor-gender-option {
+            height: 100% !important;
+            min-height: 128px !important;
+          }
+
+          .avatar-editor-footer {
+            flex: 0 0 auto;
+            flex-direction: row !important;
+            align-items: stretch !important;
+            margin-top: 0.75rem !important;
+          }
+
+          .avatar-editor-footer .fcc-premium-button,
+          .avatar-editor-footer .avatar-editor-secondary-button {
+            min-height: 42px;
+            flex: 1 1 0;
+            white-space: nowrap;
+          }
+
+          .avatar-editor-footer .fcc-premium-button {
+            flex-grow: 1.18;
+          }
+        }
+
+        @media (min-width: 641px) and (max-width: 1023px) and (max-height: 780px) {
+          .avatar-editor-modal > .mb-3 {
+            margin-bottom: 0.35rem !important;
+          }
+
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(46vw, 220px);
+            --avatar-editor-render-scale: 0.7;
+          }
+
+          .avatar-editor-color-slot {
+            min-height: 36px;
+          }
+
+          .avatar-editor-color-dot {
+            width: 1.72rem;
+            height: 1.72rem;
+          }
+
+          .avatar-editor-tab {
+            min-height: 30px;
+            font-size: 0.68rem;
+          }
+
+          .avatar-editor-gender-option {
+            height: 100% !important;
+            min-height: 96px !important;
+          }
+
+          .avatar-editor-footer {
+            margin-top: 0.5rem !important;
+          }
+
+          .avatar-editor-footer .fcc-premium-button,
+          .avatar-editor-footer .avatar-editor-secondary-button {
+            min-height: 38px;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .avatar-editor-overlay {
+            align-items: center;
+            padding: 0.5rem;
+          }
+
+          .avatar-editor-modal {
+            width: calc(100vw - 1rem) !important;
+            height: calc(100dvh - 1rem) !important;
+            max-height: calc(100dvh - 1rem) !important;
+            border-radius: 24px;
+            padding: 0.75rem !important;
+            overflow: hidden;
+          }
+
+          .avatar-editor-close {
+            right: 0.75rem;
+            top: 0.75rem;
+            height: 2.5rem;
+            width: 2.5rem;
+          }
+
+          .avatar-editor-modal > .mb-3 {
+            margin-bottom: 0.35rem !important;
+            padding-left: 3rem !important;
+            padding-right: 3rem !important;
+          }
+
+          .avatar-editor-eyebrow {
+            margin-bottom: 0.08rem;
+            font-size: 0.64rem;
+            letter-spacing: 0.18em;
+          }
+
+          .avatar-editor-title {
+            font-size: clamp(1.18rem, 5.7vw, 1.42rem);
+          }
+
+          .avatar-editor-body {
+            min-height: 0;
+            flex: 1 1 auto;
+            gap: 0.45rem !important;
+            overflow: hidden !important;
+          }
+
+          .avatar-editor-preview-shell {
+            flex: 0 0 auto;
+            margin: 0 auto;
+            overflow: visible;
+          }
+
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(72vw, 222px);
+            --avatar-editor-render-scale: 0.72;
+          }
+
+          .avatar-editor-color-slot {
+            flex: 0 0 auto;
+            min-height: 38px;
+            margin-top: 0.1rem;
+          }
+
+          .avatar-editor-color-row {
+            gap: 0.62rem !important;
+          }
+
+          .avatar-editor-color-dot {
+            width: 1.85rem;
+            height: 1.85rem;
+            flex: 0 0 auto;
+          }
+
+          .avatar-editor-color-dot.is-selected {
+            border-width: 3px;
+          }
+
+          .avatar-editor-controls {
+            min-height: 0;
+            flex: 1 1 auto;
+            overflow: hidden !important;
+          }
+
+          .avatar-editor-tabs {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            margin-bottom: 0.35rem !important;
+            padding-bottom: 0.35rem;
+            gap: 0.42rem !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .avatar-editor-tab {
+            min-height: 30px;
+            flex: 0 0 auto;
+            padding: 0 0.68rem;
+            font-size: 0.68rem;
+          }
+
+          .avatar-editor-options-scroll {
+            min-height: 0;
+            height: auto !important;
+            flex: 1 1 auto;
+            padding: 0.25rem 0.3rem 0.55rem;
+            overflow-y: auto !important;
+          }
+
+          .avatar-editor-options-scroll.is-gender-tab {
+            padding: 0.35rem;
+            overflow-y: hidden !important;
+          }
+
+          .avatar-editor-options-scroll .grid {
+            gap: 0.55rem !important;
+          }
+
+          .avatar-editor-options-scroll > .flex {
+            min-height: 0 !important;
+            height: auto !important;
+            align-items: stretch !important;
+            gap: 0.55rem !important;
+            padding: 0.25rem;
+          }
+
+          .avatar-editor-options-scroll > .avatar-editor-gender-grid {
+            min-height: 100% !important;
+            height: 100% !important;
+          }
+
+          .avatar-editor-section-title {
+            margin-bottom: 0.5rem !important;
+            font-size: 0.78rem;
+          }
+
+          .avatar-editor-option {
+            border-radius: 16px;
+          }
+
+          .avatar-editor-option-inner {
+            border-radius: 14px;
+          }
+
+          .avatar-editor-option.is-selected {
+            transform: none;
+            box-shadow:
+              inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 24%, transparent),
+              inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+          }
+
+          .avatar-editor-gender-option {
+            height: 100% !important;
+            min-height: 120px !important;
+            flex: 1 1 calc(50% - 0.3rem) !important;
+            max-width: none !important;
+            margin: 0 !important;
+          }
+
+          .avatar-editor-gender-label {
+            font-size: 0.9rem;
+          }
+
+          .avatar-editor-footer {
+            flex: 0 0 auto;
+            flex-direction: row !important;
+            align-items: stretch !important;
+            margin-top: 0.55rem !important;
+            gap: 0.55rem !important;
+          }
+
+          .avatar-editor-footer .fcc-premium-button,
+          .avatar-editor-footer .avatar-editor-secondary-button {
+            min-height: 40px;
+            flex: 1 1 0;
+            border-radius: 14px;
+            padding: 0.45rem 0.6rem !important;
+            font-size: clamp(0.76rem, 3.4vw, 0.9rem);
+            white-space: nowrap;
+          }
+
+          .avatar-editor-footer .fcc-premium-button {
+            flex-grow: 1.18;
+          }
+        }
+
+        @media (max-width: 640px) and (max-height: 760px) {
+          .avatar-editor-modal {
+            padding: 0.62rem !important;
+          }
+
+          .avatar-editor-modal > .mb-3 {
+            margin-bottom: 0.2rem !important;
+          }
+
+          .avatar-editor-eyebrow {
+            font-size: 0.58rem;
+          }
+
+          .avatar-editor-title {
+            font-size: clamp(1.06rem, 5.2vw, 1.24rem);
+          }
+
+          .avatar-editor-body {
+            gap: 0.34rem !important;
+          }
+
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(58vw, 190px);
+            --avatar-editor-render-scale: 0.63;
+          }
+
+          .avatar-editor-color-slot {
+            min-height: 32px;
+          }
+
+          .avatar-editor-color-row {
+            gap: 0.5rem !important;
+          }
+
+          .avatar-editor-color-dot {
+            width: 1.55rem;
+            height: 1.55rem;
+          }
+
+          .avatar-editor-tab {
+            min-height: 28px;
+            padding: 0 0.62rem;
+            font-size: 0.64rem;
+          }
+
+          .avatar-editor-gender-option {
+            height: 100% !important;
+            min-height: 96px !important;
+          }
+
+          .avatar-editor-footer {
+            margin-top: 0.42rem !important;
+            gap: 0.45rem !important;
+          }
+
+          .avatar-editor-footer .fcc-premium-button,
+          .avatar-editor-footer .avatar-editor-secondary-button {
+            min-height: 36px;
+            border-radius: 12px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(70vw, 188px);
+            --avatar-editor-render-scale: 0.62;
+          }
+
+          .avatar-editor-tab {
+            padding: 0 0.58rem;
+          }
+        }
+
+        @media (max-width: 640px) and (max-height: 640px) {
+          .avatar-editor-close {
+            height: 2.25rem;
+            width: 2.25rem;
+          }
+
+          .avatar-editor-modal > .mb-3 {
+            padding-left: 2.7rem !important;
+            padding-right: 2.7rem !important;
+          }
+
+          .avatar-editor-eyebrow {
+            display: none;
+          }
+
+          .avatar-editor-avatar-stage {
+            --avatar-editor-stage-size: min(46vw, 160px);
+            --avatar-editor-render-scale: 0.53;
+          }
+
+          .avatar-editor-color-slot {
+            min-height: 28px;
+          }
+
+          .avatar-editor-color-dot {
+            width: 1.38rem;
+            height: 1.38rem;
+          }
+
+          .avatar-editor-gender-option {
+            height: 100% !important;
+            min-height: 76px !important;
+          }
+
+          .avatar-editor-footer .fcc-premium-button,
+          .avatar-editor-footer .avatar-editor-secondary-button {
+            min-height: 34px;
+            font-size: 0.72rem;
           }
         }
       `}</style>

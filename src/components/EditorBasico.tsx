@@ -621,6 +621,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       }
 
       .editor-basico {
+        position: relative;
         overflow: hidden;
         border-radius: 18px;
         color: var(--editor-text);
@@ -649,7 +650,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       .editor-basico-toolbar {
         display: grid;
         gap: 8px;
-        padding: 10px;
+        padding: 10px 58px 10px 10px;
         background: color-mix(in srgb, var(--editor-surface-strong) 70%, transparent);
         border-bottom: 1px solid var(--editor-border);
       }
@@ -741,7 +742,14 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       }
 
       .editor-basico-tool-button.expand {
-        margin-left: auto;
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        z-index: 6;
+        width: 36px;
+        min-width: 36px;
+        padding: 0;
+        margin-left: 0;
         background: color-mix(in srgb, var(--editor-surface) 86%, transparent);
         border-color: var(--editor-border);
       }
@@ -754,6 +762,28 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
       .theme-oscuro .editor-basico-tool-button.expand:hover {
         color: #050505;
+      }
+
+      .editor-basico.expanded .editor-basico-tool-button.expand {
+        right: 16px;
+        top: 16px;
+        width: 42px;
+        height: 42px;
+        min-width: 42px;
+        min-height: 42px;
+        border-radius: 999px;
+        color: var(--color-danger, #ef4444);
+        background: color-mix(in srgb, var(--editor-surface-strong) 94%, transparent);
+        border-color: color-mix(in srgb, var(--color-danger, #ef4444) 34%, var(--editor-border));
+        box-shadow:
+          0 14px 30px rgba(15, 23, 42, 0.16),
+          0 0 0 4px color-mix(in srgb, var(--color-danger, #ef4444) 7%, transparent);
+      }
+
+      .editor-basico.expanded .editor-basico-tool-button.expand:hover {
+        color: #ffffff;
+        background: var(--color-danger, #ef4444);
+        border-color: color-mix(in srgb, var(--color-danger, #ef4444) 70%, white);
       }
 
       .editor-basico-tool-button.formula-panel {
@@ -883,7 +913,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
       @media (max-width: 640px) {
         .editor-basico-toolbar {
-          padding: 8px;
+          padding: 8px 54px 8px 8px;
         }
 
         .editor-basico-tool-button {
@@ -893,7 +923,18 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         }
 
         .editor-basico-tool-button.expand {
+          right: 8px;
+          top: 8px;
           margin-left: 0;
+        }
+
+        .editor-basico.expanded .editor-basico-tool-button.expand {
+          right: 12px;
+          top: 12px;
+          width: 42px;
+          height: 42px;
+          min-width: 42px;
+          min-height: 42px;
         }
 
         .editor-basico-body {
@@ -1007,6 +1048,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
             }}
             className="editor-basico-tool-button expand"
             title={isExpanded ? "Cerrar editor expandido" : "Expandir editor"}
+            aria-label={isExpanded ? "Cerrar editor expandido" : "Expandir editor"}
           >
             {isExpanded ? (
               <X size={17} strokeWidth={2.7} />

@@ -398,6 +398,218 @@ export default function ResetPasswordPage() {
             border-radius: 22px;
           }
         }
+
+        @media (max-height: 760px) {
+          .reset-page {
+            padding-top: 18px;
+            padding-bottom: 18px;
+          }
+
+          .reset-card {
+            width: min(100%, 410px);
+            border-radius: 30px;
+            padding: 24px 22px;
+          }
+
+          .reset-card::after {
+            inset: 11px;
+            border-radius: 23px;
+          }
+
+          .reset-content {
+            gap: 15px;
+          }
+
+          .reset-title-wrap {
+            gap: 6px;
+          }
+
+          .reset-title {
+            font-size: clamp(1.65rem, 5vh, 2.2rem);
+          }
+
+          .reset-description {
+            font-size: 0.86rem;
+            line-height: 1.35;
+          }
+
+          .reset-form {
+            gap: 11px;
+            padding: 14px;
+            border-radius: 22px;
+          }
+
+          .reset-input {
+            min-height: 44px;
+            border-radius: 14px;
+            font-size: 0.9rem;
+          }
+
+          .reset-button,
+          .reset-login-button {
+            min-height: 46px;
+            border-radius: 15px;
+            font-size: 0.94rem;
+          }
+
+          .reset-message {
+            padding: 10px 12px;
+            font-size: 0.82rem;
+            line-height: 1.32;
+          }
+        }
+
+        @media (max-height: 640px) {
+          .reset-page {
+            padding: 12px;
+          }
+
+          .reset-card {
+            width: min(100%, 390px);
+            border-radius: 26px;
+            padding: 18px 16px;
+          }
+
+          .reset-card::after {
+            inset: 9px;
+            border-radius: 20px;
+          }
+
+          .reset-content {
+            gap: 11px;
+          }
+
+          .reset-title-wrap {
+            gap: 4px;
+          }
+
+          .reset-kicker {
+            gap: 8px;
+            font-size: 0.64rem;
+            letter-spacing: 0.19em;
+          }
+
+          .reset-kicker::before,
+          .reset-kicker::after {
+            width: 22px;
+          }
+
+          .reset-title {
+            font-size: clamp(1.4rem, 5.8vh, 1.85rem);
+            line-height: 1;
+          }
+
+          .reset-description {
+            font-size: 0.78rem;
+            line-height: 1.28;
+          }
+
+          .reset-form {
+            gap: 8px;
+            padding: 10px;
+            border-radius: 18px;
+          }
+
+          .reset-input {
+            min-height: 38px;
+            border-radius: 13px;
+            padding: 0 12px;
+            font-size: 0.84rem;
+          }
+
+          .reset-button,
+          .reset-login-button {
+            min-height: 40px;
+            border-radius: 13px;
+            font-size: 0.86rem;
+          }
+
+          .reset-message {
+            border-radius: 14px;
+            padding: 8px 10px;
+            font-size: 0.76rem;
+            line-height: 1.24;
+          }
+
+          .reset-link-text {
+            font-size: 0.78rem;
+          }
+        }
+
+        @media (max-height: 520px) {
+          .reset-page {
+            padding: 8px;
+          }
+
+          .reset-page::after {
+            width: 460px;
+            height: 460px;
+          }
+
+          .reset-card {
+            width: min(100%, 360px);
+            border-radius: 22px;
+            padding: 14px 12px;
+          }
+
+          .reset-card::after {
+            inset: 7px;
+            border-radius: 17px;
+          }
+
+          .reset-content {
+            gap: 8px;
+          }
+
+          .reset-kicker {
+            font-size: 0.58rem;
+            letter-spacing: 0.17em;
+          }
+
+          .reset-kicker::before,
+          .reset-kicker::after {
+            width: 18px;
+          }
+
+          .reset-title {
+            font-size: clamp(1.18rem, 6vh, 1.5rem);
+            letter-spacing: -0.05em;
+          }
+
+          .reset-description {
+            font-size: 0.72rem;
+            line-height: 1.18;
+          }
+
+          .reset-form {
+            gap: 7px;
+            padding: 8px;
+            border-radius: 16px;
+          }
+
+          .reset-input {
+            min-height: 34px;
+            border-radius: 11px;
+            font-size: 0.78rem;
+          }
+
+          .reset-button,
+          .reset-login-button {
+            min-height: 36px;
+            border-radius: 11px;
+            font-size: 0.8rem;
+          }
+
+          .reset-message {
+            padding: 7px 9px;
+            font-size: 0.7rem;
+            line-height: 1.18;
+          }
+
+          .reset-link-text {
+            font-size: 0.72rem;
+          }
+        }
       `}</style>
 
       <main className="reset-page">

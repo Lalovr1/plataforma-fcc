@@ -425,7 +425,8 @@ export default function RankingCursoPage() {
         }
 
         .ranking-curso-header-content {
-          padding-top: 46px;
+          padding-top: 0;
+          gap: 7px;
         }
 
         .ranking-curso-back {

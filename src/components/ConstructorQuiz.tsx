@@ -1036,6 +1036,34 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         min-width: 0;
       }
 
+      .constructor-quiz-question-editor,
+      .constructor-quiz-answer-editor {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .constructor-quiz-question-editor {
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--quiz-accent) 4%, transparent);
+      }
+
+      .constructor-quiz-answer-editor {
+        border-radius: 16px;
+        background: color-mix(in srgb, #10b981 3%, transparent);
+      }
+
+      .constructor-quiz-question-editor :is(textarea, input, [contenteditable="true"], .ProseMirror) {
+        font-size: 1.02rem;
+        font-weight: 900;
+        line-height: 1.32;
+      }
+
+      .constructor-quiz-answer-editor :is(textarea, input, [contenteditable="true"], .ProseMirror) {
+        font-size: 0.92rem;
+        font-weight: 760;
+        line-height: 1.36;
+      }
+
       .constructor-quiz-answers {
         display: grid;
         gap: 10px;
@@ -1044,10 +1072,17 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
 
       .constructor-quiz-answer {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
         align-items: start;
         min-width: 0;
+      }
+
+      .constructor-quiz-answer-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
       }
 
       .constructor-quiz-inline-actions,
@@ -1337,12 +1372,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         overflow: hidden;
         border-radius: 28px;
         color: var(--quiz-text, var(--fcc-premium-text));
-        background:
-          linear-gradient(
-            135deg,
-            color-mix(in srgb, var(--quiz-surface, var(--fcc-premium-surface)) 98%, transparent),
-            color-mix(in srgb, var(--quiz-surface-soft, var(--fcc-premium-surface-soft)) 98%, transparent)
-          );
+        background: var(--quiz-surface, var(--fcc-premium-surface));
         border: 1px solid color-mix(in srgb, var(--quiz-accent, var(--fcc-premium-accent)) 16%, var(--quiz-border, var(--fcc-premium-border)));
         box-shadow: var(--quiz-shadow, var(--fcc-premium-shadow));
       }
@@ -1398,6 +1428,35 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         transform: translateY(-1px);
         color: var(--color-danger);
         border-color: color-mix(in srgb, var(--color-danger) 34%, var(--quiz-border));
+      }
+
+      .constructor-quiz-edit-modal .constructor-quiz-modal-close {
+        display: none;
+      }
+
+      .constructor-quiz-edit-modal {
+        isolation: isolate;
+      }
+
+      .constructor-quiz-edit-modal .constructor-quiz-modal-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding-bottom: 18px;
+      }
+
+      .constructor-quiz-edit-actions {
+        position: relative;
+        z-index: 20;
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 14px 26px 22px;
+        gap: 10px;
+        background: var(--quiz-surface);
+        border-top: 1px solid color-mix(in srgb, var(--quiz-accent) 12%, var(--quiz-border));
+        box-shadow:
+          0 -14px 34px rgba(15, 23, 42, 0.1),
+          inset 0 1px 0 color-mix(in srgb, var(--quiz-surface-strong) 80%, transparent);
       }
 
       .constructor-quiz-modal-actions {
@@ -1481,6 +1540,15 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
           padding: 16px;
         }
 
+        .constructor-quiz-edit-modal .constructor-quiz-modal-scroll {
+          padding-bottom: 14px;
+        }
+
+        .constructor-quiz-edit-actions {
+          padding: 12px 16px 16px;
+          background: var(--quiz-surface);
+        }
+
         .constructor-quiz-main-layout {
           grid-template-columns: 1fr;
         }
@@ -1499,6 +1567,12 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         .constructor-quiz-unit-button,
         .constructor-quiz-block-button {
           grid-template-columns: 1fr;
+          min-width: 0;
+        }
+
+        .constructor-quiz-question-main,
+        .constructor-quiz-answer {
+          justify-items: center;
         }
 
         .constructor-quiz-inline-actions,
@@ -1511,7 +1585,60 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         }
 
         .constructor-quiz-icon-button {
+          width: 42px;
+          height: 42px;
+        }
+
+        .constructor-quiz-question-main > .constructor-quiz-icon-button {
+          justify-self: center;
+        }
+
+        .constructor-quiz-answer-actions {
           width: 100%;
+          justify-content: center;
+        }
+
+        .constructor-quiz-unit-body {
+          min-width: 0;
+          padding: 10px;
+        }
+
+        .constructor-quiz-block-body {
+          min-width: 0;
+          margin-left: 0;
+          padding: 8px 0 2px 8px;
+        }
+
+        .constructor-quiz-block-button,
+        .constructor-quiz-saved-row {
+          min-width: 0;
+        }
+
+        .constructor-quiz-unit-title,
+        .constructor-quiz-block-title,
+        .constructor-quiz-saved-title {
+          white-space: normal;
+          overflow-wrap: anywhere;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+
+        .constructor-quiz-saved-row {
+          justify-items: center;
+          text-align: center;
+        }
+
+        .constructor-quiz-saved-row .constructor-quiz-icon-button {
+          justify-self: center;
+        }
+
+        .constructor-quiz-edit-actions {
+          margin: 0;
+          padding: 12px 16px calc(18px + env(safe-area-inset-bottom));
+          gap: 10px;
+          background: var(--quiz-surface);
+          border-top: 1px solid color-mix(in srgb, var(--quiz-accent) 12%, var(--quiz-border));
         }
       }
     `}</style>
@@ -1605,19 +1732,21 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 <span className="constructor-quiz-number">{idx + 1}</span>
 
                 <div className="constructor-quiz-question-main">
-                  <EditorQuizCampo
-                    value={p.enunciado}
-                    onChange={(value) => updatePregunta(p.id, value)}
-                    placeholder="Nueva pregunta"
-                    onUploadImage={async (file) => {
-                      const { url, originalName } = await uploadQuizImage(file);
+                  <div className="constructor-quiz-question-editor">
+                    <EditorQuizCampo
+                      value={p.enunciado}
+                      onChange={(value) => updatePregunta(p.id, value)}
+                      placeholder="Nueva pregunta"
+                      onUploadImage={async (file) => {
+                        const { url, originalName } = await uploadQuizImage(file);
 
-                      return {
-                        url,
-                        name: originalName,
-                      };
-                    }}
-                  />
+                        return {
+                          url,
+                          name: originalName,
+                        };
+                      }}
+                    />
+                  </div>
 
                   <button
                     type="button"
@@ -1632,42 +1761,46 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                 <div className="constructor-quiz-answers">
                   {p.respuestas.map((r) => (
                     <div key={r.id} className="constructor-quiz-answer">
-                      <EditorQuizCampo
-                        value={r.texto}
-                        onChange={(value) =>
-                          updateRespuesta(p.id, r.id, { texto: value })
-                        }
-                        placeholder="Opción de respuesta"
-                        compact
-                        onUploadImage={async (file) => {
-                          const { url, originalName } = await uploadQuizImage(file);
+                      <div className="constructor-quiz-answer-editor">
+                        <EditorQuizCampo
+                          value={r.texto}
+                          onChange={(value) =>
+                            updateRespuesta(p.id, r.id, { texto: value })
+                          }
+                          placeholder="Opción de respuesta"
+                          compact
+                          onUploadImage={async (file) => {
+                            const { url, originalName } = await uploadQuizImage(file);
 
-                          return {
-                            url,
-                            name: originalName,
-                          };
-                        }}
-                      />
+                            return {
+                              url,
+                              name: originalName,
+                            };
+                          }}
+                        />
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => markCorrecta(p.id, r.id)}
-                        className={`constructor-quiz-icon-button ${
-                          r.es_correcta ? "correct" : ""
-                        }`}
-                        aria-label="Marcar como correcta"
-                      >
-                        <Check size={18} strokeWidth={2.7} />
-                      </button>
+                      <div className="constructor-quiz-answer-actions">
+                        <button
+                          type="button"
+                          onClick={() => markCorrecta(p.id, r.id)}
+                          className={`constructor-quiz-icon-button ${
+                            r.es_correcta ? "correct" : ""
+                          }`}
+                          aria-label="Marcar como correcta"
+                        >
+                          <Check size={18} strokeWidth={2.7} />
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => deleteRespuesta(p.id, r.id)}
-                        className="constructor-quiz-icon-button danger"
-                        aria-label="Eliminar respuesta"
-                      >
-                        <Trash2 size={17} strokeWidth={2.5} />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteRespuesta(p.id, r.id)}
+                          className="constructor-quiz-icon-button danger"
+                          aria-label="Eliminar respuesta"
+                        >
+                          <Trash2 size={17} strokeWidth={2.5} />
+                        </button>
+                      </div>
                     </div>
                   ))}
 
@@ -1904,7 +2037,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       {editQuiz &&
         renderPortal(
           <div className="constructor-quiz-overlay">
-            <div className="constructor-quiz-modal">
+            <div className="constructor-quiz-modal constructor-quiz-edit-modal">
               <button
                 type="button"
                 onClick={() => {
@@ -1991,29 +2124,31 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                         <span className="constructor-quiz-number">{idx + 1}</span>
 
                         <div className="constructor-quiz-question-main">
-                          <EditorQuizCampo
-                            value={p.enunciado}
-                            onChange={(value) =>
-                              setEditQuiz((prev: any) => ({
-                                ...prev,
-                                preguntas: prev.preguntas.map((q: any) =>
-                                  q.id === p.id
-                                    ? { ...q, enunciado: value }
-                                    : q
-                                ),
-                              }))
-                            }
-                            placeholder="Nueva pregunta"
-                            onUploadImage={async (file) => {
-                              const { url, originalName } =
-                                await uploadQuizImage(file);
+                          <div className="constructor-quiz-question-editor">
+                            <EditorQuizCampo
+                              value={p.enunciado}
+                              onChange={(value) =>
+                                setEditQuiz((prev: any) => ({
+                                  ...prev,
+                                  preguntas: prev.preguntas.map((q: any) =>
+                                    q.id === p.id
+                                      ? { ...q, enunciado: value }
+                                      : q
+                                  ),
+                                }))
+                              }
+                              placeholder="Nueva pregunta"
+                              onUploadImage={async (file) => {
+                                const { url, originalName } =
+                                  await uploadQuizImage(file);
 
-                              return {
-                                url,
-                                name: originalName,
-                              };
-                            }}
-                          />
+                                return {
+                                  url,
+                                  name: originalName,
+                                };
+                              }}
+                            />
+                          </div>
 
                           <button
                             type="button"
@@ -2053,95 +2188,99 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                         <div className="constructor-quiz-answers">
                           {p.respuestas.map((r: any) => (
                             <div key={r.id} className="constructor-quiz-answer">
-                              <EditorQuizCampo
-                                value={r.texto}
-                                onChange={(value) =>
-                                  setEditQuiz((prev: any) => ({
-                                    ...prev,
-                                    preguntas: prev.preguntas.map((q: any) =>
-                                      q.id === p.id
-                                        ? {
-                                            ...q,
-                                            respuestas: q.respuestas.map(
-                                              (x: any) =>
-                                                x.id === r.id
-                                                  ? { ...x, texto: value }
-                                                  : x
-                                            ),
-                                          }
-                                        : q
-                                    ),
-                                  }))
-                                }
-                                placeholder="Opción de respuesta"
-                                compact
-                                onUploadImage={async (file) => {
-                                  const { url, originalName } =
-                                    await uploadQuizImage(file);
-
-                                  return {
-                                    url,
-                                    name: originalName,
-                                  };
-                                }}
-                              />
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditQuiz((prev: any) => ({
-                                    ...prev,
-                                    preguntas: prev.preguntas.map((q: any) =>
-                                      q.id === p.id
-                                        ? {
-                                            ...q,
-                                            respuestas: q.respuestas.map(
-                                              (x: any) => ({
-                                                ...x,
-                                                es_correcta: x.id === r.id,
-                                              })
-                                            ),
-                                          }
-                                        : q
-                                    ),
-                                  }))
-                                }
-                                className={`constructor-quiz-icon-button ${
-                                  r.es_correcta ? "correct" : ""
-                                }`}
-                                aria-label="Marcar como correcta"
-                              >
-                                <Check size={18} strokeWidth={2.7} />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!String(r.id).startsWith("_new_")) {
-                                    setDeletedRespuestas((prev) =>
-                                      prev.includes(r.id) ? prev : [...prev, r.id]
-                                    );
+                              <div className="constructor-quiz-answer-editor">
+                                <EditorQuizCampo
+                                  value={r.texto}
+                                  onChange={(value) =>
+                                    setEditQuiz((prev: any) => ({
+                                      ...prev,
+                                      preguntas: prev.preguntas.map((q: any) =>
+                                        q.id === p.id
+                                          ? {
+                                              ...q,
+                                              respuestas: q.respuestas.map(
+                                                (x: any) =>
+                                                  x.id === r.id
+                                                    ? { ...x, texto: value }
+                                                    : x
+                                              ),
+                                            }
+                                          : q
+                                      ),
+                                    }))
                                   }
+                                  placeholder="Opción de respuesta"
+                                  compact
+                                  onUploadImage={async (file) => {
+                                    const { url, originalName } =
+                                      await uploadQuizImage(file);
 
-                                  setEditQuiz((prev: any) => ({
-                                    ...prev,
-                                    preguntas: prev.preguntas.map((q: any) =>
-                                      q.id === p.id
-                                        ? {
-                                            ...q,
-                                            respuestas: q.respuestas.filter(
-                                              (x: any) => x.id !== r.id
-                                            ),
-                                          }
-                                        : q
-                                    ),
-                                  }));
-                                }}
-                                className="constructor-quiz-icon-button danger"
-                                aria-label="Eliminar respuesta"
-                              >
-                                <Trash2 size={17} strokeWidth={2.5} />
-                              </button>
+                                    return {
+                                      url,
+                                      name: originalName,
+                                    };
+                                  }}
+                                />
+                              </div>
+
+                              <div className="constructor-quiz-answer-actions">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditQuiz((prev: any) => ({
+                                      ...prev,
+                                      preguntas: prev.preguntas.map((q: any) =>
+                                        q.id === p.id
+                                          ? {
+                                              ...q,
+                                              respuestas: q.respuestas.map(
+                                                (x: any) => ({
+                                                  ...x,
+                                                  es_correcta: x.id === r.id,
+                                                })
+                                              ),
+                                            }
+                                          : q
+                                      ),
+                                    }))
+                                  }
+                                  className={`constructor-quiz-icon-button ${
+                                    r.es_correcta ? "correct" : ""
+                                  }`}
+                                  aria-label="Marcar como correcta"
+                                >
+                                  <Check size={18} strokeWidth={2.7} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!String(r.id).startsWith("_new_")) {
+                                      setDeletedRespuestas((prev) =>
+                                        prev.includes(r.id) ? prev : [...prev, r.id]
+                                      );
+                                    }
+
+                                    setEditQuiz((prev: any) => ({
+                                      ...prev,
+                                      preguntas: prev.preguntas.map((q: any) =>
+                                        q.id === p.id
+                                          ? {
+                                              ...q,
+                                              respuestas: q.respuestas.filter(
+                                                (x: any) => x.id !== r.id
+                                              ),
+                                            }
+                                          : q
+                                      ),
+                                    }));
+                                  }}
+                                  className="constructor-quiz-icon-button danger"
+                                  aria-label="Eliminar respuesta"
+                                >
+                                  <Trash2 size={17} strokeWidth={2.5} />
+                                </button>
+                              </div>
                             </div>
                           ))}
 
@@ -2207,28 +2346,29 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                   </div>
                 </div>
 
-                <div className="constructor-quiz-modal-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditQuiz(null);
-                      setDeletedPreguntas([]);
-                      setDeletedRespuestas([]);
-                    }}
-                    className="constructor-quiz-button secondary"
-                  >
-                    Cancelar
-                  </button>
+              </div>
 
-                  <button
-                    type="button"
-                    onClick={handleSaveEditQuiz}
-                    className="constructor-quiz-button success"
-                  >
-                    <Save size={17} strokeWidth={2.6} />
-                    Guardar cambios
-                  </button>
-                </div>
+              <div className="constructor-quiz-modal-actions constructor-quiz-edit-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditQuiz(null);
+                    setDeletedPreguntas([]);
+                    setDeletedRespuestas([]);
+                  }}
+                  className="constructor-quiz-button secondary"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveEditQuiz}
+                  className="constructor-quiz-button success"
+                >
+                  <Save size={17} strokeWidth={2.6} />
+                  Guardar cambios
+                </button>
               </div>
             </div>
           </div>,

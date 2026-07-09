@@ -1292,11 +1292,14 @@ export default function ResolverQuizPage() {
         }
 
         .quiz-answer-row {
-          grid-template-columns: 1fr;
+          grid-template-columns: auto minmax(0, 1fr);
+          align-items: center;
+          gap: 10px;
         }
 
         .quiz-radio {
-          margin: 0 auto;
+          margin: 0;
+          flex: 0 0 auto;
         }
 
         .quiz-primary-button,

@@ -878,14 +878,38 @@ export default function ProfesorRanking() {
           }
 
           .ranking-row {
-            grid-template-columns: auto minmax(0, 1fr) auto;
-            gap: 10px;
-            padding: 14px;
+            grid-template-columns: 1fr;
+            justify-items: center;
+            gap: 8px;
+            min-height: 176px;
+            padding: 18px 16px 16px;
+            text-align: center;
+          }
+
+          .ranking-row .ranking-medal {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            z-index: 3;
+            transform: translateY(-50%);
+            min-width: 54px;
+            min-height: 50px;
+          }
+
+          .ranking-row .ranking-avatar-stage {
+            justify-self: center;
+          }
+
+          .ranking-row .ranking-name {
+            max-width: min(100%, 320px);
+            justify-self: center;
+            text-align: center;
           }
 
           .ranking-row .ranking-points {
-            grid-column: 1 / -1;
+            grid-column: auto;
             justify-self: center;
+            text-align: center;
           }
 
           .ranking-profile-header {

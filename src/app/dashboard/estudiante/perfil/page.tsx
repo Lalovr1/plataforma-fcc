@@ -441,18 +441,23 @@ export default function PerfilEstudiantePage() {
       }
 
       .perfil-user-card {
+        container-type: inline-size;
+        container-name: perfil-user;
         padding: 24px 20px 24px;
         min-height: 610px;
         text-align: center;
       }
 
       .perfil-avatar-stage {
+        --perfil-avatar-stage-size: 390px;
+        --perfil-avatar-render-scale: 1;
+
         position: relative;
-        width: min(100%, 390px);
-        height: 390px;
+        width: min(100%, var(--perfil-avatar-stage-size));
+        aspect-ratio: 1 / 1;
+        height: auto;
         margin: 0 auto 6px;
-        display: grid;
-        place-items: center;
+        display: block;
         overflow: visible;
         isolation: isolate;
       }
@@ -460,8 +465,11 @@ export default function PerfilEstudiantePage() {
       .perfil-avatar-stage::before {
         content: "";
         position: absolute;
+        left: 50%;
+        top: 50%;
         width: 82%;
-        height: 82%;
+        aspect-ratio: 1 / 1;
+        height: auto;
         border-radius: 999px;
         background:
           radial-gradient(circle, var(--perfil-avatar-core), transparent 62%),
@@ -477,19 +485,24 @@ export default function PerfilEstudiantePage() {
           );
         filter: blur(0.2px);
         opacity: 0.95;
+        transform: translate(-50%, -50%);
         z-index: -3;
       }
 
       .perfil-avatar-stage::after {
         content: "";
         position: absolute;
+        left: 50%;
+        top: 50%;
         width: 70%;
-        height: 70%;
+        aspect-ratio: 1 / 1;
+        height: auto;
         border-radius: 999px;
         border: 1px solid var(--perfil-avatar-border);
         box-shadow:
           0 0 0 14px var(--perfil-avatar-shadow-a),
           0 0 42px var(--perfil-avatar-shadow-b);
+        transform: translate(-50%, -50%);
         z-index: -2;
       }
 
@@ -516,10 +529,20 @@ export default function PerfilEstudiantePage() {
       }
 
       .perfil-avatar-render {
-        position: relative;
+        position: absolute;
+        left: 50%;
+        bottom: 0;
         z-index: 2;
-        transform: none;
-        transform-origin: center;
+        width: 350px;
+        height: 350px;
+        display: grid;
+        place-items: center;
+        transform: translateX(-50%) scale(var(--perfil-avatar-render-scale));
+        transform-origin: bottom center;
+      }
+
+      .perfil-avatar-render > * {
+        display: block;
       }
 
       .perfil-name {
@@ -849,6 +872,20 @@ export default function PerfilEstudiantePage() {
         }
       }
 
+      @container perfil-user (max-width: 430px) {
+        .perfil-avatar-stage {
+          --perfil-avatar-stage-size: min(320px, calc(100cqw - 32px));
+          --perfil-avatar-render-scale: 0.82;
+        }
+      }
+
+      @container perfil-user (max-width: 360px) {
+        .perfil-avatar-stage {
+          --perfil-avatar-stage-size: min(304px, calc(100cqw - 28px));
+          --perfil-avatar-render-scale: 0.78;
+        }
+      }
+
       @media (max-width: 640px) {
         .perfil-grid {
           gap: 16px;
@@ -866,12 +903,10 @@ export default function PerfilEstudiantePage() {
         }
 
         .perfil-avatar-stage {
-          width: min(100%, 320px);
-          height: 320px;
-        }
-
-        .perfil-avatar-render {
-          transform: scale(0.82);
+          --perfil-avatar-stage-size: min(320px, calc(100vw - 64px));
+          --perfil-avatar-render-scale: 0.82;
+          margin-top: 8px;
+          margin-bottom: 6px;
         }
 
         .perfil-logros-grid-wrap > * {
@@ -885,6 +920,13 @@ export default function PerfilEstudiantePage() {
 
         .perfil-modal-actions button {
           width: 100%;
+        }
+      }
+
+      @media (max-width: 420px) {
+        .perfil-avatar-stage {
+          --perfil-avatar-stage-size: min(304px, calc(100vw - 56px));
+          --perfil-avatar-render-scale: 0.78;
         }
       }
     `}</style>

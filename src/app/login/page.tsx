@@ -293,7 +293,7 @@ export default function LoginPage() {
           min-height: 100dvh;
           display: grid;
           place-items: center;
-          padding: 28px 18px;
+          padding: clamp(12px, 3dvh, 28px) 18px;
           color: var(--login-text);
           overflow: hidden;
           position: relative;
@@ -359,9 +359,10 @@ export default function LoginPage() {
         .login-card {
           position: relative;
           width: min(100%, 470px);
+          max-height: calc(100dvh - clamp(24px, 6dvh, 56px));
           overflow: hidden;
-          border-radius: 34px;
-          padding: clamp(28px, 4vw, 38px);
+          border-radius: clamp(24px, 4dvh, 34px);
+          padding: clamp(18px, 4dvh, 38px);
           background:
             linear-gradient(
               135deg,
@@ -408,9 +409,9 @@ export default function LoginPage() {
         .login-card::after {
           content: "";
           position: absolute;
-          inset: 14px;
+          inset: clamp(10px, 1.8dvh, 14px);
           pointer-events: none;
-          border-radius: 26px;
+          border-radius: clamp(22px, 3.1dvh, 26px);
           border: 1px solid color-mix(
             in srgb,
             var(--login-accent) 10%,
@@ -422,22 +423,22 @@ export default function LoginPage() {
           position: relative;
           z-index: 2;
           display: grid;
-          gap: 20px;
+          gap: clamp(10px, 2.2dvh, 20px);
         }
 
         .login-logo-wrap {
           position: relative;
           display: grid;
           place-items: center;
-          padding: 16px 0 10px;
+          padding: clamp(2px, 1.8dvh, 16px) 0 clamp(0px, 1.1dvh, 10px);
         }
 
         .login-logo-wrap::before {
           content: "";
           position: absolute;
-          width: clamp(240px, 62vw, 300px);
-          height: clamp(172px, 40vw, 218px);
-          border-radius: 30px;
+          width: min(300px, 62vw, 40dvh);
+          aspect-ratio: 300 / 218;
+          border-radius: clamp(22px, 3.4dvh, 30px);
           background:
             radial-gradient(
               circle at 50% 50%,
@@ -460,9 +461,9 @@ export default function LoginPage() {
         .login-logo-wrap::after {
           content: "";
           position: absolute;
-          width: clamp(212px, 55vw, 264px);
-          height: clamp(152px, 35vw, 188px);
-          border-radius: 24px;
+          width: min(264px, 55vw, 35dvh);
+          aspect-ratio: 264 / 188;
+          border-radius: clamp(20px, 2.9dvh, 24px);
           border: 1px solid color-mix(
             in srgb,
             var(--login-accent) 14%,
@@ -476,8 +477,8 @@ export default function LoginPage() {
         .login-logo {
           position: relative;
           z-index: 2;
-          width: min(230px, 72vw);
-          transform: translateY(-20px);
+          width: min(230px, 72vw, 31dvh);
+          transform: translateY(clamp(-20px, -2.4dvh, -8px));
           height: auto;
           object-fit: contain;
           filter: drop-shadow(
@@ -487,7 +488,7 @@ export default function LoginPage() {
 
         .login-title-wrap {
           display: grid;
-          gap: 8px;
+          gap: clamp(5px, 1dvh, 8px);
           text-align: center;
           padding-top: 2px;
         }
@@ -498,7 +499,7 @@ export default function LoginPage() {
           justify-content: center;
           gap: 10px;
           color: var(--login-accent);
-          font-size: 0.72rem;
+          font-size: clamp(0.62rem, 1.35dvh, 0.72rem);
           font-weight: 950;
           letter-spacing: 0.22em;
           text-transform: uppercase;
@@ -507,7 +508,7 @@ export default function LoginPage() {
         .login-kicker::before,
         .login-kicker::after {
           content: "";
-          width: 28px;
+          width: clamp(18px, 4.5dvh, 28px);
           height: 2px;
           border-radius: 999px;
           background: linear-gradient(
@@ -519,7 +520,7 @@ export default function LoginPage() {
 
         .login-title {
           color: var(--login-heading);
-          font-size: clamp(2.05rem, 5vw, 2.85rem);
+          font-size: clamp(1.85rem, 5dvh, 2.85rem);
           font-weight: 950;
           line-height: 0.98;
           letter-spacing: -0.065em;
@@ -532,10 +533,10 @@ export default function LoginPage() {
 
         .login-form {
           display: grid;
-          gap: 14px;
+          gap: clamp(10px, 1.8dvh, 14px);
           margin-top: 2px;
-          padding: 18px;
-          border-radius: 26px;
+          padding: clamp(12px, 2dvh, 18px);
+          border-radius: clamp(20px, 3dvh, 26px);
           background:
             linear-gradient(
               180deg,
@@ -569,7 +570,7 @@ export default function LoginPage() {
 
         .login-input {
           width: 100%;
-          min-height: 50px;
+          min-height: clamp(43px, 6.3dvh, 50px);
           border-radius: 16px;
           padding: 0 14px 0 44px;
           color: var(--login-text);
@@ -585,7 +586,7 @@ export default function LoginPage() {
             var(--login-border)
           );
           outline: none;
-          font-size: 0.95rem;
+          font-size: clamp(0.88rem, 1.9dvh, 0.95rem);
           font-weight: 750;
           transition:
             border-color 170ms ease,
@@ -623,7 +624,7 @@ export default function LoginPage() {
           justify-content: center;
           gap: 9px;
           width: 100%;
-          min-height: 52px;
+          min-height: clamp(44px, 6.6dvh, 52px);
           border-radius: 17px;
           color: #ffffff;
           background:
@@ -639,7 +640,7 @@ export default function LoginPage() {
               transparent
             ),
             inset 0 1px 0 rgba(255, 255, 255, 0.22);
-          font-size: 1rem;
+          font-size: clamp(0.92rem, 2dvh, 1rem);
           font-weight: 950;
           transition:
             transform 170ms ease,
@@ -660,11 +661,11 @@ export default function LoginPage() {
 
         .login-message {
           border-radius: 18px;
-          padding: 12px 14px;
+          padding: clamp(10px, 1.7dvh, 12px) 14px;
           text-align: center;
-          font-size: 0.88rem;
+          font-size: clamp(0.8rem, 1.75dvh, 0.88rem);
           font-weight: 750;
-          line-height: 1.4;
+          line-height: 1.35;
         }
 
         .login-message.is-success {
@@ -698,7 +699,7 @@ export default function LoginPage() {
         .login-register {
           color: var(--login-muted);
           text-align: center;
-          font-size: 0.92rem;
+          font-size: clamp(0.82rem, 1.8dvh, 0.92rem);
           font-weight: 750;
           padding-top: 2px;
         }
@@ -738,24 +739,96 @@ export default function LoginPage() {
           }
 
           .login-logo-wrap::before {
-            width: min(78vw, 260px);
-            height: min(48vw, 170px);
+            width: min(78vw, 260px, 40dvh);
+            aspect-ratio: 260 / 170;
             border-radius: 26px;
           }
 
           .login-logo-wrap::after {
-            width: min(68vw, 226px);
-            height: min(40vw, 144px);
+            width: min(68vw, 226px, 35dvh);
+            aspect-ratio: 226 / 144;
             border-radius: 22px;
           }
 
           .login-logo {
-            width: min(210px, 70vw);
+            width: min(210px, 70vw, 31dvh);
           }
 
           .login-form {
             padding: 14px;
             border-radius: 22px;
+          }
+        }
+
+        @media (max-height: 760px) {
+          .login-card {
+            padding: 18px;
+          }
+
+          .login-content {
+            gap: 12px;
+          }
+
+          .login-logo-wrap {
+            padding-top: 2px;
+            padding-bottom: 0;
+          }
+
+          .login-title-wrap {
+            gap: 5px;
+          }
+
+          .login-form {
+            padding: 12px;
+            gap: 10px;
+          }
+        }
+
+        @media (max-height: 660px) {
+          .login-page {
+            padding-top: 10px;
+            padding-bottom: 10px;
+          }
+
+          .login-card {
+            padding: 14px;
+          }
+
+          .login-content {
+            gap: 9px;
+          }
+
+          .login-logo {
+            width: min(185px, 64vw, 27dvh);
+            transform: translateY(-8px);
+          }
+
+          .login-logo-wrap::before {
+            width: min(235px, 58vw, 34dvh);
+          }
+
+          .login-logo-wrap::after {
+            width: min(205px, 50vw, 30dvh);
+          }
+
+          .login-title {
+            font-size: clamp(1.7rem, 4.3dvh, 2.25rem);
+          }
+
+          .login-kicker {
+            font-size: 0.62rem;
+          }
+
+          .login-input {
+            min-height: 42px;
+          }
+
+          .login-button {
+            min-height: 43px;
+          }
+
+          .login-register {
+            font-size: 0.8rem;
           }
         }
       `}</style>

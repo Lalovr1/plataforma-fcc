@@ -1436,6 +1436,15 @@ export default function AmigosPage() {
             text-align: center;
           }
 
+          .amigos-user-info {
+            justify-items: center;
+            text-align: center;
+          }
+
+          .amigos-status-badge {
+            justify-self: center;
+          }
+
           .amigos-result-actions,
           .amigos-request-actions {
             justify-content: center;

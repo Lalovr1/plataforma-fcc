@@ -1158,7 +1158,7 @@ export default function VisualizadorCurso({
             </div>
           )}
 
-          <div className={`space-y-2 min-w-0 ${rol === "estudiante" ? "text-left" : "text-center"}`}>
+          <div className={`space-y-2 min-w-0 ${rol === "estudiante" ? "text-center sm:text-left" : "text-center"}`}>
             <h1 className="curso-hero-title text-2xl sm:text-3xl md:text-4xl break-words" style={{ color: "var(--color-heading)" }}>
               {materia.nombre}
             </h1>

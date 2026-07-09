@@ -44,7 +44,7 @@ export default function TarjetaUsuario({
   };
 
   const [avatar, setAvatar] = useState<AvatarConfig>(
-    avatarConfig ?? defaultConfig
+    avatarConfig ?? defaultConfig,
   );
 
   const [accionAbierta, setAccionAbierta] = useState<AccionRapida | null>(null);
@@ -71,7 +71,7 @@ export default function TarjetaUsuario({
       : "/dashboard/estudiante/perfil";
 
   const [tutorialActivo, setTutorialActivo] = useState<boolean>(() =>
-    typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
+    typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false,
   );
 
   useEffect(() => {
@@ -79,7 +79,9 @@ export default function TarjetaUsuario({
     window.addEventListener("tutorial:estado", handler);
 
     setTutorialActivo(
-      typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false
+      typeof window !== "undefined"
+        ? !!(window as any).__tutorialActivo
+        : false,
     );
 
     return () => window.removeEventListener("tutorial:estado", handler);
@@ -219,6 +221,7 @@ export default function TarjetaUsuario({
           --fcc-user-modal-placeholder-border: color-mix(in srgb, var(--fcc-premium-accent) 28%, transparent);
 
           position: relative;
+          container-type: inline-size;
           min-height: clamp(210px, 25vw, 270px);
           overflow: hidden;
           border-radius: 28px;
@@ -259,21 +262,29 @@ export default function TarjetaUsuario({
         }
 
         .fcc-user-avatar-stage {
+          --fcc-user-avatar-circle-size: 82%;
+          --fcc-user-avatar-ring-size: 70%;
+          --fcc-user-avatar-orbit-size: 66%;
+          --fcc-user-avatar-render-scale: 1;
+
           position: relative;
           flex: 0 0 auto;
           width: clamp(168px, 25vw, 300px);
           height: clamp(168px, 25vw, 300px);
           display: grid;
-          place-items: center;
+          place-items: end center;
           isolation: isolate;
         }
 
         .fcc-user-avatar-stage::before {
           content: "";
           position: absolute;
-          width: 82%;
-          height: 82%;
+          left: 50%;
+          top: 50%;
+          width: var(--fcc-user-avatar-circle-size);
+          aspect-ratio: 1 / 1;
           border-radius: 999px;
+          transform: translate(-50%, -50%);
           background:
             radial-gradient(circle, var(--fcc-user-avatar-core), transparent 62%),
             conic-gradient(
@@ -294,9 +305,12 @@ export default function TarjetaUsuario({
         .fcc-user-avatar-stage::after {
           content: "";
           position: absolute;
-          width: 70%;
-          height: 70%;
+          left: 50%;
+          top: 50%;
+          width: var(--fcc-user-avatar-ring-size);
+          aspect-ratio: 1 / 1;
           border-radius: 999px;
+          transform: translate(-50%, -50%);
           border: 1px solid var(--fcc-user-avatar-border);
           box-shadow:
             0 0 0 14px var(--fcc-user-avatar-shadow-a),
@@ -306,9 +320,13 @@ export default function TarjetaUsuario({
 
         .fcc-avatar-orbit {
           position: absolute;
-          inset: 17%;
+          left: 50%;
+          top: 50%;
+          width: var(--fcc-user-avatar-orbit-size);
+          aspect-ratio: 1 / 1;
           z-index: -1;
           border-radius: 999px;
+          transform: translate(-50%, -50%) rotate(-18deg);
           background:
             linear-gradient(
               90deg,
@@ -322,14 +340,18 @@ export default function TarjetaUsuario({
               var(--fcc-user-orbit-b) 60% 64%,
               transparent 64% 100%
             );
-          transform: rotate(-18deg);
           opacity: 0.95;
         }
 
         .fcc-avatar-render {
-          position: relative;
+          position: absolute;
+          left: 50%;
+          bottom: 0;
           z-index: 2;
-          transform-origin: center;
+          display: grid;
+          place-items: center;
+          transform: translateX(-50%) scale(var(--fcc-user-avatar-render-scale)) !important;
+          transform-origin: center bottom;
         }
 
         .fcc-user-copy {
@@ -617,16 +639,32 @@ export default function TarjetaUsuario({
           font-weight: 900;
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 1279px) {
+          .fcc-user-avatar-stage {
+            --fcc-user-avatar-render-scale: 0.9;
+          }
+        }
+
+        @media (max-width: 1023px) {
+          .fcc-user-avatar-stage {
+            --fcc-user-avatar-render-scale: 0.84;
+          }
+        }
+
+        @container (max-width: 860px) {
           .fcc-user-card-content {
             flex-direction: column;
             text-align: center;
+            gap: 0;
             padding: 22px 18px 28px;
           }
 
           .fcc-user-avatar-stage {
-            margin-top: -18px;
-            margin-bottom: -24px;
+            --fcc-user-avatar-render-scale: 0.72;
+            width: min(74vw, 222px);
+            height: 226px;
+            margin-top: -8px;
+            margin-bottom: 8px;
           }
 
           .fcc-user-eyebrow {
@@ -651,6 +689,53 @@ export default function TarjetaUsuario({
             min-height: 42px;
           }
         }
+
+        @media (max-width: 860px) {
+          .fcc-user-card-content {
+            flex-direction: column;
+            text-align: center;
+            gap: 0;
+            padding: 22px 18px 28px;
+          }
+
+          .fcc-user-avatar-stage {
+            --fcc-user-avatar-render-scale: 0.72;
+            width: min(74vw, 222px);
+            height: 226px;
+            margin-top: -8px;
+            margin-bottom: 8px;
+          }
+
+          .fcc-user-eyebrow {
+            justify-content: center;
+          }
+
+          .fcc-user-eyebrow::before {
+            display: none;
+          }
+
+          .fcc-user-level {
+            margin-left: auto;
+            margin-right: auto;
+          }
+
+          .fcc-user-actions {
+            justify-content: center;
+          }
+
+          .fcc-profile-button,
+          .fcc-quick-action {
+            min-height: 42px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .fcc-user-avatar-stage {
+            --fcc-user-avatar-render-scale: 0.68;
+            width: min(74vw, 210px);
+            height: 216px;
+          }
+        }
       `}</style>
 
       <div
@@ -667,7 +752,7 @@ export default function TarjetaUsuario({
           <div className="fcc-user-avatar-stage">
             <span className="fcc-avatar-orbit" />
 
-            <div className="fcc-avatar-render scale-[0.68] sm:scale-[0.78] md:scale-[0.9] xl:scale-100">
+            <div className="fcc-avatar-render">
               <RenderizadorAvatar config={avatar} size={300} />
             </div>
           </div>

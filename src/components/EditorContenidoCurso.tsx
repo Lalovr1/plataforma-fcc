@@ -1875,12 +1875,20 @@ export default function EditorContenidoCurso({
         }
 
         .contenido-block-actions {
-          justify-content: flex-start;
+          justify-content: center;
           flex-wrap: wrap;
         }
 
         .contenido-edit-header {
           grid-template-columns: 1fr;
+        }
+
+        .contenido-textarea,
+        .contenido-edit-intro {
+          min-height: calc(1.45em * 3 + 24px);
+          max-height: calc(1.45em * 3 + 24px);
+          overflow-y: auto;
+          resize: none;
         }
 
         .contenido-edit-actions {
@@ -2197,31 +2205,35 @@ export default function EditorContenidoCurso({
                               </div>
 
                               <div className="contenido-block-actions">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    move(b.id, "up");
-                                  }}
-                                  className="contenido-icon-button"
-                                  aria-label="Subir bloque"
-                                  title="Subir"
-                                >
-                                  <ArrowUp size={16} strokeWidth={2.7} />
-                                </button>
+                                {bloquesUnidad.length > 1 && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        move(b.id, "up");
+                                      }}
+                                      className="contenido-icon-button"
+                                      aria-label="Subir bloque"
+                                      title="Subir"
+                                    >
+                                      <ArrowUp size={16} strokeWidth={2.7} />
+                                    </button>
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    move(b.id, "down");
-                                  }}
-                                  className="contenido-icon-button"
-                                  aria-label="Bajar bloque"
-                                  title="Bajar"
-                                >
-                                  <ArrowDown size={16} strokeWidth={2.7} />
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        move(b.id, "down");
+                                      }}
+                                      className="contenido-icon-button"
+                                      aria-label="Bajar bloque"
+                                      title="Bajar"
+                                    >
+                                      <ArrowDown size={16} strokeWidth={2.7} />
+                                    </button>
+                                  </>
+                                )}
 
                                 <button
                                   type="button"
@@ -2292,31 +2304,35 @@ export default function EditorContenidoCurso({
                           </div>
 
                           <div className="contenido-block-actions">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                move(b.id, "up");
-                              }}
-                              className="contenido-icon-button"
-                              aria-label="Subir bloque"
-                              title="Subir"
-                            >
-                              <ArrowUp size={16} strokeWidth={2.7} />
-                            </button>
+                            {bloquesPorUnidad["__sin_unidad__"].length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    move(b.id, "up");
+                                  }}
+                                  className="contenido-icon-button"
+                                  aria-label="Subir bloque"
+                                  title="Subir"
+                                >
+                                  <ArrowUp size={16} strokeWidth={2.7} />
+                                </button>
 
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                move(b.id, "down");
-                              }}
-                              className="contenido-icon-button"
-                              aria-label="Bajar bloque"
-                              title="Bajar"
-                            >
-                              <ArrowDown size={16} strokeWidth={2.7} />
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    move(b.id, "down");
+                                  }}
+                                  className="contenido-icon-button"
+                                  aria-label="Bajar bloque"
+                                  title="Bajar"
+                                >
+                                  <ArrowDown size={16} strokeWidth={2.7} />
+                                </button>
+                              </>
+                            )}
 
                             <button
                               type="button"

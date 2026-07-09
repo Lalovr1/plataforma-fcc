@@ -849,29 +849,54 @@ export default function RankingCurso({
         .ranking-detalle-row {
           grid-template-columns: 1fr;
           align-items: stretch;
+          padding: 18px 14px;
         }
 
         .ranking-detalle-user {
-          grid-template-columns: auto minmax(0, 1fr);
+          position: relative;
+          grid-template-columns: 1fr;
+          justify-items: center;
+          text-align: center;
+          gap: 8px;
+          padding: 0 52px;
         }
 
         .ranking-detalle-rank {
-          grid-row: span 2;
+          position: absolute;
+          left: 0;
+          top: 50%;
+          grid-row: auto;
+          transform: translateY(-50%);
         }
 
         .ranking-detalle-avatar-stage {
-          width: 52px;
-          height: 52px;
+          width: 56px;
+          height: 56px;
         }
 
         .ranking-detalle-avatar-stage.large {
-          width: 58px;
-          height: 58px;
+          width: 64px;
+          height: 64px;
+        }
+
+        .ranking-detalle-name-block {
+          justify-items: center;
+          text-align: center;
+        }
+
+        .ranking-detalle-subtext {
+          text-align: center;
         }
 
         .ranking-detalle-points {
-          justify-items: start;
-          padding-left: 54px;
+          justify-items: center;
+          padding-left: 0;
+          margin-top: 2px;
+          text-align: center;
+        }
+
+        .ranking-detalle-points-label {
+          display: none;
         }
       }
     `}</style>

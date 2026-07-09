@@ -7,41 +7,13 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
-
-interface Carrera {
-  id: number;
-  nombre: string;
-}
-
-interface Seccion {
-  nombre: string;
-}
-
-interface Periodo {
-  nombre: "Primavera" | "Verano" | "Otoño";
-  anio: number;
-  secciones: Seccion[];
-}
-
-interface CursoCarrera {
-  carrera_id: number | null;
-  semestre: number | null;
-  area: string;
-  periodos: Periodo[];
-}
-
-const crearCarreraInicial = (): CursoCarrera => ({
-  carrera_id: null,
-  semestre: null,
-  area: "Ciencias Básicas",
-  periodos: [
-    {
-      nombre: "Primavera",
-      anio: new Date().getFullYear(),
-      secciones: [],
-    },
-  ],
-});
+import EditarCarreraModal, {
+  clonarCursoCarrera,
+  crearCarreraInicial,
+  validarCursoCarrera,
+  type Carrera,
+  type CursoCarrera,
+} from "@/components/EditarCarreraModal";
 
 export default function AgregarCursoPage() {
   const [nombre, setNombre] = useState("");
@@ -72,7 +44,7 @@ export default function AgregarCursoPage() {
   }, []);
 
   useEffect(() => {
-    if (!nuevaCarrera && carreraAEliminarIndex === null) return;
+    if (carreraAEliminarIndex === null) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -80,80 +52,22 @@ export default function AgregarCursoPage() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [nuevaCarrera, carreraAEliminarIndex]);
+  }, [carreraAEliminarIndex]);
 
   const getCarreraNombre = (id: number | null) =>
     carrerasDisponibles.find((c) => c.id === id)?.nombre || "Sin carrera";
 
-  const validarCursoCarrera = (cc: CursoCarrera) => {
-    if (!cc.carrera_id) {
-      return "Selecciona una carrera.";
-    }
-
-    if (!cc.semestre) {
-      return "Selecciona un semestre.";
-    }
-
-    if (!cc.area.trim()) {
-      return "Selecciona un área.";
-    }
-
-    if (cc.periodos.length === 0) {
-      return "Agrega al menos un período.";
-    }
-
-    if (cc.periodos.some((p) => !p.anio || p.anio < 2000)) {
-      return "Revisa el año de los períodos.";
-    }
-
-    if (cc.periodos.some((p) => p.secciones.length === 0)) {
-      return "Cada período necesita al menos una sección.";
-    }
-
-    if (
-      cc.periodos.some((p) =>
-        p.secciones.some((s) => !s.nombre.trim())
-      )
-    ) {
-      return "Completa el nombre de todas las secciones.";
-    }
-
-    return null;
-  };
-
-  const guardarNuevaCarrera = () => {
-    if (!nuevaCarrera) return;
-
-    const error = validarCursoCarrera(nuevaCarrera);
-
-    if (error) {
-      toast.error(error);
-      return;
-    }
-
-    const carreraLimpia: CursoCarrera = {
-      ...nuevaCarrera,
-      area: nuevaCarrera.area.trim(),
-      periodos: nuevaCarrera.periodos.map((p) => ({
-        ...p,
-        secciones: p.secciones.map((s) => ({
-          nombre: s.nombre.trim(),
-        })),
-      })),
-    };
-
+  const guardarCarreraDesdeModal = (carreraLimpia: CursoCarrera) => {
     if (editandoCarreraIndex !== null) {
       setCursoCarreras((prev) =>
         prev.map((cc, idx) =>
           idx === editandoCarreraIndex ? carreraLimpia : cc
         )
       );
-    } else {
-      setCursoCarreras((prev) => [...prev, carreraLimpia]);
+      return;
     }
 
-    setNuevaCarrera(null);
-    setEditandoCarreraIndex(null);
+    setCursoCarreras((prev) => [...prev, carreraLimpia]);
   };
 
   const abrirAgregarCarrera = () => {
@@ -167,13 +81,7 @@ export default function AgregarCursoPage() {
     if (!carrera) return;
 
     setEditandoCarreraIndex(index);
-    setNuevaCarrera({
-      ...carrera,
-      periodos: carrera.periodos.map((p) => ({
-        ...p,
-        secciones: p.secciones.map((s) => ({ ...s })),
-      })),
-    });
+    setNuevaCarrera(clonarCursoCarrera(carrera));
   };
 
   const cerrarModalCarrera = () => {
@@ -188,99 +96,6 @@ export default function AgregarCursoPage() {
       prev.filter((_, index) => index !== carreraAEliminarIndex)
     );
     setCarreraAEliminarIndex(null);
-  };
-
-  const actualizarPeriodo = (
-    periodoIndex: number,
-    cambios: Partial<Periodo>
-  ) => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: nuevaCarrera.periodos.map((p, i) =>
-        i === periodoIndex ? { ...p, ...cambios } : p
-      ),
-    });
-  };
-
-  const agregarPeriodo = () => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: [
-        ...nuevaCarrera.periodos,
-        {
-          nombre: "Primavera",
-          anio: new Date().getFullYear(),
-          secciones: [],
-        },
-      ],
-    });
-  };
-
-  const eliminarPeriodo = (periodoIndex: number) => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: nuevaCarrera.periodos.filter((_, i) => i !== periodoIndex),
-    });
-  };
-
-  const agregarSeccion = (periodoIndex: number) => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: nuevaCarrera.periodos.map((p, i) =>
-        i === periodoIndex
-          ? {
-              ...p,
-              secciones: [...p.secciones, { nombre: "" }],
-            }
-          : p
-      ),
-    });
-  };
-
-  const actualizarSeccion = (
-    periodoIndex: number,
-    seccionIndex: number,
-    nombreSeccion: string
-  ) => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: nuevaCarrera.periodos.map((p, i) =>
-        i === periodoIndex
-          ? {
-              ...p,
-              secciones: p.secciones.map((s, j) =>
-                j === seccionIndex ? { ...s, nombre: nombreSeccion } : s
-              ),
-            }
-          : p
-      ),
-    });
-  };
-
-  const eliminarSeccion = (periodoIndex: number, seccionIndex: number) => {
-    if (!nuevaCarrera) return;
-
-    setNuevaCarrera({
-      ...nuevaCarrera,
-      periodos: nuevaCarrera.periodos.map((p, i) =>
-        i === periodoIndex
-          ? {
-              ...p,
-              secciones: p.secciones.filter((_, j) => j !== seccionIndex),
-            }
-          : p
-      ),
-    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -299,7 +114,12 @@ export default function AgregarCursoPage() {
     }
 
     const errorCarrera = cursoCarreras
-      .map((cc) => validarCursoCarrera(cc))
+      .map((cc, index) =>
+        validarCursoCarrera(cc, {
+          carrerasExistentes: cursoCarreras,
+          ignorarIndex: index,
+        })
+      )
       .find(Boolean);
 
     if (errorCarrera) {
@@ -1181,230 +1001,16 @@ export default function AgregarCursoPage() {
           document.body
         )}
 
-      {nuevaCarrera &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="agregar-curso-modal-overlay"
-            onClick={cerrarModalCarrera}
-          >
-            <div
-              className="agregar-curso-modal"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="agregar-modal-close"
-                onClick={cerrarModalCarrera}
-                aria-label="Cerrar"
-              >
-                <X size={20} strokeWidth={2.4} />
-              </button>
-
-              <h3 className="agregar-modal-title">
-                {editandoCarreraIndex !== null ? "Editar carrera" : "Agregar carrera"}
-              </h3>
-
-              <p className="agregar-modal-description">
-                {editandoCarreraIndex !== null
-                  ? "Ajusta la carrera, semestre, área, períodos y secciones."
-                  : "Define la carrera, semestre, área, períodos y secciones disponibles para este curso."}
-              </p>
-
-              <div className="agregar-modal-form">
-                <div className="agregar-field">
-                  <label className="agregar-label">Carrera</label>
-
-                  <select
-                    value={nuevaCarrera.carrera_id || ""}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        carrera_id: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                    className="agregar-select"
-                  >
-                    <option value="">Seleccione carrera</option>
-
-                    {carrerasDisponibles.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="agregar-field">
-                  <label className="agregar-label">Semestre</label>
-
-                  <select
-                    value={nuevaCarrera.semestre || ""}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        semestre: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                    className="agregar-select"
-                  >
-                    <option value="">Seleccione semestre</option>
-
-                    {[...Array(10)].map((_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        Semestre {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="agregar-field">
-                  <label className="agregar-label">Área</label>
-
-                  <select
-                    value={nuevaCarrera.area}
-                    onChange={(e) =>
-                      setNuevaCarrera({
-                        ...nuevaCarrera,
-                        area: e.target.value,
-                      })
-                    }
-                    className="agregar-select"
-                  >
-                    <option value="Ciencias Básicas">Ciencias Básicas</option>
-                    <option value="Computación">Computación</option>
-                  </select>
-                </div>
-
-                <h4 className="agregar-section-title">Períodos</h4>
-
-                {nuevaCarrera.periodos.map((p, idx) => (
-                  <div key={idx} className="agregar-periodo-card">
-                    <div className="agregar-periodo-grid">
-                      <div className="agregar-field">
-                        <label className="agregar-label">Período</label>
-
-                        <select
-                          value={p.nombre}
-                          onChange={(e) =>
-                            actualizarPeriodo(idx, {
-                              nombre: e.target.value as Periodo["nombre"],
-                            })
-                          }
-                          className="agregar-select"
-                        >
-                          <option value="Primavera">Primavera</option>
-                          <option value="Verano">Verano</option>
-                          <option value="Otoño">Otoño</option>
-                        </select>
-                      </div>
-
-                      <div className="agregar-field">
-                        <label className="agregar-label">Año</label>
-
-                        <input
-                          type="number"
-                          value={p.anio}
-                          onChange={(e) =>
-                            actualizarPeriodo(idx, {
-                              anio: Number(e.target.value),
-                            })
-                          }
-                          className="agregar-input"
-                          placeholder="Año"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => eliminarPeriodo(idx)}
-                        className="agregar-danger-button"
-                      >
-                        <Trash2 size={16} strokeWidth={2.4} />
-                        <span>Eliminar</span>
-                      </button>
-                    </div>
-
-                    <div className="agregar-secciones">
-                      <label className="agregar-label">Secciones</label>
-
-                      {p.secciones.map((s, sidx) => (
-                        <div key={sidx} className="agregar-seccion-row">
-                          <input
-                            type="text"
-                            value={s.nombre}
-                            onChange={(e) =>
-                              actualizarSeccion(idx, sidx, e.target.value)
-                            }
-                            className="agregar-input"
-                            placeholder="Nombre de la sección"
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() => eliminarSeccion(idx, sidx)}
-                            className="agregar-danger-button"
-                          >
-                            <Trash2 size={16} strokeWidth={2.4} />
-                            <span>Eliminar</span>
-                          </button>
-                        </div>
-                      ))}
-
-                      <button
-                        type="button"
-                        onClick={() => agregarSeccion(idx)}
-                        className="agregar-muted-button"
-                      >
-                        <Plus size={16} strokeWidth={2.4} />
-                        <span>Agregar sección</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="agregar-actions">
-                  <button
-                    type="button"
-                    onClick={agregarPeriodo}
-                    className="agregar-muted-button"
-                  >
-                    <Plus size={16} strokeWidth={2.4} />
-                    <span>Agregar período</span>
-                  </button>
-                </div>
-
-                <div className="agregar-actions agregar-modal-actions">
-                  <button
-                    type="button"
-                    onClick={cerrarModalCarrera}
-                    className="agregar-muted-button"
-                  >
-                    Cancelar
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={guardarNuevaCarrera}
-                    className="agregar-success-button"
-                  >
-                    <Save size={17} strokeWidth={2.4} />
-                    <span>
-                      {editandoCarreraIndex !== null
-                        ? "Guardar cambios"
-                        : "Guardar carrera"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      <EditarCarreraModal
+        open={Boolean(nuevaCarrera)}
+        onClose={cerrarModalCarrera}
+        carrera={nuevaCarrera}
+        carrerasDisponibles={carrerasDisponibles}
+        modo={editandoCarreraIndex !== null ? "editar" : "agregar"}
+        carrerasYaAgregadas={cursoCarreras}
+        carreraActualIndex={editandoCarreraIndex}
+        onSave={guardarCarreraDesdeModal}
+      />
     </LayoutGeneral>
   );
 }

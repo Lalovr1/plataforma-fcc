@@ -724,6 +724,7 @@ export default function ProfesoresPage() {
           }
 
           .profesores-search-button {
+            width: auto;
             min-width: 128px;
           }
         }
@@ -1314,16 +1315,41 @@ export default function ProfesoresPage() {
 
           .profesores-course-main {
             grid-template-columns: 1fr;
+            justify-items: center;
+            text-align: center;
+          }
+
+          .profesores-course-main > div:first-child {
+            width: 100%;
+            min-width: 0;
+            text-align: center;
+          }
+
+          .profesores-course-meta {
+            align-items: center;
+            text-align: center;
           }
 
           .profesores-course-main > div:last-child {
-            justify-self: stretch;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+          }
+
+          .profesores-status-badge {
+            margin-left: auto;
+            margin-right: auto;
           }
 
           .profesores-primary-button,
           .profesores-warning-button,
           .profesores-muted-button {
+            width: min(100%, 260px);
+          }
+
+          .profesores-search-button {
             width: 100%;
+            max-width: none;
           }
         }
       `}</style>
