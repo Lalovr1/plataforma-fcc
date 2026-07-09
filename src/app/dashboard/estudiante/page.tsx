@@ -7,7 +7,6 @@
 import LayoutGeneral from "@/components/LayoutGeneral";
 import WidgetRanking from "@/components/WidgetRanking";
 import TarjetaUsuario from "@/components/TarjetaUsuario";
-import BarraXP from "@/components/BarraXP";
 import BloqueXPEnVivo from "@/components/BloqueXPEnVivo";
 import SeccionCursos from "@/components/SeccionCursos";
 
@@ -55,9 +54,7 @@ export default async function EstudianteDashboard() {
       .eq("usuario_id", user.id)
       .eq("visible", true),
 
-    supabase
-      .from("quizzes")
-      .select("id, materia_id"),
+    supabase.from("quizzes").select("id, materia_id"),
 
     supabase
       .from("intentos_quiz")
@@ -141,7 +138,39 @@ export default async function EstudianteDashboard() {
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 min-w-0">
+      <style>{`
+        .dashboard-estudiante-shell {
+          --fcc-dashboard-course-bg:
+            radial-gradient(
+              circle at 88% 12%,
+              color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent),
+              transparent 28%
+            ),
+            linear-gradient(
+              135deg,
+              var(--fcc-premium-surface),
+              var(--fcc-premium-surface-soft)
+            );
+
+          --fcc-dashboard-course-border: var(--fcc-premium-border);
+
+          --fcc-dashboard-course-shadow:
+            var(--fcc-premium-shadow),
+            inset 0 1px 0 color-mix(
+              in srgb,
+              var(--fcc-premium-surface-strong) 68%,
+              transparent
+            );
+        }
+
+        .bloque-cursos {
+          background: var(--fcc-dashboard-course-bg);
+          border: 1px solid var(--fcc-dashboard-course-border);
+          box-shadow: var(--fcc-dashboard-course-shadow);
+        }
+      `}</style>
+
+      <div className="dashboard-estudiante-shell grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 min-w-0">
         <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
           <div className="avatar-principal">
             <TarjetaUsuario
@@ -152,15 +181,11 @@ export default async function EstudianteDashboard() {
             />
           </div>
 
-          <div
-            className="bloque-cursos rounded-xl p-3 sm:p-4 shadow min-w-0 overflow-hidden"
-            style={{
-              backgroundColor: "var(--color-card)",
-              border: "1px solid var(--color-border)",
-              minHeight: "200px",
-            }}
-          >
-            <SeccionCursos initialCourses={mappedCourses} userId={usuario?.id ?? user.id} />
+          <div className="bloque-cursos rounded-[28px] min-w-0 overflow-hidden">
+            <SeccionCursos
+              initialCourses={mappedCourses}
+              userId={usuario?.id ?? user.id}
+            />
           </div>
         </div>
 
@@ -169,19 +194,11 @@ export default async function EstudianteDashboard() {
             <WidgetRanking />
           </div>
 
-          <div
-            className="bloque-xp p-4 rounded-xl shadow"
-            style={{
-              backgroundColor: "var(--color-card)",
-              borderColor: "var(--color-border)",
-            }}
-          >
-            <div className="barra-xp">
-              <BloqueXPEnVivo
-                userId={usuario?.id ?? user.id}
-                initialXp={usuario?.puntos ?? 0}
-              />
-            </div>
+          <div className="barra-xp">
+            <BloqueXPEnVivo
+              userId={usuario?.id ?? user.id}
+              initialXp={usuario?.puntos ?? 0}
+            />
           </div>
         </div>
       </div>

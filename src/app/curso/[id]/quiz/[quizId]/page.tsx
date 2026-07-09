@@ -729,218 +729,807 @@ export default function ResolverQuizPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <LayoutGeneral rol={rol}>
-        <div className="p-4 sm:p-6 rounded-xl shadow space-y-5 sm:space-y-6 min-w-0 overflow-hidden animate-pulse"
-          style={{
-            backgroundColor: "var(--color-card)",
-            border: "1px solid var(--color-border)",
-          }}
-        >
-          <div
-            className="h-8 rounded w-2/3 mx-auto"
-            style={{ backgroundColor: "var(--color-border)" }}
-          />
-
-          <div
-            className="h-4 rounded w-1/2 mx-auto"
-            style={{ backgroundColor: "var(--color-border)" }}
-          />
-
-          <div
-            className="p-4 rounded-lg space-y-3"
-            style={{
-              backgroundColor: "var(--color-card)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <div
-              className="h-5 rounded w-44 mx-auto"
-              style={{ backgroundColor: "var(--color-border)" }}
-            />
-            <div
-              className="h-5 rounded w-32 mx-auto"
-              style={{ backgroundColor: "var(--color-border)" }}
-            />
-            <div
-              className="h-10 rounded w-28 mx-auto"
-              style={{ backgroundColor: "var(--color-border)" }}
-            />
-          </div>
-        </div>
-      </LayoutGeneral>
-    );
-  }
-
   const intentosMax = quizInfo?.intentos_max ?? 1;
   const sinMasIntentos =
     !esPreview &&
     !verificandoIntentos &&
     (intentosRealizados >= intentosMax || mejorPuntaje === 100);
 
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: "var(--color-card)",
-    border: "1px solid var(--color-border)",
-  };
+  const tiempoTieneLimite =
+    !!quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0;
+
+  const estilos = (
+    <style>{`
+      .quiz-page {
+        --quiz-accent: var(--fcc-premium-accent);
+        --quiz-accent-hover: var(--fcc-premium-accent-hover);
+        --quiz-cyan: var(--fcc-premium-cyan);
+        --quiz-surface: var(--fcc-premium-surface);
+        --quiz-surface-soft: var(--fcc-premium-surface-soft);
+        --quiz-surface-strong: var(--fcc-premium-surface-strong);
+        --quiz-text: var(--fcc-premium-text);
+        --quiz-text-soft: var(--fcc-premium-text-soft);
+        --quiz-muted: var(--fcc-premium-muted);
+        --quiz-border: var(--fcc-premium-border);
+        --quiz-border-strong: var(--fcc-premium-border-strong);
+        --quiz-shadow: var(--fcc-premium-shadow);
+        --quiz-shadow-soft: var(--fcc-premium-shadow-soft);
+        --quiz-button: var(--fcc-premium-button);
+
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .quiz-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--quiz-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface) 96%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 14%, var(--quiz-border));
+        box-shadow:
+          var(--quiz-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--quiz-surface-strong) 65%, transparent);
+      }
+
+      .quiz-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--quiz-accent) 8%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 22%,
+            color-mix(in srgb, var(--quiz-accent) 6%, transparent) 22% 22.4%,
+            transparent 22.4% 100%
+          );
+        opacity: 0.72;
+      }
+
+      .quiz-card.no-diagonal::before,
+      .quiz-question-card::before,
+      .quiz-answer-card::before {
+        content: none;
+      }
+
+      .quiz-card-content {
+        position: relative;
+        z-index: 2;
+      }
+
+      .quiz-header {
+        padding: 22px clamp(18px, 3vw, 30px);
+        text-align: center;
+      }
+
+      .quiz-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 10px;
+        color: var(--quiz-accent);
+        font-size: 0.74rem;
+        font-weight: 950;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
+
+      .quiz-eyebrow::before,
+      .quiz-eyebrow::after {
+        content: "";
+        width: 36px;
+        height: 1px;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in srgb, var(--quiz-accent) 62%, transparent)
+        );
+      }
+
+      .quiz-eyebrow::after {
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--quiz-accent) 62%, transparent),
+          transparent
+        );
+      }
+
+      .quiz-title {
+        max-width: 900px;
+        margin: 0 auto;
+        color: var(--quiz-text);
+        font-size: clamp(1.7rem, 4vw, 3.1rem);
+        font-weight: 950;
+        line-height: 0.98;
+        letter-spacing: -0.06em;
+        text-wrap: balance;
+      }
+
+      .quiz-description {
+        max-width: 780px;
+        margin: 12px auto 0;
+        color: var(--quiz-muted);
+        font-size: 0.98rem;
+        font-weight: 650;
+        line-height: 1.55;
+      }
+
+      .quiz-preview-note {
+        margin: 16px auto 0;
+        width: min(100%, 720px);
+        border-radius: 18px;
+        padding: 12px 14px;
+        color: var(--quiz-text-soft);
+        background: color-mix(in srgb, var(--quiz-cyan) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-cyan) 18%, var(--quiz-border));
+        font-size: 0.9rem;
+        font-weight: 750;
+        line-height: 1.45;
+      }
+
+      .quiz-intro-card,
+      .quiz-result-card {
+        padding: 20px;
+      }
+
+      .quiz-intro-content,
+      .quiz-result-content {
+        display: grid;
+        gap: 16px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .quiz-intro-grid {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .quiz-stat-box {
+        min-height: 88px;
+        display: grid;
+        align-content: center;
+        gap: 6px;
+        border-radius: 20px;
+        padding: 14px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface-strong) 72%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft) 86%, transparent)
+          );
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-stat-label {
+        color: var(--quiz-muted);
+        font-size: 0.75rem;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .quiz-stat-value {
+        color: var(--quiz-text);
+        font-size: 1.05rem;
+        font-weight: 950;
+        line-height: 1.1;
+      }
+
+      .quiz-primary-button,
+      .quiz-secondary-button,
+      .quiz-success-button {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        padding: 0 18px;
+        font-size: 0.94rem;
+        font-weight: 950;
+        transition:
+          transform 170ms ease,
+          opacity 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease,
+          box-shadow 170ms ease;
+      }
+
+      .quiz-primary-button,
+      .quiz-success-button {
+        color: #ffffff;
+        background: var(--quiz-button);
+        box-shadow: 0 14px 26px color-mix(in srgb, var(--quiz-accent) 22%, transparent);
+      }
+
+      .theme-oscuro .quiz-primary-button,
+      .theme-oscuro .quiz-success-button {
+        color: #050505;
+      }
+
+      .quiz-success-button {
+        background:
+          linear-gradient(
+            135deg,
+            var(--color-success),
+            color-mix(in srgb, var(--color-success) 72%, var(--quiz-cyan))
+          );
+      }
+
+      .quiz-secondary-button {
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 78%, transparent);
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-primary-button:hover,
+      .quiz-secondary-button:hover,
+      .quiz-success-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .quiz-primary-button:disabled,
+      .quiz-success-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
+      }
+
+      .quiz-warning {
+        color: var(--color-danger);
+        font-size: 0.92rem;
+        font-weight: 850;
+      }
+
+      .quiz-info-text {
+        color: var(--quiz-muted);
+        font-size: 0.92rem;
+        font-weight: 750;
+        line-height: 1.45;
+      }
+
+      .quiz-timer-card {
+        padding: 14px 18px;
+        text-align: center;
+      }
+
+      .quiz-timer-value {
+        color: var(--quiz-text);
+        font-size: clamp(1.45rem, 3vw, 2rem);
+        font-weight: 950;
+        letter-spacing: -0.04em;
+      }
+
+      .quiz-timer-value.danger {
+        color: var(--color-danger);
+      }
+
+      .quiz-questions {
+        display: grid;
+        gap: 16px;
+      }
+
+      .quiz-question-card {
+        padding: 60px 20px 96px;
+        overflow: visible;
+      }
+      .quiz-question-card > .quiz-card-content {
+        position: static;
+      }
+
+
+      .quiz-question-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+        margin-bottom: 16px;
+      }
+
+      .quiz-question-number {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 9%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 18%, transparent);
+        font-weight: 950;
+      }
+
+      .quiz-question-text {
+        min-width: 0;
+        color: var(--quiz-text);
+        font-size: 1.02rem;
+        font-weight: 780;
+        line-height: 1.5;
+      }
+
+      .quiz-answers {
+        display: grid;
+        gap: 10px;
+        padding-bottom: 2px;
+      }
+
+      .quiz-answer-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .quiz-radio {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--quiz-accent);
+      }
+
+      .quiz-answer-card {
+        min-width: 0;
+        border-radius: 16px;
+        padding: 12px 14px;
+        color: var(--quiz-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface-strong) 74%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft) 86%, transparent)
+          );
+        border: 1px solid var(--quiz-border);
+        cursor: pointer;
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .quiz-answer-card:hover {
+        transform: translateY(-1px);
+        border-color: var(--quiz-border-strong);
+      }
+
+      .quiz-answer-card.selected {
+        border-color: var(--quiz-accent);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-accent) 13%, var(--quiz-surface-strong)),
+            color-mix(in srgb, var(--quiz-accent) 8%, var(--quiz-surface-soft))
+          );
+      }
+
+      .quiz-render {
+        color: inherit;
+      }
+
+      .quiz-render p {
+        margin: 0;
+      }
+
+      .quiz-render img {
+        border: 2px solid color-mix(in srgb, var(--quiz-accent) 34%, var(--quiz-border));
+        box-shadow: none;
+        transition:
+          border-color 170ms ease,
+          transform 170ms ease;
+      }
+
+      .quiz-render img:hover {
+        border-color: color-mix(in srgb, var(--quiz-accent) 62%, var(--quiz-border));
+        transform: translateY(-1px);
+      }
+
+      .quiz-actions {
+        display: flex;
+        justify-content: center;
+      }
+
+      .quiz-result-score {
+        display: grid;
+        gap: 8px;
+      }
+
+      .quiz-result-main {
+        color: var(--quiz-text);
+        font-size: 1.08rem;
+        font-weight: 850;
+      }
+
+      .quiz-result-main strong {
+        color: var(--quiz-accent);
+        font-weight: 950;
+      }
+
+      .quiz-result-success {
+        color: var(--color-success);
+        font-weight: 950;
+      }
+
+      .quiz-floating-alert,
+      .quiz-floating-timer {
+        position: fixed;
+        right: 24px;
+        top: 24px;
+        z-index: 140;
+        pointer-events: none;
+        border-radius: 16px;
+        background: var(--color-danger);
+        color: #ffffff;
+        box-shadow: var(--quiz-shadow);
+      }
+
+      .quiz-floating-timer {
+        padding: 10px 16px;
+        font-weight: 950;
+      }
+
+      .quiz-floating-alert {
+        width: min(520px, calc(100vw - 48px));
+        padding: 14px 16px;
+        font-size: 0.9rem;
+        font-weight: 850;
+        line-height: 1.35;
+      }
+
+      .quiz-preview-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 140;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        background: rgba(2, 8, 23, 0.72);
+        backdrop-filter: blur(8px);
+      }
+
+      .quiz-preview-modal {
+        position: relative;
+        max-width: 92vw;
+        max-height: 92vh;
+      }
+
+      .quiz-preview-close {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        z-index: 2;
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: #ffffff;
+        background: var(--color-danger);
+        border: 1px solid color-mix(in srgb, var(--color-danger) 65%, white);
+        box-shadow: none;
+        font-size: 1.35rem;
+        font-weight: 950;
+        line-height: 1;
+        transition:
+          transform 170ms ease,
+          opacity 170ms ease,
+          background 170ms ease;
+      }
+
+      .quiz-preview-close:hover {
+        transform: translateY(-1px);
+        opacity: 0.94;
+      }
+
+      .quiz-preview-image {
+        max-width: 100%;
+        max-height: 90vh;
+        border-radius: 18px;
+        border: 2px solid color-mix(in srgb, var(--quiz-accent) 34%, var(--quiz-border));
+        box-shadow: none;
+      }
+
+      .quiz-skeleton {
+        animation: quizPulse 1.35s ease-in-out infinite;
+      }
+
+      .quiz-skeleton-block {
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--quiz-border-strong) 30%, transparent);
+      }
+
+      @keyframes quizPulse {
+        0%, 100% {
+          opacity: 0.58;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .quiz-header,
+        .quiz-intro-card,
+        .quiz-result-card {
+          border-radius: 24px;
+          padding: 16px;
+        }
+
+        .quiz-question-card {
+          border-radius: 24px;
+          padding: 48px 16px 80px;
+        }
+
+        .quiz-intro-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .quiz-question-top {
+          grid-template-columns: 1fr;
+        }
+
+        .quiz-question-number {
+          left: 12px;
+          top: 12px;
+          margin: 0;
+        }
+
+        .quiz-answer-row {
+          grid-template-columns: 1fr;
+        }
+
+        .quiz-radio {
+          margin: 0 auto;
+        }
+
+        .quiz-primary-button,
+        .quiz-secondary-button,
+        .quiz-success-button {
+          width: 100%;
+        }
+      }
+    `}</style>
+  );
+
+  if (loading) {
+    return (
+      <LayoutGeneral rol={rol}>
+        {estilos}
+
+        <div className="quiz-page">
+          <section className="quiz-card quiz-header quiz-skeleton">
+            <div className="quiz-card-content">
+              <div
+                className="quiz-skeleton-block"
+                style={{
+                  width: "180px",
+                  height: "16px",
+                  margin: "0 auto 16px",
+                }}
+              />
+
+              <div
+                className="quiz-skeleton-block"
+                style={{
+                  width: "min(680px, 86%)",
+                  height: "44px",
+                  margin: "0 auto",
+                }}
+              />
+
+              <div
+                className="quiz-skeleton-block"
+                style={{
+                  width: "min(520px, 70%)",
+                  height: "18px",
+                  margin: "16px auto 0",
+                }}
+              />
+            </div>
+          </section>
+
+          <section className="quiz-card quiz-intro-card quiz-skeleton">
+            <div className="quiz-card-content quiz-intro-content">
+              <div
+                className="quiz-skeleton-block"
+                style={{
+                  width: "100%",
+                  height: "118px",
+                }}
+              />
+
+              <div
+                className="quiz-skeleton-block"
+                style={{
+                  width: "160px",
+                  height: "44px",
+                }}
+              />
+            </div>
+          </section>
+        </div>
+      </LayoutGeneral>
+    );
+  }
 
   return (
     <LayoutGeneral rol={rol}>
-      <div className="p-4 sm:p-6 rounded-xl shadow space-y-5 sm:space-y-6 min-w-0 overflow-hidden" style={cardStyle}>
-        <h1
-          className="text-xl sm:text-2xl font-bold break-words text-center min-h-11 flex items-center justify-center gap-2"
-          style={{ color: "var(--color-heading)" }}
-        >
-          <span aria-hidden="true">📝</span>
-          <span>{quizInfo?.titulo || "Resolver Quiz"}</span>
-        </h1>
+      {estilos}
 
-        {quizInfo?.descripcion && (
-          <p
-            className="text-center italic"
-            style={{ color: "var(--color-muted)" }}
-          >
-            {quizInfo.descripcion}
-          </p>
-        )}
+      <div className="quiz-page">
+        <section className="quiz-card quiz-header">
+          <div className="quiz-card-content">
+            <p className="quiz-eyebrow">
+              {esPreview ? "Previsualización" : "Quiz"}
+            </p>
 
-        {esPreview && (
-          <p
-            className="text-center"
-            style={{ color: "var(--color-secondary)" }}
-          >
-            👨‍🏫 Modo previsualización: las respuestas no se guardan ni otorgan XP.
-          </p>
-        )}
+            <h1 className="quiz-title">{quizInfo?.titulo || "Resolver Quiz"}</h1>
 
-        <p className="text-sm text-center" style={{ color: "var(--color-muted)" }}>
-          {verificandoIntentos && !esPreview
-            ? "Verificando intentos disponibles..."
-            : `Intentos realizados: ${intentosRealizados} / ${intentosMax}`}
-        </p>
+            {quizInfo?.descripcion && (
+              <p className="quiz-description">{quizInfo.descripcion}</p>
+            )}
+
+            {esPreview && (
+              <p className="quiz-preview-note">
+                Modo previsualización: las respuestas no se guardan ni otorgan
+                XP.
+              </p>
+            )}
+
+          </div>
+        </section>
 
         {estado === "intro" && (
-          <div
-            className="p-4 rounded-lg space-y-3 text-center flex flex-col items-center"
-            style={cardStyle}
-          >
-            <p style={{ color: "var(--color-text)" }}>
-              {quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0
-                ? `⏱ Tiempo límite: ${quizInfo.tiempo_limite_min} min`
-                : "⏱ Tiempo límite: sin límite"}
-            </p>
-            <p style={{ color: "var(--color-text)" }}>📝 Preguntas: {preguntas.length}</p>
-            <div className="flex flex-col items-center gap-3">
+          <section className="quiz-card quiz-intro-card no-diagonal">
+            <div className="quiz-card-content quiz-intro-content">
+              <div className="quiz-intro-grid">
+                <div className="quiz-stat-box">
+                  <span className="quiz-stat-label">Tiempo</span>
+                  <span className="quiz-stat-value">
+                    {tiempoTieneLimite
+                      ? `${quizInfo?.tiempo_limite_min} min`
+                      : "Sin límite"}
+                  </span>
+                </div>
+
+                <div className="quiz-stat-box">
+                  <span className="quiz-stat-label">Preguntas</span>
+                  <span className="quiz-stat-value">{preguntas.length}</span>
+                </div>
+
+                <div className="quiz-stat-box">
+                  <span className="quiz-stat-label">Intentos</span>
+                  <span className="quiz-stat-value">
+                    {intentosRealizados} / {intentosMax}
+                  </span>
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={iniciar}
                 disabled={verificandoIntentos || sinMasIntentos}
-                className="px-4 py-2 rounded text-white hover:opacity-90 disabled:opacity-60 w-full sm:w-auto"
-                style={{
-                  backgroundColor:
-                    verificandoIntentos || sinMasIntentos
-                      ? "var(--color-secondary)"
-                      : "var(--color-primary)",
-                  cursor:
-                    verificandoIntentos || sinMasIntentos
-                      ? "not-allowed"
-                      : "pointer",
-                }}
+                className="quiz-primary-button"
               >
                 {verificandoIntentos && !esPreview ? "Verificando..." : "Iniciar"}
               </button>
 
               {sinMasIntentos && (
-                <div className="text-sm space-y-1 text-center">
-                  <p style={{ color: "var(--color-danger)" }}>
-                    Ya no tienes intentos disponibles.
-                  </p>
-                  <p style={{ color: "var(--color-primary)" }}>
-                    🏆 Mejor puntaje obtenido:{" "}
-                    <span className="font-bold">{mejorPuntaje}%</span>
+                <div className="quiz-info-text">
+                  <p className="quiz-warning">Ya no tienes intentos disponibles.</p>
+                  <p>
+                    Mejor puntaje obtenido:{" "}
+                    <strong style={{ color: "var(--quiz-accent)" }}>
+                      {mejorPuntaje}%
+                    </strong>
                   </p>
                 </div>
               )}
             </div>
-          </div>
+          </section>
         )}
 
-        {estado === "en_curso" && timeLeftSec !== null && quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0 && (
-          <div
-            className="text-center text-lg font-semibold"
-            style={{ color: timeLeftSec <= 60 ? "var(--color-danger)" : "var(--color-heading)" }}
-          >
-            ⏳ {mmss(timeLeftSec)}
-          </div>
-        )}
+        {estado === "en_curso" &&
+          timeLeftSec !== null &&
+          tiempoTieneLimite && (
+            <section className="quiz-card quiz-timer-card no-diagonal">
+              <div className="quiz-card-content">
+                <p
+                  className={`quiz-timer-value ${
+                    timeLeftSec <= 60 ? "danger" : ""
+                  }`}
+                >
+                  {mmss(timeLeftSec)}
+                </p>
+              </div>
+            </section>
+          )}
 
         {(estado === "en_curso" || estado === "finalizado") && (
-          <div className="space-y-4">
+          <div className="quiz-questions">
             {preguntas.map((p, idx) => (
-              <div
+              <section
                 key={p.id}
-                className="px-3 pt-8 pb-14 sm:px-4 sm:pt-8 sm:pb-14 rounded-lg min-w-0 overflow-hidden"
-                style={cardStyle}
+                className="quiz-card quiz-question-card no-diagonal"
               >
-                <div
-                  className="font-semibold mb-3 flex gap-2 min-w-0 items-start"
-                  style={{ color: "var(--color-heading)" }}
-                >
-                  <span className="shrink-0 pt-1">{idx + 1}.</span>
+                <div className="quiz-card-content">
+                  <div className="quiz-question-top">
+                    <span className="quiz-question-number">{idx + 1}</span>
 
-                  <div
-                    className="quiz-render flex-1 max-w-none min-w-0 overflow-x-auto text-center [&_.katex-display]:overflow-x-auto [&_p]:my-0 [&_img]:max-w-full [&_img]:max-h-56 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
-                    style={{ color: "var(--color-text)" }}
-                    onClick={handleQuizContentClick}
-                    dangerouslySetInnerHTML={{ __html: renderQuizHTML(p.enunciado) }}
-                  />
-                </div>
+                    <div
+                      className="quiz-render quiz-question-text max-w-none overflow-x-auto text-center [&_.katex-display]:overflow-x-auto [&_img]:max-w-full [&_img]:max-h-56 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
+                      onClick={handleQuizContentClick}
+                      dangerouslySetInnerHTML={{
+                        __html: renderQuizHTML(p.enunciado),
+                      }}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  {(respuestas[p.id] || []).map((r) => {
-                    const disabled = estado === "finalizado";
-                    const selected = seleccionadas[p.id] === r.id;
+                  <div className="quiz-answers">
+                    {(respuestas[p.id] || []).map((r) => {
+                      const disabled = estado === "finalizado";
+                      const selected = seleccionadas[p.id] === r.id;
 
-                    return (
-                      <div key={r.id} className="flex items-center gap-3 min-w-0">
-                        <input
-                          type="radio"
-                          name={p.id}
-                          value={r.id}
-                          checked={selected}
-                          disabled={disabled}
-                          onChange={() => seleccionarRespuesta(p.id, r.id)}
-                          className="shrink-0"
-                        />
-
-                        <div
-                          className="quiz-render flex-1 max-w-none min-w-0 overflow-x-auto rounded-lg px-3 py-2 text-sm text-center [&_.katex-display]:overflow-x-auto [&_.katex-display]:text-center [&_p]:my-0 [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-44 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
+                      return (
+                        <label
+                          key={r.id}
+                          className="quiz-answer-row"
                           style={{
-                            backgroundColor: selected
-                              ? "color-mix(in srgb, var(--color-primary) 12%, var(--color-card))"
-                              : "var(--color-bg)",
-                            border: selected
-                              ? "1px solid var(--color-primary)"
-                              : "1px solid var(--color-border)",
-                            color: "var(--color-text)",
+                            cursor: disabled ? "default" : "pointer",
                           }}
-                          onClick={handleQuizContentClick}
-                          dangerouslySetInnerHTML={{ __html: renderQuizHTML(r.texto) }}
-                        />
-                      </div>
-                    );
-                  })}
+                        >
+                          <input
+                            type="radio"
+                            name={p.id}
+                            value={r.id}
+                            checked={selected}
+                            disabled={disabled}
+                            onChange={() => seleccionarRespuesta(p.id, r.id)}
+                            className="quiz-radio"
+                          />
+
+                          <div
+                            className={`quiz-render quiz-answer-card ${
+                              selected ? "selected" : ""
+                            } max-w-none overflow-x-auto text-sm text-center [&_.katex-display]:overflow-x-auto [&_.katex-display]:text-center [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-44 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer`}
+                            onClick={handleQuizContentClick}
+                            dangerouslySetInnerHTML={{
+                              __html: renderQuizHTML(r.texto),
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         )}
 
         {estado === "en_curso" && (
-          <div className="flex justify-center">
+          <div className="quiz-actions">
             <button
+              type="button"
               onClick={() => enviarQuiz(false)}
-              className="px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
-              style={{ backgroundColor: "var(--color-success)" }}
+              className="quiz-success-button"
             >
               Enviar respuestas
             </button>
@@ -948,101 +1537,83 @@ export default function ResolverQuizPage() {
         )}
 
         {resultado && (
-          <div
-            className="mt-4 p-3 sm:p-4 rounded-lg space-y-3 min-w-0 overflow-hidden text-center"
-            style={cardStyle}
-          >
-            <p style={{ color: "var(--color-text)" }}>
-              Respuestas correctas:{" "}
-              <span style={{ color: "var(--color-success)", fontWeight: "bold" }}>
-                {resultado.correctas}
-              </span>{" "}
-              de {resultado.total}
-            </p>
+          <section className="quiz-card quiz-result-card no-diagonal">
+            <div className="quiz-card-content quiz-result-content">
+              <div className="quiz-result-score">
+                <p className="quiz-result-main">
+                  Respuestas correctas:{" "}
+                  <span className="quiz-result-success">
+                    {resultado.correctas}
+                  </span>{" "}
+                  de {resultado.total}
+                </p>
 
-            <p style={{ color: "var(--color-text)" }}>
-              Puntaje final:{" "}
-              <span style={{ color: "var(--color-primary)", fontWeight: "bold" }}>
-                {resultado.total > 0
-                  ? Math.round((resultado.correctas / resultado.total) * 100)
-                  : 0}
-                %
-              </span>
-            </p>
+                <p className="quiz-result-main">
+                  Puntaje final:{" "}
+                  <strong>
+                    {resultado.total > 0
+                      ? Math.round((resultado.correctas / resultado.total) * 100)
+                      : 0}
+                    %
+                  </strong>
+                </p>
 
-            {!esPreview && (
-              <>
-                {sinMasIntentos || resultado.correctas === resultado.total ? (
-                  <div className="space-y-2">
-                    <p style={{ color: "var(--color-primary)" }}>
-                      XP ganado: <span className="font-bold">{xpGanado}</span>
-                    </p>
-                    <div className="flex justify-center">
-                      <button
-                        onClick={() => router.push(`/curso/${materiaId}`)}
-                        className="mt-3 px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
-                        style={{ backgroundColor: "var(--color-secondary)" }}
-                      >
-                        Regresar al curso
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ color: "var(--color-primary)" }}>
-                    Puedes volver a intentarlo para mejorar tu puntaje y XP.
-                  </p>
+                {!esPreview && (
+                  <>
+                    {sinMasIntentos || resultado.correctas === resultado.total ? (
+                      <p className="quiz-result-main">
+                        XP ganado: <strong>{xpGanado}</strong>
+                      </p>
+                    ) : (
+                      <p className="quiz-info-text">
+                        Puedes volver a intentarlo para mejorar tu puntaje y XP.
+                      </p>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-
-            {!esPreview && !sinMasIntentos && resultado.correctas < resultado.total && (
-              <div className="flex justify-center">
-                <button
-                  onClick={reiniciarQuiz}
-                  className="mt-3 px-4 py-2 rounded text-white hover:opacity-90 w-full sm:w-auto"
-                  style={{ backgroundColor: "var(--color-primary)" }}
-                >
-                  Reintentar quiz
-                </button>
               </div>
-            )}
-          </div>
+
+              {!esPreview &&
+                (sinMasIntentos || resultado.correctas === resultado.total) && (
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/curso/${materiaId}`)}
+                    className="quiz-secondary-button"
+                  >
+                    Regresar al curso
+                  </button>
+                )}
+
+              {!esPreview &&
+                !sinMasIntentos &&
+                resultado.correctas < resultado.total && (
+                  <button
+                    type="button"
+                    onClick={reiniciarQuiz}
+                    className="quiz-primary-button"
+                  >
+                    Reintentar quiz
+                  </button>
+                )}
+            </div>
+          </section>
         )}
       </div>
 
       {estado === "en_curso" &&
         timeLeftSec !== null &&
-        quizInfo?.tiempo_limite_min &&
-        quizInfo.tiempo_limite_min > 0 &&
+        tiempoTieneLimite &&
         timeLeftSec <= 60 &&
         createPortal(
-          <div
-            className="fixed z-[140] rounded-lg px-4 py-2 shadow-lg font-bold pointer-events-none"
-            style={{
-              top: "24px",
-              right: "24px",
-              backgroundColor: "var(--color-danger)",
-              color: "#fff",
-            }}
-          >
-            ⏳ {mmss(timeLeftSec)}
-          </div>,
+          <div className="quiz-floating-timer">{mmss(timeLeftSec)}</div>,
           document.body
         )}
 
       {mostrarAvisoTiempo &&
         createPortal(
-          <div
-            className="fixed z-[140] rounded-lg px-4 py-3 shadow-lg font-semibold pointer-events-none text-sm leading-snug"
-            style={{
-              top: "24px",
-              right: "24px",
-              width: "min(520px, calc(100vw - 48px))",
-              backgroundColor: "var(--color-danger)",
-              color: "#fff",
-            }}
-          >
-            ⏳ Se terminó el tiempo. Se enviaron automáticamente las respuestas que alcanzaste a seleccionar.
+          <div className="quiz-floating-alert">
+            Se terminó el tiempo. Se enviaron automáticamente las respuestas que
+            alcanzaste a seleccionar.
           </div>,
           document.body
         )}
@@ -1050,17 +1621,17 @@ export default function ResolverQuizPage() {
       {previewImage &&
         createPortal(
           <div
-            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[140] p-3"
+            className="quiz-preview-overlay"
             onClick={() => setPreviewImage(null)}
           >
             <div
-              className="relative max-w-[92vw] max-h-[92vh]"
+              className="quiz-preview-modal"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => setPreviewImage(null)}
-                className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg flex items-center justify-center"
+                className="quiz-preview-close"
                 aria-label="Cerrar imagen"
               >
                 ×
@@ -1068,7 +1639,7 @@ export default function ResolverQuizPage() {
 
               <img
                 src={previewImage}
-                className="max-w-full max-h-[90vh] rounded-lg"
+                className="quiz-preview-image"
                 alt="Vista ampliada"
               />
             </div>

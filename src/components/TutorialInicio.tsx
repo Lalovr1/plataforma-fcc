@@ -221,12 +221,14 @@ export default function TutorialInicio() {
       id: "avatar-explicacion",
       texto:
         "En esta sección podrás editar tu perfil y consultar tus desbloqueables conforme avances.",
-      selector: ".avatar-principal",
+      selector: ".dashboard-estudiante-shell .avatar-principal, .avatar-principal, [data-tutorial='avatar-principal']",
       pos: "right",
     },
     {
       id: "menu-lateral",
-      selector: esMobile ? ".boton-menu-mobile" : ".menu-lateral",
+      selector: esMobile
+        ? ".boton-menu-mobile, button[aria-label='Abrir menú'], button[aria-label='Abrir menu'], [data-tutorial='menu-mobile']"
+        : ".menu-lateral, nav.menu-lateral, aside .menu-lateral, [data-tutorial='menu-lateral']",
       texto: esMobile
         ? "Desde este botón puedes abrir el menú principal para navegar en las diferentes interfaces de FCC Academy."
         : "Está es la barra de navegación,  desde ella podrás navegar entre las diferentes interfaces de FCC Academy",
@@ -234,21 +236,21 @@ export default function TutorialInicio() {
     },
     {
       id: "cursos",
-      selector: ".bloque-cursos, .seccion-cursos",
+      selector: ".dashboard-estudiante-shell .bloque-cursos, .bloque-cursos, .seccion-cursos, [data-tutorial='cursos']",
       texto:
         "Aquí aparecerán tus cursos. Al entrar a alguno podrás revisar el contenido, estudiar los temas y resolver quizzes relacionados con cada tema.",
       pos: "top",
     },
     {
       id: "ranking",
-      selector: ".widget-ranking",
+      selector: ".dashboard-estudiante-shell .widget-ranking, .widget-ranking, [data-tutorial='ranking']",
       texto:
         "En el ranking podrás comparar tu avance con otros estudiantes. Mientras más experiencia y puntos consigas, mejor podrás posicionarte.",
       pos: "left",
     },
     {
       id: "xp",
-      selector: ".bloque-xp, .barra-xp",
+      selector: ".dashboard-estudiante-shell .barra-xp, .barra-xp, .bloque-xp, [data-tutorial='xp']",
       texto:
         "Esta barra muestra tu experiencia. Al resolver quizzes o desbloquear logros podrás llenarla, subir de nivel y desbloquear recompensas dentro de la plataforma.",
       pos: "top",
@@ -262,6 +264,27 @@ export default function TutorialInicio() {
 
   const limitar = (valor: number, minimo: number, maximo: number) => {
     return Math.min(Math.max(valor, minimo), maximo);
+  };
+
+  const obtenerElementoTutorial = (selector: string) => {
+    const elementos = Array.from(
+      document.querySelectorAll(selector)
+    ) as HTMLElement[];
+
+    return (
+      elementos.find((elemento) => {
+        const rect = elemento.getBoundingClientRect();
+        const style = window.getComputedStyle(elemento);
+
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          style.opacity !== "0"
+        );
+      }) || null
+    );
   };
 
   useEffect(() => {
@@ -290,12 +313,15 @@ export default function TutorialInicio() {
         return;
       }
 
-      const elemento = document.querySelector(paso.selector) as HTMLElement;
+      const elemento = obtenerElementoTutorial(paso.selector);
 
       if (!elemento) {
         setHighlightRect(null);
         setHighlightContent(null);
-        setMostrarTooltip(false);
+        setStepTooltip(step);
+        setMostrarTooltip(true);
+        setTooltipVisibleMovil(true);
+        setResaltadoVisibleMovil(true);
         return;
       }
 
@@ -339,14 +365,33 @@ export default function TutorialInicio() {
 
     actualizarResaltado();
 
-    window.addEventListener("resize", actualizarResaltado);
+    let rafId = 0;
+
+    const recalcularLigero = () => {
+      if (!paso.selector) return;
+
+      cancelAnimationFrame(rafId);
+
+      rafId = requestAnimationFrame(() => {
+        const elemento = obtenerElementoTutorial(paso.selector);
+
+        if (!elemento) return;
+
+        calcularResaltado(elemento);
+      });
+    };
+
+    window.addEventListener("resize", recalcularLigero);
+    window.addEventListener("scroll", recalcularLigero, true);
 
     return () => {
       clearTimeout(timeoutOcultar);
       clearTimeout(timeoutScroll);
       clearTimeout(timeoutResaltar);
       clearTimeout(timeoutTooltip);
-      window.removeEventListener("resize", actualizarResaltado);
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", recalcularLigero);
+      window.removeEventListener("scroll", recalcularLigero, true);
     };
   }, [visible, step, esMobile, paso.selector]);
 

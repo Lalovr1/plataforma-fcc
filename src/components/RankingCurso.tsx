@@ -208,7 +208,11 @@ export default function RankingCurso({
     });
 
     const userIds = Array.from(
-      new Set(((progresoRows as any[]) ?? []).map((r) => r.usuario_id).filter(Boolean))
+      new Set(
+        ((progresoRows as any[]) ?? [])
+          .map((r) => r.usuario_id)
+          .filter(Boolean)
+      )
     );
 
     const quizIds = quizzesData.map((q) => q.id);
@@ -389,258 +393,683 @@ export default function RankingCurso({
     return ranking.filter((r: any) => r.matricula === filtroMatricula);
   }, [ranking, filtroMatricula]);
 
+  const quizSeleccionado = useMemo(() => {
+    if (!quizSel) return null;
+    return quizzes.find((q) => q.id === quizSel) ?? null;
+  }, [quizSel, quizzes]);
+
+  const estilos = (
+    <style>{`
+      .ranking-detalle {
+        --ranking-detalle-accent: var(--fcc-premium-accent);
+        --ranking-detalle-cyan: var(--fcc-premium-cyan);
+        --ranking-detalle-surface: var(--fcc-premium-surface);
+        --ranking-detalle-surface-soft: var(--fcc-premium-surface-soft);
+        --ranking-detalle-surface-strong: var(--fcc-premium-surface-strong);
+        --ranking-detalle-text: var(--fcc-premium-text);
+        --ranking-detalle-text-soft: var(--fcc-premium-text-soft);
+        --ranking-detalle-muted: var(--fcc-premium-muted);
+        --ranking-detalle-border: var(--fcc-premium-border);
+        --ranking-detalle-border-strong: var(--fcc-premium-border-strong);
+        --ranking-detalle-shadow-soft: var(--fcc-premium-shadow-soft);
+        --ranking-detalle-button: var(--fcc-premium-button);
+
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .ranking-detalle-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--ranking-detalle-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--ranking-detalle-surface) 96%, transparent),
+            color-mix(in srgb, var(--ranking-detalle-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--ranking-detalle-accent) 14%, var(--ranking-detalle-border));
+        box-shadow:
+          var(--ranking-detalle-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--ranking-detalle-surface-strong) 65%, transparent);
+      }
+
+      .ranking-detalle-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--ranking-detalle-accent) 6%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 24%,
+            color-mix(in srgb, var(--ranking-detalle-accent) 4%, transparent) 24% 24.35%,
+            transparent 24.35% 100%
+          );
+        opacity: 0.62;
+      }
+
+      .ranking-detalle-card.no-line::before,
+      .ranking-detalle-row::before {
+        content: none;
+      }
+
+      .ranking-detalle-card-content {
+        position: relative;
+        z-index: 2;
+        min-width: 0;
+      }
+
+      .ranking-detalle-filters {
+        padding: 18px;
+      }
+
+      .ranking-detalle-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        align-items: end;
+      }
+
+      .ranking-detalle-field {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .ranking-detalle-label {
+        color: var(--ranking-detalle-text-soft);
+        font-size: 0.76rem;
+        font-weight: 950;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .ranking-detalle-select {
+        min-height: 44px;
+        width: 100%;
+        border-radius: 14px;
+        padding: 0 13px;
+        color: var(--ranking-detalle-text);
+        background: color-mix(in srgb, var(--ranking-detalle-surface-strong) 74%, transparent);
+        border: 1px solid var(--ranking-detalle-border);
+        outline: none;
+        font-size: 0.9rem;
+        font-weight: 750;
+        transition:
+          border-color 170ms ease,
+          background 170ms ease,
+          opacity 170ms ease;
+      }
+
+      .ranking-detalle-select:focus {
+        border-color: color-mix(in srgb, var(--ranking-detalle-accent) 56%, var(--ranking-detalle-border));
+        background: color-mix(in srgb, var(--ranking-detalle-surface-strong) 90%, transparent);
+      }
+
+      .ranking-detalle-select:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+
+      .ranking-detalle-list-card {
+        padding: 20px;
+      }
+
+      .ranking-detalle-list-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 16px;
+      }
+
+      .ranking-detalle-title-block {
+        min-width: 0;
+      }
+
+      .ranking-detalle-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ranking-detalle-accent);
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+
+      .ranking-detalle-eyebrow::before {
+        content: "";
+        width: 28px;
+        height: 1px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--ranking-detalle-accent) 58%, transparent);
+      }
+
+      .ranking-detalle-title {
+        color: var(--ranking-detalle-text);
+        font-size: clamp(1.18rem, 2.2vw, 1.6rem);
+        font-weight: 950;
+        line-height: 1.06;
+        letter-spacing: -0.04em;
+      }
+
+      .ranking-detalle-count {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 0 12px;
+        color: var(--ranking-detalle-accent);
+        background: color-mix(in srgb, var(--ranking-detalle-accent) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--ranking-detalle-accent) 20%, var(--ranking-detalle-border));
+        font-size: 0.82rem;
+        font-weight: 950;
+        white-space: nowrap;
+      }
+
+      .ranking-detalle-empty {
+        border-radius: 18px;
+        padding: 16px;
+        color: var(--ranking-detalle-muted);
+        background: color-mix(in srgb, var(--ranking-detalle-surface-strong) 58%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--ranking-detalle-accent) 20%, var(--ranking-detalle-border));
+        font-size: 0.92rem;
+        font-weight: 750;
+      }
+
+      .ranking-detalle-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .ranking-detalle-row {
+        --row-accent: var(--ranking-detalle-accent);
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+        border-radius: 20px;
+        padding: 13px 14px;
+        color: var(--ranking-detalle-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--ranking-detalle-surface-strong) 72%, transparent),
+            color-mix(in srgb, var(--ranking-detalle-surface-soft) 88%, transparent)
+          );
+        border: 1px solid var(--ranking-detalle-border);
+      }
+
+      .ranking-detalle-row.top-1 {
+        --row-accent: #f59e0b;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, #f59e0b 14%, var(--ranking-detalle-surface-strong)),
+            color-mix(in srgb, var(--ranking-detalle-surface-soft) 90%, transparent)
+          );
+        border-color: color-mix(in srgb, #f59e0b 38%, var(--ranking-detalle-border));
+      }
+
+      .ranking-detalle-row.top-2 {
+        --row-accent: #94a3b8;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, #94a3b8 16%, var(--ranking-detalle-surface-strong)),
+            color-mix(in srgb, var(--ranking-detalle-surface-soft) 90%, transparent)
+          );
+        border-color: color-mix(in srgb, #94a3b8 40%, var(--ranking-detalle-border));
+      }
+
+      .ranking-detalle-row.top-3 {
+        --row-accent: #c08457;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, #c08457 14%, var(--ranking-detalle-surface-strong)),
+            color-mix(in srgb, var(--ranking-detalle-surface-soft) 90%, transparent)
+          );
+        border-color: color-mix(in srgb, #c08457 38%, var(--ranking-detalle-border));
+      }
+
+      .ranking-detalle-user {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .ranking-detalle-rank {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        color: var(--row-accent);
+        background: color-mix(in srgb, var(--row-accent) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--row-accent) 30%, var(--ranking-detalle-border));
+        font-size: 0.95rem;
+        font-weight: 950;
+        white-space: nowrap;
+      }
+
+      .ranking-detalle-rank.top {
+        width: 46px;
+        height: 46px;
+        font-size: 1.05rem;
+      }
+
+      .ranking-detalle-avatar-stage {
+        --ranking-avatar-core: color-mix(in srgb, var(--ranking-detalle-cyan) 18%, transparent);
+        --ranking-avatar-a: color-mix(in srgb, var(--ranking-detalle-accent) 34%, transparent);
+        --ranking-avatar-b: color-mix(in srgb, var(--ranking-detalle-cyan) 28%, transparent);
+        --ranking-avatar-c: color-mix(in srgb, var(--ranking-detalle-accent) 26%, transparent);
+        --ranking-avatar-border: color-mix(in srgb, var(--ranking-detalle-accent) 28%, transparent);
+        --ranking-avatar-shadow-a: color-mix(in srgb, var(--ranking-detalle-accent) 4%, transparent);
+        --ranking-avatar-shadow-b: color-mix(in srgb, var(--ranking-detalle-accent) 18%, transparent);
+        --ranking-orbit-a: color-mix(in srgb, var(--ranking-detalle-accent) 20%, transparent);
+        --ranking-orbit-b: color-mix(in srgb, var(--ranking-detalle-cyan) 22%, transparent);
+
+        position: relative;
+        z-index: 1;
+        width: 56px;
+        height: 56px;
+        display: grid;
+        place-items: center;
+        isolation: isolate;
+        flex: 0 0 auto;
+      }
+
+      .ranking-detalle-avatar-stage.large {
+        width: 66px;
+        height: 66px;
+      }
+
+      .ranking-detalle-avatar-stage::before {
+        content: "";
+        position: absolute;
+        z-index: -3;
+        width: 82%;
+        height: 82%;
+        border-radius: 999px;
+        background:
+          radial-gradient(
+            circle,
+            var(--ranking-avatar-core),
+            transparent 62%
+          ),
+          conic-gradient(
+            from 210deg,
+            transparent 0deg,
+            var(--ranking-avatar-a) 42deg,
+            transparent 84deg,
+            var(--ranking-avatar-b) 145deg,
+            transparent 210deg,
+            var(--ranking-avatar-c) 285deg,
+            transparent 360deg
+          );
+        filter: blur(0.2px);
+        opacity: 0.95;
+      }
+
+      .ranking-detalle-avatar-stage::after {
+        content: "";
+        position: absolute;
+        z-index: -2;
+        width: 70%;
+        height: 70%;
+        border-radius: 999px;
+        border: 1px solid var(--ranking-avatar-border);
+        box-shadow:
+          0 0 0 10px var(--ranking-avatar-shadow-a),
+          0 0 32px var(--ranking-avatar-shadow-b);
+      }
+
+      .ranking-detalle-avatar-orbit {
+        position: absolute;
+        inset: 17%;
+        z-index: -1;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            100deg,
+            transparent 0 21%,
+            var(--ranking-orbit-a) 22% 30%,
+            transparent 31% 100%
+          ),
+          linear-gradient(
+            168deg,
+            transparent 0 58%,
+            var(--ranking-orbit-b) 59% 66%,
+            transparent 67% 100%
+          );
+        opacity: 0.95;
+        transform: rotate(-18deg);
+      }
+
+      .ranking-detalle-name-block {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .ranking-detalle-name {
+        color: var(--ranking-detalle-text);
+        font-size: 1rem;
+        font-weight: 950;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+
+      .ranking-detalle-row.top-1 .ranking-detalle-name,
+      .ranking-detalle-row.top-2 .ranking-detalle-name,
+      .ranking-detalle-row.top-3 .ranking-detalle-name {
+        font-size: 1.08rem;
+      }
+
+      .ranking-detalle-subtext {
+        color: var(--ranking-detalle-muted);
+        font-size: 0.78rem;
+        font-weight: 750;
+      }
+
+      .ranking-detalle-points {
+        display: grid;
+        justify-items: end;
+        gap: 2px;
+        color: var(--ranking-detalle-accent);
+        font-size: 1.02rem;
+        font-weight: 950;
+        white-space: nowrap;
+      }
+
+      .ranking-detalle-points-label {
+        color: var(--ranking-detalle-muted);
+        font-size: 0.7rem;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .ranking-detalle-skeleton {
+        animation: rankingDetallePulse 1.35s ease-in-out infinite;
+      }
+
+      .ranking-detalle-skeleton-row {
+        height: 72px;
+        border-radius: 20px;
+        background: color-mix(in srgb, var(--ranking-detalle-border-strong) 24%, transparent);
+      }
+
+      @keyframes rankingDetallePulse {
+        0%, 100% {
+          opacity: 0.58;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .ranking-detalle-filter-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .ranking-detalle-filters,
+        .ranking-detalle-list-card {
+          border-radius: 24px;
+          padding: 16px;
+        }
+
+        .ranking-detalle-filter-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .ranking-detalle-list-header {
+          flex-direction: column;
+        }
+
+        .ranking-detalle-row {
+          grid-template-columns: 1fr;
+          align-items: stretch;
+        }
+
+        .ranking-detalle-user {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .ranking-detalle-rank {
+          grid-row: span 2;
+        }
+
+        .ranking-detalle-avatar-stage {
+          width: 52px;
+          height: 52px;
+        }
+
+        .ranking-detalle-avatar-stage.large {
+          width: 58px;
+          height: 58px;
+        }
+
+        .ranking-detalle-points {
+          justify-items: start;
+          padding-left: 54px;
+        }
+      }
+    `}</style>
+  );
+
   return (
-    <div className="space-y-6">
-      <div
-        className="p-4 rounded-xl shadow flex flex-col md:flex-row gap-3 md:items-end"
-        style={{
-          backgroundColor: "var(--color-card)",
-          border: "1px solid var(--color-border)",
-        }}
-      >
-        <div className="flex-1">
-          <label
-            className="block text-sm mb-1"
-            style={{ color: "var(--color-heading)" }}
-          >
-            Carrera
-          </label>
+    <div className="ranking-detalle">
+      {estilos}
 
-          <select
-            value={carreraSel || ""}
-            onChange={(e) => {
-              setCarreraSel(e.target.value ? Number(e.target.value) : null);
-              setPeriodoSel(null);
-              setSeccionSel(null);
-            }}
-            className="w-full p-2 rounded"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <option value="">Todas</option>
-            <option value={1}>Licenciatura en Ciencias de la Computación</option>
-            <option value={2}>Ingeniería en Ciencias de la Computación</option>
-            <option value={3}>Ingeniería en Ciencia de Datos</option>
-            <option value={4}>Ingeniería en Ciberseguridad</option>
-            <option value={5}>Ingeniería en Tecnologías de la Información</option>
-          </select>
-        </div>
+      <section className="ranking-detalle-card ranking-detalle-filters no-line">
+        <div className="ranking-detalle-card-content ranking-detalle-filter-grid">
+          <div className="ranking-detalle-field">
+            <label className="ranking-detalle-label">Carrera</label>
 
-        <div className="flex-1">
-          <label
-            className="block text-sm mb-1"
-            style={{ color: "var(--color-heading)" }}
-          >
-            Período
-          </label>
+            <select
+              value={carreraSel || ""}
+              onChange={(e) => {
+                setCarreraSel(e.target.value ? Number(e.target.value) : null);
+                setPeriodoSel(null);
+                setSeccionSel(null);
+              }}
+              className="ranking-detalle-select"
+            >
+              <option value="">Todas</option>
+              <option value={1}>Licenciatura en Ciencias de la Computación</option>
+              <option value={2}>Ingeniería en Ciencias de la Computación</option>
+              <option value={3}>Ingeniería en Ciencia de Datos</option>
+              <option value={4}>Ingeniería en Ciberseguridad</option>
+              <option value={5}>Ingeniería en Tecnologías de la Información</option>
+            </select>
+          </div>
 
-          <select
-            value={periodoSel || ""}
-            onChange={(e) => {
-              const val = e.target.value || null;
-              setPeriodoSel(val);
-              setSeccionSel(null);
-            }}
-            disabled={!carreraSel}
-            className="w-full p-2 rounded"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <option value="">Todos</option>
-            {periodosFiltrados.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.etiqueta}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="ranking-detalle-field">
+            <label className="ranking-detalle-label">Período</label>
 
-        <div className="flex-1">
-          <label
-            className="block text-sm mb-1"
-            style={{ color: "var(--color-heading)" }}
-          >
-            Sección
-          </label>
-
-          <select
-            value={seccionSel || ""}
-            onChange={(e) => setSeccionSel(e.target.value || null)}
-            className="w-full p-2 rounded"
-            disabled={!periodoSel}
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <option value="">Todas</option>
-            {seccionesFiltradas.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-1">
-          <label
-            className="block text-sm mb-1"
-            style={{ color: "var(--color-heading)" }}
-          >
-            Quiz
-          </label>
-
-          <select
-            value={quizSel}
-            onChange={(e) => setQuizSel(e.target.value)}
-            className="w-full p-2 rounded"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <option value="">Todos</option>
-            {quizzes.length === 0 ? (
-              <option disabled>Sin quizzes</option>
-            ) : (
-              quizzes.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.titulo}
+            <select
+              value={periodoSel || ""}
+              onChange={(e) => {
+                const val = e.target.value || null;
+                setPeriodoSel(val);
+                setSeccionSel(null);
+              }}
+              disabled={!carreraSel}
+              className="ranking-detalle-select"
+            >
+              <option value="">Todos</option>
+              {periodosFiltrados.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.etiqueta}
                 </option>
-              ))
-            )}
-          </select>
+              ))}
+            </select>
+          </div>
+
+          <div className="ranking-detalle-field">
+            <label className="ranking-detalle-label">Sección</label>
+
+            <select
+              value={seccionSel || ""}
+              onChange={(e) => setSeccionSel(e.target.value || null)}
+              className="ranking-detalle-select"
+              disabled={!periodoSel}
+            >
+              <option value="">Todas</option>
+              {seccionesFiltradas.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ranking-detalle-field">
+            <label className="ranking-detalle-label">Quiz</label>
+
+            <select
+              value={quizSel}
+              onChange={(e) => setQuizSel(e.target.value)}
+              className="ranking-detalle-select"
+            >
+              <option value="">Todos</option>
+              {quizzes.length === 0 ? (
+                <option disabled>Sin quizzes</option>
+              ) : (
+                quizzes.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.titulo}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div
-        className="p-6 rounded-xl shadow space-y-4"
-        style={{
-          backgroundColor: "var(--color-card)",
-          border: "1px solid var(--color-border)",
-        }}
-      >
-        <h2
-          className="text-xl font-bold"
-          style={{ color: "var(--color-heading)" }}
-        >
-          📝{" "}
-          {quizSel === ""
-            ? "Puntos acumulados (todos los quizzes)"
-            : "Desempeño por quiz"}
-        </h2>
+      <section className="ranking-detalle-card ranking-detalle-list-card">
+        <div className="ranking-detalle-card-content">
+          <div className="ranking-detalle-list-header">
+            <div className="ranking-detalle-title-block">
+              <p className="ranking-detalle-eyebrow">
+                {quizSel === "" ? "General" : "Quiz"}
+              </p>
 
-        {cargando ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((item) => (
-              <div
-                key={item}
-                className="h-16 rounded-lg animate-pulse"
-                style={{ backgroundColor: "var(--color-bg)" }}
-              />
-            ))}
+              <h2 className="ranking-detalle-title">
+                {quizSel === ""
+                  ? "Puntos acumulados"
+                  : quizSeleccionado?.titulo || "Quiz seleccionado"}
+              </h2>
+            </div>
+
+            <span className="ranking-detalle-count">
+              {rankingFiltrado.length} estudiantes
+            </span>
           </div>
-        ) : ranking.length === 0 ? (
-          <p style={{ color: "var(--color-muted)" }}>
-            No hay datos para estos filtros.
-          </p>
-        ) : rankingFiltrado.length === 0 && filtroMatricula ? (
-          <p style={{ color: "var(--color-muted)" }}>
-            No se encontró ningún alumno con la matrícula{" "}
-            <b>{filtroMatricula}</b>.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {rankingFiltrado.map((user: any, index: number) => (
-              <div
-                key={user.usuario_id}
-                className="flex items-center justify-between rounded-lg p-3 gap-3 min-w-0"
-                style={{
-                  backgroundColor:
-                    index === 0
-                      ? "rgba(234,179,8,0.2)"
-                      : index === 1
-                      ? "rgba(148,163,184,0.2)"
-                      : index === 2
-                      ? "rgba(251,146,60,0.2)"
-                      : "var(--color-bg)",
-                }}
-              >
-                <div className="flex items-center gap-4 min-w-0">
-                  <span
-                    className="font-bold shrink-0"
-                    style={{
-                      fontSize: index < 3 ? "1.25rem" : "1rem",
-                      color: "var(--color-heading)",
-                    }}
+
+          {cargando ? (
+            <div className="ranking-detalle-list ranking-detalle-skeleton">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="ranking-detalle-skeleton-row" />
+              ))}
+            </div>
+          ) : ranking.length === 0 ? (
+            <p className="ranking-detalle-empty">
+              No hay datos para estos filtros.
+            </p>
+          ) : rankingFiltrado.length === 0 && filtroMatricula ? (
+            <p className="ranking-detalle-empty">
+              No se encontró ningún alumno con la matrícula{" "}
+              <b>{filtroMatricula}</b>.
+            </p>
+          ) : (
+            <div className="ranking-detalle-list">
+              {rankingFiltrado.map((user: any, index: number) => {
+                const posicion = index + 1;
+                const esTop = index < 3;
+                const puntos = quizSel === "" ? user.total : user.best;
+
+                return (
+                  <div
+                    key={user.usuario_id}
+                    className={`ranking-detalle-row ${
+                      index === 0
+                        ? "top-1"
+                        : index === 1
+                          ? "top-2"
+                          : index === 2
+                            ? "top-3"
+                            : ""
+                    }`}
                   >
-                    {index === 0
-                      ? "🥇"
-                      : index === 1
-                      ? "🥈"
-                      : index === 2
-                      ? "🥉"
-                      : `#${index + 1}`}
-                  </span>
-
-                  <div className="shrink-0">
-                    <RenderizadorAvatar
-                      config={user.avatar_config}
-                      size={index < 3 ? 48 : 32}
-                    />
-                  </div>
-
-                  <div className="flex flex-col min-w-0">
-                    <span
-                      className="font-semibold break-words"
-                      style={{
-                        color: "var(--color-heading)",
-                        fontSize: index < 3 ? "1.125rem" : "1rem",
-                      }}
-                    >
-                      {user.nombre}
-                    </span>
-
-                    {quizSel !== "" && (
+                    <div className="ranking-detalle-user">
                       <span
-                        className="text-xs"
-                        style={{ color: "var(--color-muted)" }}
+                        className={`ranking-detalle-rank ${
+                          esTop ? "top" : ""
+                        }`}
                       >
-                        {user.tries}{" "}
-                        {user.tries === 1 ? "intento" : "intentos"}
+                        {posicion}°
                       </span>
-                    )}
-                  </div>
-                </div>
 
-                {quizSel === "" ? (
-                  <span
-                    className="font-bold whitespace-nowrap shrink-0"
-                    style={{ color: "var(--color-primary)" }}
-                  >
-                    {user.total} pts
-                  </span>
-                ) : (
-                  <span
-                    className="font-bold whitespace-nowrap shrink-0"
-                    style={{ color: "var(--color-primary)" }}
-                  >
-                    {user.best} pts
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      <div
+                        className={`ranking-detalle-avatar-stage ${
+                          esTop ? "large" : ""
+                        }`}
+                      >
+                        <span className="ranking-detalle-avatar-orbit" />
+                        <RenderizadorAvatar
+                          config={user.avatar_config}
+                          size={esTop ? 48 : 36}
+                        />
+                      </div>
+
+                      <div className="ranking-detalle-name-block">
+                        <span className="ranking-detalle-name">
+                          {user.nombre}
+                        </span>
+
+                        {quizSel !== "" && (
+                          <span className="ranking-detalle-subtext">
+                            {user.tries}{" "}
+                            {user.tries === 1 ? "intento" : "intentos"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <span className="ranking-detalle-points">
+                      <span>{puntos} pts</span>
+                      <span className="ranking-detalle-points-label">
+                        {quizSel === "" ? "total" : "mejor"}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

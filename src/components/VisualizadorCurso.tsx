@@ -724,21 +724,371 @@ export default function VisualizadorCurso({
     fetchData();
   }, [materiaId, userId, rol]);
 
+  const estilos = (
+    <style>{`
+      .visualizador-curso-shell {
+        --curso-accent: var(--fcc-premium-accent);
+        --curso-accent-hover: var(--fcc-premium-accent-hover);
+        --curso-cyan: var(--fcc-premium-cyan);
+        --curso-surface: var(--fcc-premium-surface);
+        --curso-surface-soft: var(--fcc-premium-surface-soft);
+        --curso-surface-strong: var(--fcc-premium-surface-strong);
+        --curso-border: var(--fcc-premium-border);
+        --curso-border-strong: var(--fcc-premium-border-strong);
+        --curso-text: var(--fcc-premium-text);
+        --curso-muted: var(--fcc-premium-muted);
+        --curso-grid: var(--fcc-premium-grid);
+        --curso-line: var(--fcc-premium-line);
+
+        --curso-avatar-core: color-mix(in srgb, var(--curso-cyan) 18%, transparent);
+        --curso-avatar-a: color-mix(in srgb, var(--curso-accent) 34%, transparent);
+        --curso-avatar-b: color-mix(in srgb, var(--curso-cyan) 28%, transparent);
+        --curso-avatar-c: color-mix(in srgb, var(--curso-accent) 26%, transparent);
+        --curso-avatar-border: color-mix(in srgb, var(--curso-accent) 28%, transparent);
+        --curso-avatar-shadow-a: color-mix(in srgb, var(--curso-accent) 4%, transparent);
+        --curso-avatar-shadow-b: color-mix(in srgb, var(--curso-accent) 18%, transparent);
+        --curso-avatar-orbit-a: color-mix(in srgb, var(--curso-accent) 20%, transparent);
+        --curso-avatar-orbit-b: color-mix(in srgb, var(--curso-cyan) 22%, transparent);
+        color: var(--curso-text);
+      }
+
+      .curso-premium-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        background:
+          radial-gradient(
+            circle at 12% 10%,
+            color-mix(in srgb, var(--curso-cyan) 9%, transparent),
+            transparent 30%
+          ),
+          linear-gradient(
+            135deg,
+            var(--curso-surface),
+            var(--curso-surface-soft)
+          );
+        border: 1px solid var(--curso-border);
+        box-shadow:
+          var(--fcc-premium-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 70%, transparent);
+        color: var(--curso-text);
+      }
+
+      .theme-oscuro .curso-premium-card {
+        box-shadow:
+          var(--fcc-premium-shadow-soft),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+
+      .curso-premium-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(var(--curso-grid) 1px, transparent 1px),
+          linear-gradient(90deg, var(--curso-grid) 1px, transparent 1px),
+          linear-gradient(
+            135deg,
+            transparent 0 22%,
+            var(--curso-line) 22.2% 22.55%,
+            transparent 22.75% 100%
+          );
+        background-size: 28px 28px, 28px 28px, auto;
+        mask-image: radial-gradient(circle at 80% 14%, black, transparent 70%);
+        opacity: 0.62;
+      }
+
+      .curso-content-card::before {
+        background:
+          linear-gradient(var(--curso-grid) 1px, transparent 1px),
+          linear-gradient(90deg, var(--curso-grid) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: radial-gradient(circle at 50% 14%, black, transparent 76%);
+        opacity: 0.34;
+      }
+
+      .curso-card-content,
+      .curso-premium-card > * {
+        position: relative;
+        z-index: 2;
+      }
+
+      .curso-hero-card {
+        min-height: 190px;
+        background:
+          linear-gradient(
+            135deg,
+            var(--curso-surface),
+            var(--curso-surface-soft)
+          );
+      }
+
+      .curso-hero-card::before {
+        background: radial-gradient(
+          circle at -8% 50%,
+          color-mix(in srgb, var(--curso-cyan) 8%, transparent),
+          transparent 34%
+        );
+        background-size: auto;
+        mask-image: none;
+        opacity: 0.42;
+      }
+
+      .curso-hero-title {
+        color: var(--curso-text);
+        font-weight: 950;
+        letter-spacing: -0.05em;
+        line-height: 1;
+      }
+
+      .curso-kicker {
+        color: var(--curso-accent);
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .curso-muted {
+        color: var(--curso-muted);
+      }
+
+      .curso-profesor-avatar-stage {
+        position: relative;
+        width: 116px;
+        height: 116px;
+        display: grid;
+        place-items: center;
+        overflow: visible;
+        isolation: isolate;
+      }
+
+      .curso-profesor-avatar-stage::before {
+        content: "";
+        position: absolute;
+        width: 82%;
+        height: 82%;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle, var(--curso-avatar-core), transparent 62%),
+          conic-gradient(
+            from 210deg,
+            transparent 0deg,
+            var(--curso-avatar-a) 42deg,
+            transparent 84deg,
+            var(--curso-avatar-b) 145deg,
+            transparent 210deg,
+            var(--curso-avatar-c) 285deg,
+            transparent 360deg
+          );
+        filter: blur(0.2px);
+        opacity: 0.95;
+        z-index: -3;
+      }
+
+      .curso-profesor-avatar-stage::after {
+        content: "";
+        position: absolute;
+        width: 70%;
+        height: 70%;
+        border-radius: 999px;
+        border: 1px solid var(--curso-avatar-border);
+        box-shadow:
+          0 0 0 7px var(--curso-avatar-shadow-a),
+          0 0 24px var(--curso-avatar-shadow-b);
+        z-index: -2;
+      }
+
+      .curso-profesor-avatar-orbit {
+        position: absolute;
+        inset: 17%;
+        z-index: -1;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            90deg,
+            transparent 0 12%,
+            var(--curso-avatar-orbit-a) 12% 18%,
+            transparent 18% 100%
+          ),
+          linear-gradient(
+            180deg,
+            transparent 0 60%,
+            var(--curso-avatar-orbit-b) 60% 64%,
+            transparent 64% 100%
+          );
+        transform: rotate(-18deg);
+        opacity: 0.95;
+      }
+
+      .curso-ranking-item,
+      .curso-quiz-card,
+      .curso-document-card {
+        border: 1px solid var(--curso-border);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--curso-surface-strong) 84%, transparent),
+            color-mix(in srgb, var(--curso-surface-soft) 92%, transparent)
+          );
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 66%, transparent);
+      }
+
+      .curso-formula-face {
+        border: 1px solid var(--curso-border);
+        background: var(--curso-surface);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 60%, transparent);
+      }
+
+      .curso-ranking-position {
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        color: var(--curso-accent);
+        background: color-mix(in srgb, var(--curso-accent) 10%, transparent);
+        border: 1px solid color-mix(in srgb, var(--curso-accent) 24%, transparent);
+        font-size: 0.78rem;
+        font-weight: 950;
+      }
+
+      .curso-unit-button,
+      .curso-block-button {
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--curso-surface-strong) 90%, transparent),
+            color-mix(in srgb, var(--curso-surface-soft) 96%, transparent)
+          );
+        border: 1px solid var(--curso-border);
+        color: var(--curso-text);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 70%, transparent);
+      }
+
+      .curso-unit-button.is-active,
+      .curso-block-button.is-active {
+        border-color: var(--curso-accent);
+        box-shadow:
+          0 0 0 3px color-mix(in srgb, var(--curso-accent) 12%, transparent),
+          inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 74%, transparent);
+      }
+
+      .curso-unit-button:hover,
+      .curso-block-button:hover {
+        transform: translateY(-1px);
+        border-color: var(--curso-border-strong);
+      }
+
+      .curso-action-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        border-radius: 13px;
+        padding: 0 14px;
+        color: white;
+        font-weight: 900;
+        background: var(--fcc-premium-button);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      }
+
+      .theme-oscuro .curso-action-button {
+        color: #050505;
+      }
+
+      .curso-action-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .curso-secondary-button {
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--curso-muted) 52%, transparent),
+            color-mix(in srgb, var(--curso-accent) 42%, var(--curso-muted))
+          );
+      }
+
+      .curso-formula-card {
+        perspective: 1000px;
+      }
+
+      .curso-formula-card:hover {
+        transform: translateY(-2px);
+      }
+
+      .curso-preview-overlay {
+        background:
+          radial-gradient(
+            circle at 18% 16%,
+            color-mix(in srgb, var(--fcc-premium-accent) 16%, transparent),
+            transparent 34%
+          ),
+          rgba(0, 0, 0, 0.82);
+        backdrop-filter: blur(8px);
+      }
+
+      .curso-preview-close {
+        color: var(--curso-text);
+        background: var(--curso-surface-strong);
+        border: 1px solid var(--curso-border);
+        box-shadow: var(--fcc-premium-shadow-soft);
+      }
+
+      @media (max-width: 640px) {
+        .curso-hero-card {
+          min-height: unset;
+        }
+
+        .curso-profesor-avatar-stage {
+          width: 104px;
+          height: 104px;
+        }
+      }
+    `}</style>
+  );
+
   if (loading) {
     return (
-      <div className="min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
-        <div
-          className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-          style={{
-            borderColor: "var(--color-primary)",
-            borderTopColor: "transparent",
-          }}
-        />
-        <p style={{ color: "var(--color-muted)" }}>Cargando curso...</p>
-      </div>
+      <>
+        {estilos}
+
+        <div className="visualizador-curso-shell min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
+          <div className="curso-premium-card px-8 py-7">
+            <div className="curso-card-content flex flex-col items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
+                style={{
+                  borderColor: "var(--fcc-premium-accent)",
+                  borderTopColor: "transparent",
+                }}
+              />
+
+              <p className="font-bold" style={{ color: "var(--fcc-premium-muted)" }}>
+                Cargando curso...
+              </p>
+            </div>
+          </div>
+        </div>
+      </>
     );
   }
-  if (!materia) return <p style={{ color: "var(--color-danger)" }}>Curso no encontrado</p>;
+
+  if (!materia) {
+    return (
+      <>
+        {estilos}
+
+        <p style={{ color: "var(--color-danger)" }}>Curso no encontrado</p>
+      </>
+    );
+  }
 
   const tituloBloque = (b: Bloque, idx: number) =>
     b.titulo?.trim() ? b.titulo : `Bloque ${idx + 1} (${b.tipo})`;
@@ -751,8 +1101,12 @@ export default function VisualizadorCurso({
     .filter((unidad) => unidad.bloques.length > 0);
 
     const cardStyle: React.CSSProperties = {
-      backgroundColor: "var(--color-card)",
-      border: "1px solid var(--color-border)",
+      background:
+        "linear-gradient(135deg, var(--fcc-premium-surface), var(--fcc-premium-surface-soft))",
+      border: "1px solid var(--fcc-premium-border)",
+      boxShadow:
+        "var(--fcc-premium-shadow-soft), inset 0 1px 0 color-mix(in srgb, var(--fcc-premium-surface-strong) 68%, transparent)",
+      color: "var(--fcc-premium-text)",
     };
 
     const nombreCorto = (nombre?: string | null) =>
@@ -790,11 +1144,12 @@ export default function VisualizadorCurso({
       : cursoCarreraPrincipal?.semestre;
 
   return (
-    <div className="space-y-4 md:space-y-6 min-w-0">
+    <div className="visualizador-curso-shell -mt-3 md:-mt-5 space-y-4 md:space-y-6 min-w-0">
+      {estilos}
       {/* Cabecera curso */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px_360px] gap-4 md:gap-6 min-w-0">
         <div
-          className="p-4 sm:p-6 rounded-xl shadow gap-3 sm:gap-4 items-center justify-center flex flex-col sm:flex-row min-w-0"
+          className="curso-premium-card curso-hero-card p-4 sm:p-6 gap-3 sm:gap-5 items-center justify-center flex flex-col sm:flex-row min-w-0"
           style={cardStyle}
         >
           {rol === "estudiante" && (
@@ -804,7 +1159,7 @@ export default function VisualizadorCurso({
           )}
 
           <div className={`space-y-2 min-w-0 ${rol === "estudiante" ? "text-left" : "text-center"}`}>
-            <h1 className="text-2xl sm:text-3xl font-bold break-words" style={{ color: "var(--color-heading)" }}>
+            <h1 className="curso-hero-title text-2xl sm:text-3xl md:text-4xl break-words" style={{ color: "var(--color-heading)" }}>
               {materia.nombre}
             </h1>
 
@@ -832,34 +1187,35 @@ export default function VisualizadorCurso({
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 rounded-xl shadow min-w-0 flex flex-col items-center justify-center text-center" style={cardStyle}>
-          <h2 className="text-lg sm:text-xl font-bold mb-3" style={{ color: "var(--color-heading)" }}>
-            Profesor
-          </h2>
+        <div className="curso-premium-card p-4 sm:p-6 min-w-0 flex flex-col items-center justify-center text-center" style={cardStyle}>
+          <p className="curso-kicker mb-3">Profesor</p>
 
           {materia.profesor ? (
             <>
-              <RenderizadorAvatar
-                size={95}
-                config={materia.profesor.avatar_config ?? defaultAvatarConfig}
-              />
+              <div className="curso-profesor-avatar-stage">
+                <span className="curso-profesor-avatar-orbit" />
 
-              <p className="mt-2 font-semibold truncate max-w-full" style={{ color: "var(--color-text)" }}>
+                <RenderizadorAvatar
+                  size={95}
+                  config={materia.profesor.avatar_config ?? defaultAvatarConfig}
+                />
+              </div>
+
+              <p className="mt-2 font-semibold truncate max-w-full" style={{ color: "var(--fcc-premium-text)" }}>
                 {nombreCorto(materia.profesor.nombre)}
               </p>
             </>
           ) : (
-            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+            <p className="text-sm" style={{ color: "var(--fcc-premium-muted)" }}>
               Aún no hay profesor asignado
             </p>
           )}
         </div>
 
         {(rol === "estudiante" || rol === "profesor") && (
-          <div className="p-4 sm:p-6 rounded-xl shadow min-w-0" style={cardStyle}>
+          <div className="curso-premium-card p-4 sm:p-6 min-w-0" style={cardStyle}>
             <div className="mb-4 text-center">
-              <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
-                🏆{" "}
+              <h2 className="text-lg sm:text-xl font-black tracking-[-0.04em]" style={{ color: "var(--fcc-premium-text)" }}>
                 {rol === "profesor" || contextoRankingCurso.esVisitante
                   ? "Mejores puntajes"
                   : "Top 3 del grupo"}
@@ -875,7 +1231,7 @@ export default function VisualizadorCurso({
                 {rankingTopCurso.map((user, index) => (
                   <div
                     key={user.usuario_id}
-                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 min-w-0"
+                    className="curso-ranking-item flex items-center justify-between gap-3 rounded-[16px] px-3 py-2 min-w-0"
                     style={{
                       backgroundColor:
                         index === 0
@@ -886,8 +1242,8 @@ export default function VisualizadorCurso({
                     }}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-lg shrink-0">
-                        {index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
+                      <span className="curso-ranking-position shrink-0">
+                        {index + 1}°
                       </span>
                       <p className="font-semibold truncate" style={{ color: "var(--color-text)" }}>
                         {nombreCorto(user.nombre)}
@@ -906,8 +1262,8 @@ export default function VisualizadorCurso({
       </div>
 
       {/* Índice de bloques */}
-      <div className="p-4 sm:p-6 rounded-xl shadow space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
-        <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="curso-premium-card p-4 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+        <h2 className="text-lg sm:text-xl font-black tracking-[-0.04em]" style={{ color: "var(--fcc-premium-text)" }}>
           Contenido del curso
         </h2>
         {bloques.length === 0 && (
@@ -928,13 +1284,9 @@ export default function VisualizadorCurso({
                         : [...prev, unidad.id]
                     )
                   }
-                  className="w-full text-left rounded-xl px-3 sm:px-5 py-3 sm:py-4 transition hover:shadow min-w-0"
+                  className={`curso-unit-button w-full text-left px-3 sm:px-5 py-3 sm:py-4 transition min-w-0 ${unidadActiva ? "is-active" : ""}`}
                   style={{
-                    backgroundColor: "var(--color-card)",
-                    border: unidadActiva
-                      ? "2px solid var(--color-primary)"
-                      : "1px solid var(--color-border)",
-                    color: "var(--color-text)",
+                    color: "var(--fcc-premium-text)",
                   }}
                 >
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 min-w-0">
@@ -955,9 +1307,7 @@ export default function VisualizadorCurso({
                       const blockFileMap = fileMaps[b.id] || {};
 
                       const headerStyle: React.CSSProperties = {
-                        backgroundColor: "var(--color-card)",
-                        border: activo ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
-                        color: "var(--color-text)",
+                        color: "var(--fcc-premium-text)",
                       };
 
                       return (
@@ -968,7 +1318,7 @@ export default function VisualizadorCurso({
                                 activo ? prev.filter((id) => id !== b.id) : [...prev, b.id]
                               )
                             }
-                            className="w-full text-left rounded-lg px-4 py-3 transition hover:shadow"
+                            className={`curso-block-button w-full text-left px-4 py-3 transition ${activo ? "is-active" : ""}`}
                             style={headerStyle}
                           >
                             <div className="flex items-center justify-between gap-3 min-w-0">
@@ -989,7 +1339,7 @@ export default function VisualizadorCurso({
                           </button>
 
                           {activo && (
-                            <div className="rounded-lg p-3 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+                            <div className="curso-premium-card curso-content-card rounded-[24px] p-3 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
                               {b.tipo === "texto" && (
                                 <div className="w-full pt-6 sm:pt-12 pb-6 sm:pb-10 px-3 sm:px-12 md:px-16 min-w-0">
                                   {b.titulo && (
@@ -1028,7 +1378,7 @@ export default function VisualizadorCurso({
                                         <img
                                           src={parsed.url}
                                           alt={parsed.name}
-                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in object-contain"
+                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded-[20px] cursor-zoom-in object-contain"
                                           onClick={() => setPreviewMedia({ type: "image", src: parsed.url })}
                                         />
                                         <p className="mt-2 underline" style={{ color: "var(--color-primary)" }}>
@@ -1043,7 +1393,7 @@ export default function VisualizadorCurso({
                                         <video
                                           src={parsed.url}
                                           controls
-                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded shadow cursor-zoom-in object-contain"
+                                          className="max-h-64 sm:max-h-80 w-full max-w-xl mx-auto rounded-[20px] cursor-zoom-in object-contain"
                                           onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -1062,7 +1412,7 @@ export default function VisualizadorCurso({
                                   }
                                   if (isDoc(parsed.name)) {
                                     return (
-                                      <div className="rounded-lg p-4 text-center" style={cardStyle}>
+                                      <div className="curso-document-card rounded-[20px] p-4 text-center" style={cardStyle}>
                                         <p className="mb-2 font-medium" style={{ color: "var(--color-heading)" }}>
                                           {b.titulo || parsed.name}
                                         </p>
@@ -1070,7 +1420,7 @@ export default function VisualizadorCurso({
                                           href={parsed.url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="inline-block px-4 py-2 rounded text-white hover:opacity-90"
+                                          className="curso-action-button inline-flex px-4 py-2 text-center"
                                           style={{ backgroundColor: "var(--color-primary)" }}
                                         >
                                           📄 Ver documento
@@ -1100,7 +1450,7 @@ export default function VisualizadorCurso({
                                   {b.quizzes.map((q) => (
                                     <div
                                       key={q.id}
-                                      className="rounded-lg px-3 py-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 min-w-0"
+                                      className="curso-quiz-card rounded-[18px] px-3 py-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 min-w-0"
                                       style={cardStyle}
                                     >
                                       <div className="min-w-0">
@@ -1117,7 +1467,7 @@ export default function VisualizadorCurso({
                                       {rol === "estudiante" ? (
                                         <a
                                           href={`/curso/${materiaId}/quiz/${q.id}`}
-                                          className="px-3 py-2 sm:py-1 rounded text-white hover:opacity-90 text-center shrink-0"
+                                          className="curso-action-button px-3 py-2 sm:py-1 text-center shrink-0"
                                           style={{ backgroundColor: "var(--color-primary)" }}
                                         >
                                           Resolver
@@ -1125,7 +1475,7 @@ export default function VisualizadorCurso({
                                       ) : (
                                         <a
                                           href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
-                                          className="px-3 py-2 sm:py-1 rounded text-white hover:opacity-90 text-center shrink-0"
+                                          className="curso-action-button curso-secondary-button px-3 py-2 sm:py-1 text-center shrink-0"
                                           style={{ backgroundColor: "var(--color-secondary)" }}
                                         >
                                           Previsualizar
@@ -1149,8 +1499,8 @@ export default function VisualizadorCurso({
       </div>
 
       {/* Formulario */}
-      <div className="p-4 sm:p-6 rounded-xl shadow space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
-        <h2 className="text-lg sm:text-xl font-bold" style={{ color: "var(--color-heading)" }}>
+      <div className="curso-premium-card p-4 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+        <h2 className="text-lg sm:text-xl font-black tracking-[-0.04em]" style={{ color: "var(--fcc-premium-text)" }}>
           Formulario
         </h2>
         {formulas.length === 0 && (
@@ -1175,7 +1525,7 @@ export default function VisualizadorCurso({
                       : [...prev, f.id]
                   );
                 }}
-                className={`relative min-h-[130px] rounded-lg text-center transition-transform duration-300 ${
+                className={`curso-formula-card relative min-h-[130px] rounded-[20px] text-center transition-transform duration-300 ${
                   hasDescription ? "cursor-pointer hover:-translate-y-1" : "cursor-default"
                 }`}
                 title={
@@ -1207,9 +1557,12 @@ export default function VisualizadorCurso({
                   }}
                 >
                   <div
-                    className="absolute inset-0 p-4 sm:p-6 rounded-lg shadow flex flex-col items-center justify-center overflow-hidden"
+                    className="curso-formula-face absolute inset-0 p-4 sm:p-6 rounded-[20px] flex flex-col items-center justify-center overflow-hidden"
                     style={{
-                      ...cardStyle,
+                      background: "var(--fcc-premium-surface)",
+                      border: "1px solid var(--fcc-premium-border)",
+                      boxShadow:
+                        "inset 0 1px 0 color-mix(in srgb, var(--fcc-premium-surface-strong) 60%, transparent)",
                       backfaceVisibility: "hidden",
                     }}
                   >
@@ -1231,9 +1584,12 @@ export default function VisualizadorCurso({
                   </div>
 
                   <div
-                    className="absolute inset-0 p-4 sm:p-6 rounded-lg shadow flex items-center justify-center text-xs sm:text-sm leading-relaxed overflow-hidden"
+                    className="curso-formula-face absolute inset-0 p-4 sm:p-6 rounded-[20px] flex items-center justify-center text-xs sm:text-sm leading-relaxed overflow-hidden"
                     style={{
-                      ...cardStyle,
+                      background: "var(--fcc-premium-surface)",
+                      border: "1px solid var(--fcc-premium-border)",
+                      boxShadow:
+                        "inset 0 1px 0 color-mix(in srgb, var(--fcc-premium-surface-strong) 60%, transparent)",
                       transform: "rotateY(180deg)",
                       backfaceVisibility: "hidden",
                       color: "var(--color-text)",
@@ -1250,7 +1606,7 @@ export default function VisualizadorCurso({
       {previewMedia &&
         createPortal(
           <div
-            className="fixed inset-0 bg-black/80 flex justify-center items-center z-[9999]"
+            className="curso-preview-overlay fixed inset-0 flex justify-center items-center z-[9999]"
             onClick={closePreviewMedia}
           >
             <div
@@ -1260,7 +1616,7 @@ export default function VisualizadorCurso({
               <button
                 type="button"
                 onClick={closePreviewMedia}
-                className="absolute top-2 right-2 bg-white text-black rounded px-2 py-1 text-sm z-10"
+                className="curso-preview-close absolute top-2 right-2 rounded-full w-9 h-9 flex items-center justify-center text-sm z-10"
               >
                 ✕
               </button>
@@ -1269,7 +1625,7 @@ export default function VisualizadorCurso({
                 <img
                   src={previewMedia.src}
                   alt="Vista ampliada"
-                  className="max-w-[92vw] max-h-[85vh] rounded shadow-lg object-contain"
+                  className="max-w-[92vw] max-h-[85vh] rounded-[24px] object-contain"
                 />
               )}
 
@@ -1279,7 +1635,7 @@ export default function VisualizadorCurso({
                   src={previewMedia.src}
                   controls
                   autoPlay
-                  className="max-w-[92vw] max-h-[85vh] rounded shadow-lg bg-black"
+                  className="max-w-[92vw] max-h-[85vh] rounded-[24px] bg-black"
                 />
               )}
             </div>

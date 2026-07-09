@@ -26,11 +26,16 @@ export default function ModalEditorAvatar({
   onSave,
   forzado = false,
 }: Props) {
-  const rolUsuario = typeof window !== "undefined" ? localStorage.getItem("rol_usuario") || "estudiante" : "estudiante";
+  const rolUsuario =
+    typeof window !== "undefined"
+      ? localStorage.getItem("rol_usuario") || "estudiante"
+      : "estudiante";
+
   const [config, setConfig] = useState<AvatarConfig>({
     ...initialConfig,
     sueterColor: initialConfig.sueterColor ?? "#ffffff",
   });
+
   const [currentTab, setCurrentTab] = useState("gender");
   const [desbloqueados, setDesbloqueados] = useState<string[]>([]);
   const [cargandoDesbloqueos, setCargandoDesbloqueos] = useState(true);
@@ -106,7 +111,7 @@ export default function ModalEditorAvatar({
   if (!open) return null;
   if (cargandoDesbloqueos) return null;
 
-    const SKIN_TONES =["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#5a3825"]
+  const SKIN_TONES = ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#5a3825"];
 
   const TABS = [
     {
@@ -139,18 +144,21 @@ export default function ModalEditorAvatar({
       key: "eyes",
       label: "Ojos",
       get items() {
-        return ["Ojos1.png", "Ojos2.png", "Ojos3.png", "Ojos4.png", "Ojos5.png", "Ojos6.png", "Ojos7.png"];
+        return [
+          "Ojos1.png",
+          "Ojos2.png",
+          "Ojos3.png",
+          "Ojos4.png",
+          "Ojos5.png",
+          "Ojos6.png",
+          "Ojos7.png",
+        ];
       },
     },
     {
       key: "nose",
       label: "Nariz",
-      items: [
-        "Nariz1.png",
-        "Nariz2.png",
-        "Nariz3.png",
-        "Nariz4.png",
-      ],
+      items: ["Nariz1.png", "Nariz2.png", "Nariz3.png", "Nariz4.png"],
     },
     {
       key: "mouth",
@@ -178,10 +186,10 @@ export default function ModalEditorAvatar({
                   if (file === "none") return null;
                   const basePath = `/elementos_avatar/ropa_profesor/${config.gender}/previews/${file}.png`;
                   return (
-                    <div className="relative w-full aspect-square flex items-center justify-center rounded bg-[var(--color-card)] overflow-hidden">
+                    <div className="avatar-editor-option-inner">
                       <img
                         src={basePath}
-                        className="absolute inset-0 w-full h-full object-contain"
+                        className="absolute inset-0 h-full w-full object-contain"
                         alt={file}
                       />
                     </div>
@@ -207,7 +215,21 @@ export default function ModalEditorAvatar({
                 key: "sueter_simple",
                 label: "Prendas especiales",
                 get items() {
-                  return ["none", "Uniforme_Gris", "ChaquetaNegra", "ArmaduraNegra", "PlayeraNeon", "SudaderaBuap", "SudaderaBuap2", "Sudadera_Negro_Naranja", "Uniforme_Naranja_Azul", "Playera_Seleccion", "Uniforme_Negro_Rojo", "Uniforme_Azul", "Uniforme_Cafe" ];
+                  return [
+                    "none",
+                    "Uniforme_Gris",
+                    "ChaquetaNegra",
+                    "ArmaduraNegra",
+                    "PlayeraNeon",
+                    "SudaderaBuap",
+                    "SudaderaBuap2",
+                    "Sudadera_Negro_Naranja",
+                    "Uniforme_Naranja_Azul",
+                    "Playera_Seleccion",
+                    "Uniforme_Negro_Rojo",
+                    "Uniforme_Azul",
+                    "Uniforme_Cafe",
+                  ];
                 },
               },
             ],
@@ -218,10 +240,10 @@ export default function ModalEditorAvatar({
         if (rolUsuario === "profesor") {
           const basePath = `/elementos_avatar/ropa_profesor/${config.gender}/previews/${file}.png`;
           return (
-            <div className="relative w-full aspect-square flex items-center justify-center rounded bg-[var(--color-card)] overflow-hidden">
+            <div className="avatar-editor-option-inner">
               <img
                 src={basePath}
-                className="absolute inset-0 w-full h-full object-contain"
+                className="absolute inset-0 h-full w-full object-contain"
                 alt={file}
               />
             </div>
@@ -231,8 +253,9 @@ export default function ModalEditorAvatar({
         // Ropa de estudiante
         const hasDoubleLayer = file.includes("Sueter");
         const basePath = `/elementos_avatar/ropa/${config.gender}/sueteres/previews/${file}`;
+
         return (
-          <div className="relative w-full aspect-square flex items-center justify-center rounded bg-[var(--color-card)] overflow-hidden">
+          <div className="avatar-editor-option-inner">
             {hasDoubleLayer ? (
               <>
                 <div
@@ -262,14 +285,14 @@ export default function ModalEditorAvatar({
                 />
                 <img
                   src={`${basePath}_Contorno.png`}
-                  className="absolute inset-0 w-full h-full object-contain"
+                  className="absolute inset-0 h-full w-full object-contain"
                   alt="contorno"
                 />
               </>
             ) : (
               <img
                 src={`${basePath}.png`}
-                className="absolute inset-0 w-full h-full object-contain"
+                className="absolute inset-0 h-full w-full object-contain"
                 alt="sueter"
               />
             )}
@@ -281,7 +304,11 @@ export default function ModalEditorAvatar({
       key: "accessory",
       label: "Accesorios",
       subsections: [
-        { key: "glasses", label: "Lentes", items: ["none", "Lentes1.png", "Lentes2.png","Lentes3.png"] },
+        {
+          key: "glasses",
+          label: "Lentes",
+          items: ["none", "Lentes1.png", "Lentes2.png", "Lentes3.png"],
+        },
         { key: "collar", label: "Collar", items: ["none"] },
         { key: "pulsera", label: "Pulsera", items: ["none"] },
       ],
@@ -300,7 +327,18 @@ export default function ModalEditorAvatar({
       return;
     }
 
-    const campos = ["hair", "eyes", "mouth", "nose", "playera", "sueter", "glasses", "collar", "pulsera"];
+    const campos = [
+      "hair",
+      "eyes",
+      "mouth",
+      "nose",
+      "playera",
+      "sueter",
+      "glasses",
+      "collar",
+      "pulsera",
+    ];
+
     const bloqueadosUsados = campos
       .map((key) => {
         const valor = (config as any)[key];
@@ -326,132 +364,121 @@ export default function ModalEditorAvatar({
         glasses: "Lentes",
         collar: "Collar",
         pulsera: "Pulsera",
-  };
+      };
 
-  const lista = bloqueadosUsados
-      .map((key) => nombresAmigables[key] || key)
-      .join(", ");
+      const lista = bloqueadosUsados
+        .map((key) => nombresAmigables[key] || key)
+        .join(", ");
 
-    setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
-    setTimeout(() => setMensaje(""), 5000);
-    return;
-  }
+      setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
+      setTimeout(() => setMensaje(""), 5000);
+      return;
+    }
 
     onSave(config);
   };
 
-  const getCurrentValue = (tabKey: string) => {
-    const val = (config as any)[tabKey];
-    return val ?? "none";
-  };
-
   function coincideNombre(a: string, b: string) {
-    return a.toLowerCase().replace(".png", "") === b.toLowerCase().replace(".png", "");
+    return (
+      a.toLowerCase().replace(".png", "") ===
+      b.toLowerCase().replace(".png", "")
+    );
   }
-  
+
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center transition-all duration-500 ease-out p-3 sm:p-4"
+      className="avatar-editor-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-4"
       style={{
         zIndex: 10020,
-        backdropFilter: "blur(1px)",
-        animation: "fadeZoomIn 0.4s ease-out",
       }}
       onClick={forzado ? undefined : onClose}
     >
       <div
-        className="relative p-3 sm:p-6 rounded-xl w-[95vw] max-w-5xl max-h-[90vh] shadow-lg flex flex-col overflow-hidden"
+        className="avatar-editor-modal relative flex max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-[28px] p-3 sm:p-6"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          backgroundColor: "var(--color-card)",
-          color: "var(--color-text)",
-          animation: "fadeZoomIn 0.3s ease-out",
-        }}
       >
         {!forzado && (
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-3 top-3 z-10 w-8 h-8 rounded-full flex items-center justify-center text-xl leading-none"
-            style={{
-              backgroundColor: "var(--color-border)",
-              color: "var(--color-text)",
-            }}
+            className="avatar-editor-close absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-xl leading-none"
             title="Cerrar"
           >
             ×
           </button>
         )}
 
-        <h2
-          className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center pr-8 pl-8"
-          style={{ color: "var(--color-heading)" }}
-        >
-          Editor de Avatar
-        </h2>
+        <div className="mb-3 sm:mb-5 px-8 text-center">
+          <p className="avatar-editor-eyebrow">Personalización</p>
+          <h2 className="avatar-editor-title">Editor de Avatar</h2>
+        </div>
 
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 flex-1 overflow-hidden">
-          <div className="relative flex flex-col items-center justify-start flex-shrink-0 w-full lg:w-[420px]">
-            {/* 🔹 Avatar principal */}
-            <div className="scale-[0.65] sm:scale-[0.8] lg:scale-100 -my-16 sm:-my-10 lg:my-0">
-              <RenderizadorAvatar config={config} size={380} />
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-6">
+          <div className="avatar-editor-preview-shell flex w-full flex-shrink-0 flex-col items-center lg:w-[420px]">
+            <div className="avatar-editor-avatar-stage relative flex items-center justify-center">
+              <span className="avatar-editor-avatar-orbit" />
+
+              <div className="avatar-editor-avatar-render relative z-[2] scale-[0.74] sm:scale-[0.86] lg:scale-100">
+                <RenderizadorAvatar config={config} size={380} />
+              </div>
             </div>
 
-            {/* 🔹 Selector de color dinámico debajo del avatar */}
-            {currentTab === "gender" && (
-              <div className="mt-5 flex justify-center gap-3 flex-wrap">
-                {SKIN_TONES.map((tone) => (
-                  <div
-                    key={tone}
-                    onClick={() => setConfig({ ...config, skinColor: tone })}
-                    className={`w-9 h-9 rounded-full cursor-pointer border-2 transition-transform duration-150 ${
-                      config.skinColor === tone
-                        ? "ring-4 ring-[var(--color-btn)] border-[var(--color-btn)] scale-110"
-                        : "border-[var(--color-border)] hover:scale-105"
-                    }`}
-                    style={{ backgroundColor: tone, opacity: 0.95 }}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="avatar-editor-color-slot">
+              {currentTab === "gender" && (
+                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
+                  {SKIN_TONES.map((tone) => (
+                    <button
+                      key={tone}
+                      type="button"
+                      onClick={() => setConfig({ ...config, skinColor: tone })}
+                      className={`avatar-editor-color-dot ${
+                        config.skinColor === tone ? "is-selected" : ""
+                      }`}
+                      style={{ backgroundColor: tone }}
+                      title="Color de piel"
+                    />
+                  ))}
+                </div>
+              )}
 
-            {currentTab === "ropa" && rolUsuario !== "profesor" && (
-              <div className="mt-5 flex justify-center gap-3 flex-wrap">
-                {["#ffffff", "#d1d5db", "#374151", "#3b82f6", "#60a5fa", "#8b5cf6"].map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => setConfig({ ...config, sueterColor: color })}
-                    className={`w-9 h-9 rounded-full border transition-all duration-200 hover:scale-110 ${
-                      config.sueterColor === color
-                        ? "ring-4 ring-[var(--color-btn)] border-[var(--color-btn)]"
-                        : "border-[var(--color-border)]"
-                    }`}
-                    style={{ backgroundColor: color, opacity: 0.6 }}
-                  />
-                ))}
-              </div>
-            )}
+              {currentTab === "ropa" && rolUsuario !== "profesor" && (
+                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
+                  {[
+                    "#ffffff",
+                    "#d1d5db",
+                    "#374151",
+                    "#3b82f6",
+                    "#60a5fa",
+                    "#8b5cf6",
+                  ].map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setConfig({ ...config, sueterColor: color })}
+                      className={`avatar-editor-color-dot ${
+                        config.sueterColor === color ? "is-selected" : ""
+                      }`}
+                      style={{ backgroundColor: color }}
+                      title="Color de prenda"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex justify-start lg:justify-center gap-2 mb-4 overflow-x-auto pb-2">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="avatar-editor-tabs mb-4 flex justify-start gap-2 overflow-x-auto pb-2 lg:justify-center">
               {TABS.map((tab) => {
                 const isActive = currentTab === tab.key;
+
                 return (
                   <button
                     key={tab.key}
+                    type="button"
                     onClick={() => setCurrentTab(tab.key)}
-                    className={`px-3 py-1 rounded-md text-xs transition-all duration-150 select-none
-                      ${isActive ? "font-semibold" : "font-medium opacity-80 hover:opacity-100"}`}
-                    style={{
-                      backgroundColor: isActive
-                        ? "var(--color-btn)"
-                        : "var(--color-card)",
-                      color: isActive
-                        ? "var(--color-text-btn)"
-                        : "var(--color-muted)",
-                      whiteSpace: "nowrap", // 🔹 mantiene todo en una línea
-                    }}
+                    className={`avatar-editor-tab ${isActive ? "is-active" : ""}`}
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     {tab.label}
                   </button>
@@ -460,7 +487,7 @@ export default function ModalEditorAvatar({
             </div>
 
             <div
-              className="h-[320px] sm:h-[400px] overflow-y-auto pr-2"
+              className="avatar-editor-options-scroll h-[320px] overflow-y-auto pr-2 sm:h-[400px]"
               style={{ overflowX: "hidden", overflowY: "auto" }}
             >
               {(() => {
@@ -469,208 +496,262 @@ export default function ModalEditorAvatar({
 
                 if ((currentTabData as any).subsections) {
                   const tabWithSubs = currentTabData as any;
+
                   return tabWithSubs.subsections.map((sub: any) => (
                     <div key={sub.key} className="mb-6 col-span-3">
-                      <h3 className="text-center text-sm font-semibold mb-2">{sub.label}</h3>
-                      <div className="grid grid-cols-3 gap-3 px-1 overflow-visible">
+                      <h3 className="avatar-editor-section-title mb-3 text-center text-sm font-semibold">
+                        {sub.label}
+                      </h3>
+
+                      <div className="grid grid-cols-3 gap-3 overflow-visible px-1">
                         {(
-                          typeof sub.items === "function" ? sub.items() : sub.items
+                          typeof sub.items === "function"
+                            ? sub.items()
+                            : sub.items
                         )
-                          // 🔹 Mostrar "none" en Playera y en todos los accesorios
                           .filter((file: string) => {
                             if (file === "none") {
-                              // Mostrar en Playera y en Accesorios
-                              return currentTab === "accessory" || sub.label === "Playera";
+                              return (
+                                currentTab === "accessory" ||
+                                sub.label === "Playera"
+                              );
                             }
+
                             return true;
                           })
-
                           .map((file: string) => {
-                          let currentValue: string = "none";
+                            let currentValue: string = "none";
+
                             if (currentTab === "ropa") {
-                              if (sub.key === "playera" || sub.label === "Playera" || sub.key.toLowerCase().includes("playera")) {
+                              if (
+                                sub.key === "playera" ||
+                                sub.label === "Playera" ||
+                                sub.key.toLowerCase().includes("playera")
+                              ) {
                                 currentValue = config.playera;
-                              } else if (sub.key === "sueter_color" || sub.label.toLowerCase().includes("suéter")) {
+                              } else if (
+                                sub.key === "sueter_color" ||
+                                sub.label.toLowerCase().includes("suéter")
+                              ) {
                                 currentValue = config.sueter;
-                              } else if (sub.key === "sueter_simple" || sub.label.toLowerCase().includes("prendas")) {
+                              } else if (
+                                sub.key === "sueter_simple" ||
+                                sub.label.toLowerCase().includes("prendas")
+                              ) {
                                 currentValue = config.sueter;
                               }
                             } else {
                               currentValue = (config as any)[sub.key];
                             }
+
                             const isSelected =
                               currentValue === file ||
-                              (sub.key === "capas_profesor" && config.sueter === file);
+                              (sub.key === "capas_profesor" &&
+                                config.sueter === file);
+
                             const desbloqueado =
                               rolUsuario === "profesor" ||
                               desbloqueados.includes("ALL_ITEMS_UNLOCKED") ||
-                              desbloqueados.some((n) => coincideNombre(n, file)) ||
+                              desbloqueados.some((n) =>
+                                coincideNombre(n, file)
+                              ) ||
                               file === "none";
-                          return (
-                            <div
-                              key={file}
-                              className={`cursor-pointer rounded-lg border transition-all duration-150 flex items-center justify-center ${
-                                isSelected
-                                  ? "ring-4 ring-[var(--color-btn)] border-[var(--color-btn)] scale-[1.03]"
-                                  : "border-[var(--color-border)] hover:ring-2 hover:ring-[var(--color-btn)]"
-                              }`}
-                              style={{
-                                width: "100%",
-                                aspectRatio: "1 / 1",
-                                filter: desbloqueado ? "none" : "grayscale(100%) brightness(0.6)",
-                                opacity: desbloqueado ? 1 : 0.7,
-                                position: "relative",
-                              }}
-                              onClick={() => {
-                                const newConfig = { ...config };
 
-                                if (currentTab === "ropa") {
-                                  const isPlayera = sub.key === "playera" || sub.label === "Playera";
-                                  const isSueterColor = sub.key === "sueter_color" || sub.label.toLowerCase().includes("suéter");
-                                  const isSueterSimple = sub.key === "sueter_simple" || sub.label.toLowerCase().includes("prendas");
-                                  const isProfesor = sub.key === "capas_profesor" || sub.label.toLowerCase().includes("profesor");
-
-                                  newConfig.playera = "none";
-                                  newConfig.sueter = "none";
-
-                                  if (isPlayera) {
-                                    newConfig.playera = file === "none" ? "none" : file;
-                                  } else if (isSueterColor || isSueterSimple) {
-                                    newConfig.sueter = file === "none" ? "none" : file;
-                                  } else if (isProfesor) {
-                                    newConfig.sueter = file === "none" ? "none" : file;
-                                  }
-                                } else {
-                                  (newConfig as any)[sub.key] = file;
-                                }
-
-                                setConfig(newConfig);
-                              }}
-                            >
+                            return (
                               <div
-                                className="w-full aspect-square flex items-center justify-center rounded bg-[var(--color-card)]"
-                              >
-                                {file === "none" ? (
-                                  <span className="text-sm" style={{ color: "var(--color-muted)" }}>Ninguno</span>
-                                ) : currentTab === "ropa" ? (
-                                  sub.key === "playera" ? (
-                                    <div className="relative w-full aspect-square flex items-center justify-center rounded bg-[var(--color-card)] overflow-hidden">
-                                      {file !== "none" ? (
-                                        <>
-                                          <div
-                                            className="absolute inset-0"
-                                            style={{
-                                              backgroundImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
-                                              backgroundRepeat: "no-repeat",
-                                              backgroundPosition: "center",
-                                              backgroundSize: "contain",
-                                            }}
-                                          />
-                                          <div
-                                            className="absolute inset-0 will-change-transform"
-                                            style={{
-                                              backgroundColor: config.sueterColor ?? "#ffffff",
-                                              opacity: 0.6,
-                                              maskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
-                                              WebkitMaskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
-                                              maskSize: "contain",
-                                              maskRepeat: "no-repeat",
-                                              maskPosition: "center",
-                                              WebkitMaskSize: "contain",
-                                              WebkitMaskRepeat: "no-repeat",
-                                              WebkitMaskPosition: "center",
-                                              pointerEvents: "none",
-                                            }}
-                                          />
-                                          <img
-                                            src={`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`}
-                                            className="absolute inset-0 w-full h-full object-contain"
-                                            alt={file}
-                                          />
-                                        </>
-                                      ) : (
-                                        <span className="text-sm" style={{ color: "var(--color-muted)" }}>Ninguno</span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    (TABS.find((t) => t.key === "ropa") as any)?.renderItem?.(file, config) ?? null
-                                  )
-                                ) : (
-                                  <img
-                                    src={
-                                      currentTab === "accessory"
-                                        ? sub.key === "glasses"
-                                          ? `/elementos_avatar/cara/lentes/previews/${file}`
-                                          : `/elementos_avatar/accesorios/${file}`
-                                        : currentTab === "hair"
-                                        ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
-                                        : currentTab === "eyes"
-                                        ? `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`
-                                        : currentTab === "mouth"
-                                        ? `/elementos_avatar/cara/bocas/previews/${file}`
-                                        : currentTab === "nose"
-                                        ? `/elementos_avatar/cara/narices/previews/${file}`
-                                        : ""
+                                key={file}
+                                className={`avatar-editor-option group ${
+                                  isSelected ? "is-selected" : ""
+                                } ${!desbloqueado ? "is-locked" : ""}`}
+                                style={{
+                                  width: "100%",
+                                  aspectRatio: "1 / 1",
+                                  filter: desbloqueado
+                                    ? "none"
+                                    : "grayscale(100%) brightness(0.6)",
+                                  opacity: desbloqueado ? 1 : 0.7,
+                                  position: "relative",
+                                }}
+                                onClick={() => {
+                                  const newConfig = { ...config };
+
+                                  if (currentTab === "ropa") {
+                                    const isPlayera =
+                                      sub.key === "playera" ||
+                                      sub.label === "Playera";
+                                    const isSueterColor =
+                                      sub.key === "sueter_color" ||
+                                      sub.label
+                                        .toLowerCase()
+                                        .includes("suéter");
+                                    const isSueterSimple =
+                                      sub.key === "sueter_simple" ||
+                                      sub.label
+                                        .toLowerCase()
+                                        .includes("prendas");
+                                    const isProfesor =
+                                      sub.key === "capas_profesor" ||
+                                      sub.label
+                                        .toLowerCase()
+                                        .includes("profesor");
+
+                                    newConfig.playera = "none";
+                                    newConfig.sueter = "none";
+
+                                    if (isPlayera) {
+                                      newConfig.playera =
+                                        file === "none" ? "none" : file;
+                                    } else if (isSueterColor || isSueterSimple) {
+                                      newConfig.sueter =
+                                        file === "none" ? "none" : file;
+                                    } else if (isProfesor) {
+                                      newConfig.sueter =
+                                        file === "none" ? "none" : file;
                                     }
-                                    className="max-w-full max-h-full object-contain"
-                                    alt={file}
-                                  />
+                                  } else {
+                                    (newConfig as any)[sub.key] = file;
+                                  }
+
+                                  setConfig(newConfig);
+                                }}
+                              >
+                                <div className="avatar-editor-option-inner">
+                                  {file === "none" ? (
+                                    <span className="avatar-editor-none-text">
+                                      Ninguno
+                                    </span>
+                                  ) : currentTab === "ropa" ? (
+                                    sub.key === "playera" ? (
+                                      <div className="avatar-editor-option-inner">
+                                        {file !== "none" ? (
+                                          <>
+                                            <div
+                                              className="absolute inset-0"
+                                              style={{
+                                                backgroundImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
+                                                backgroundRepeat: "no-repeat",
+                                                backgroundPosition: "center",
+                                                backgroundSize: "contain",
+                                              }}
+                                            />
+                                            <div
+                                              className="absolute inset-0 will-change-transform"
+                                              style={{
+                                                backgroundColor:
+                                                  config.sueterColor ??
+                                                  "#ffffff",
+                                                opacity: 0.6,
+                                                maskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
+                                                WebkitMaskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
+                                                maskSize: "contain",
+                                                maskRepeat: "no-repeat",
+                                                maskPosition: "center",
+                                                WebkitMaskSize: "contain",
+                                                WebkitMaskRepeat: "no-repeat",
+                                                WebkitMaskPosition: "center",
+                                                pointerEvents: "none",
+                                              }}
+                                            />
+                                            <img
+                                              src={`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`}
+                                              className="absolute inset-0 h-full w-full object-contain"
+                                              alt={file}
+                                            />
+                                          </>
+                                        ) : (
+                                          <span className="avatar-editor-none-text">
+                                            Ninguno
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      (TABS.find(
+                                        (t) => t.key === "ropa"
+                                      ) as any)?.renderItem?.(file, config) ??
+                                      null
+                                    )
+                                  ) : (
+                                    <img
+                                      src={
+                                        currentTab === "accessory"
+                                          ? sub.key === "glasses"
+                                            ? `/elementos_avatar/cara/lentes/previews/${file}`
+                                            : `/elementos_avatar/accesorios/${file}`
+                                          : currentTab === "hair"
+                                            ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
+                                            : currentTab === "eyes"
+                                              ? `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`
+                                              : currentTab === "mouth"
+                                                ? `/elementos_avatar/cara/bocas/previews/${file}`
+                                                : currentTab === "nose"
+                                                  ? `/elementos_avatar/cara/narices/previews/${file}`
+                                                  : ""
+                                      }
+                                      className="max-h-full max-w-full object-contain"
+                                      alt={file}
+                                    />
+                                  )}
+                                </div>
+
+                                {!desbloqueado && (
+                                  <div className="avatar-editor-lock-layer absolute inset-0 flex items-center justify-center rounded-[18px]">
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      className="h-6 w-6 text-white opacity-90"
+                                      fill="currentColor"
+                                    >
+                                      <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
+                                    </svg>
+
+                                    <div className="avatar-editor-tooltip absolute left-1/2 top-1/2 z-[120] px-3 py-1.5 text-center text-[11px]">
+                                      Desbloquea cofres
+                                      <br />
+                                      para obtener este elemento
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-                            {!desbloqueado && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.25)] rounded-lg group overflow-visible">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-white opacity-90" fill="currentColor">
-                                  <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
-                                </svg>
-                                <div
-                                className="absolute z-[50] bottom-[-2.6rem] left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md text-[11px] bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] shadow-md opacity-0 group-hover:opacity-100 transition-all duration-200 text-center"
-                                  style={{
-                                    maxWidth: "180px",
-                                    whiteSpace: "pre-line",
-                                    wordBreak: "keep-all",
-                                    lineHeight: "1.1rem",
-                                  }}
-                                >
-                                  Desbloquea cofres<br />para obtener este elemento
-                                </div>
-                              </div>
-                            )}
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     </div>
                   ));
                 }
 
-                const items = typeof (currentTabData as any).items === "function"
-                  ? (currentTabData as any).items()
-                  : (currentTabData as any).items;
+                const items =
+                  typeof (currentTabData as any).items === "function"
+                    ? (currentTabData as any).items()
+                    : (currentTabData as any).items;
 
                 return (
                   <div
-                    className={`${
+                    className={
                       currentTab === "gender"
-                        ? "flex justify-between items-stretch gap-3 h-full"
-                        : "grid grid-cols-3 gap-3 pt-2 pb-2 px-2"
-                    }`}
+                        ? "flex h-full items-stretch justify-between gap-3"
+                        : "grid grid-cols-3 gap-3 px-2 pb-2 pt-2"
+                    }
                   >
                     {items?.map((file: string) => {
                       const currentValue = (config as any)[currentTab];
                       const isSelected = currentValue === file;
+
                       const desbloqueado =
                         rolUsuario === "profesor" ||
                         desbloqueados.includes("ALL_ITEMS_UNLOCKED") ||
                         currentTab === "gender" ||
                         desbloqueados.some((n) => coincideNombre(n, file)) ||
                         file === "none";
+
                       return (
                         <div
                           key={file}
-                          className={`cursor-pointer rounded-lg border transition-all duration-150 flex items-center justify-center text-xl font-semibold select-none ${
-                            isSelected
-                              ? "ring-4 ring-[var(--color-btn)] border-[var(--color-btn)] scale-[1.03]"
-                              : "border-[var(--color-border)] hover:ring-2 hover:ring-[var(--color-btn)]"
+                          className={`avatar-editor-option group ${
+                            isSelected ? "is-selected" : ""
+                          } ${!desbloqueado ? "is-locked" : ""} ${
+                            currentTab === "gender"
+                              ? "avatar-editor-gender-option"
+                              : ""
                           }`}
                           style={
                             currentTab === "gender"
@@ -679,20 +760,32 @@ export default function ModalEditorAvatar({
                                   flex: "1 1 48%",
                                   maxWidth: "48%",
                                   margin: "1%",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
                                 }
                               : {
-                                width: "100%",
-                                aspectRatio: "1 / 1",
-                                filter: desbloqueado ? "none" : "grayscale(100%) brightness(0.6)",
-                                opacity: desbloqueado ? 1 : 0.7,
-                                position: "relative",
-                              }
+                                  width: "100%",
+                                  aspectRatio: "1 / 1",
+                                  filter: desbloqueado
+                                    ? "none"
+                                    : "grayscale(100%) brightness(0.6)",
+                                  opacity: desbloqueado ? 1 : 0.7,
+                                  position: "relative",
+                                }
                           }
                           onClick={() => {
                             if (currentTab === "gender") {
                               setConfig((prev) => {
-                                const nuevoGenero = file as "masculino" | "femenino";
-                                const nuevoConfig = { ...prev, gender: nuevoGenero, skin: "piel.png" };
+                                const nuevoGenero = file as
+                                  | "masculino"
+                                  | "femenino";
+
+                                const nuevoConfig = {
+                                  ...prev,
+                                  gender: nuevoGenero,
+                                  skin: "piel.png",
+                                };
 
                                 nuevoConfig.hair = prev.hair ?? "none";
                                 nuevoConfig.sueter = prev.sueter ?? "none";
@@ -705,56 +798,62 @@ export default function ModalEditorAvatar({
                           }}
                         >
                           {currentTab === "gender" ? (
-                            <span
-                              className="text-lg font-semibold select-none"
-                              style={{ color: "var(--color-text)" }}
-                            >
+                            <span className="avatar-editor-gender-label">
                               {file === "masculino" ? "Masculino" : "Femenino"}
                             </span>
                           ) : (
                             <div
-                              className={`${
-                                currentTab === "accessory" ? "w-20 h-20" : "w-full aspect-square"
-                              } flex items-center justify-center rounded bg-[var(--color-card)]`}
+                              className={`avatar-editor-option-inner ${
+                                currentTab === "accessory"
+                                  ? "mx-auto h-20 w-20"
+                                  : "h-full w-full"
+                              }`}
                             >
                               {file === "none" ? (
-                                <span className="text-sm" style={{ color: "var(--color-muted)" }}>Ninguno</span>
+                                <span className="avatar-editor-none-text">
+                                  Ninguno
+                                </span>
                               ) : (
                                 <img
                                   src={
                                     currentTab === "hair"
                                       ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
                                       : currentTab === "eyes"
-                                      ? (["Ojos5.png","Ojos6.png","Ojos7.png"].includes(file)
+                                        ? [
+                                            "Ojos5.png",
+                                            "Ojos6.png",
+                                            "Ojos7.png",
+                                          ].includes(file)
                                           ? `/elementos_avatar/cara/ojos/previews/${file}`
-                                          : `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`)
-                                      : currentTab === "mouth"
-                                      ? `/elementos_avatar/cara/bocas/previews/${file}`
-                                      : currentTab === "nose"
-                                      ? `/elementos_avatar/cara/narices/previews/${file}`
-                                      : ""
+                                          : `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`
+                                        : currentTab === "mouth"
+                                          ? `/elementos_avatar/cara/bocas/previews/${file}`
+                                          : currentTab === "nose"
+                                            ? `/elementos_avatar/cara/narices/previews/${file}`
+                                            : ""
                                   }
-                                  className="max-w-full max-h-full object-contain"
+                                  className="max-h-full max-w-full object-contain"
                                   alt={file}
                                 />
                               )}
                             </div>
                           )}
+
                           {!desbloqueado && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.25)] rounded-lg group overflow-visible">
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6 text-white opacity-90" fill="currentColor">
+                            <div className="avatar-editor-lock-layer absolute inset-0 flex items-center justify-center rounded-[18px]">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                className="h-6 w-6 text-white opacity-90"
+                                fill="currentColor"
+                              >
                                 <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
                               </svg>
-                              <div
-                                className="absolute z-[50] bottom-[-2.8rem] left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md text-[11px] font-normal bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] shadow-md opacity-0 group-hover:opacity-100 group-hover:translate-y-[-4px] transition-all duration-300 text-center"
-                                style={{
-                                  maxWidth: "180px",
-                                  whiteSpace: "pre-line",
-                                  wordBreak: "keep-all",
-                                  lineHeight: "1.1rem",
-                                }}
-                              >
-                                Desbloquea cofres<br />para obtener este elemento
+
+                              <div className="avatar-editor-tooltip absolute left-1/2 top-1/2 z-[120] px-3 py-1.5 text-center text-[11px] font-normal">
+                                Desbloquea cofres
+                                <br />
+                                para obtener este elemento
                               </div>
                             </div>
                           )}
@@ -768,11 +867,12 @@ export default function ModalEditorAvatar({
           </div>
         </div>
 
-        {/* 🔹 Pie del modal */}
-        <div className="mt-4 sm:mt-6 flex flex-col-reverse sm:flex-row justify-end items-stretch sm:items-center gap-3 sm:gap-4">
+        {/* Pie del modal */}
+        <div className="mt-4 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-6 sm:flex-row sm:items-center sm:gap-4">
           {!forzado && (
             <button
-              className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white"
+              type="button"
+              className="avatar-editor-secondary-button px-4 py-2"
               onClick={onClose}
             >
               Cancelar
@@ -780,7 +880,8 @@ export default function ModalEditorAvatar({
           )}
 
           <button
-            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+            type="button"
+            className="fcc-premium-button px-5 py-2"
             onClick={handleSave}
           >
             {forzado ? "Crear avatar" : "Guardar cambios"}
@@ -788,35 +889,449 @@ export default function ModalEditorAvatar({
         </div>
       </div>
 
-      {/* 🔹 Animación global */}
       <style jsx global>{`
-        @keyframes fadeZoomIn {
+        @keyframes avatar-editor-fade-zoom-in {
           from {
             opacity: 0;
-            transform: scale(0.95);
+            transform: scale(0.97) translateY(10px);
           }
+
           to {
             opacity: 1;
-            transform: scale(1);
+            transform: scale(1) translateY(0);
           }
         }
-      `}</style>
 
-      <style jsx global>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes avatar-editor-fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out;
+
+        .avatar-editor-overlay {
+          background:
+            radial-gradient(
+              circle at 18% 16%,
+              color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent),
+              transparent 34%
+            ),
+            radial-gradient(
+              circle at 84% 78%,
+              color-mix(in srgb, var(--fcc-premium-cyan) 14%, transparent),
+              transparent 36%
+            ),
+            rgba(2, 8, 23, 0.58);
+          backdrop-filter: blur(7px);
+          animation: avatar-editor-fade-zoom-in 0.28s ease-out;
+        }
+
+        .avatar-editor-modal {
+          color: var(--fcc-premium-text);
+          background:
+            radial-gradient(
+              circle at 88% 90%,
+              color-mix(in srgb, var(--fcc-premium-accent) 9%, transparent),
+              transparent 34%
+            ),
+            linear-gradient(
+              135deg,
+              var(--fcc-premium-surface-strong),
+              var(--fcc-premium-surface-soft)
+            );
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow:
+            0 30px 90px rgba(2, 8, 23, 0.28),
+            var(--fcc-premium-shadow),
+            inset 0 1px 0 rgba(255, 255, 255, 0.72);
+          animation: avatar-editor-fade-zoom-in 0.24s ease-out;
+        }
+
+        .theme-oscuro .avatar-editor-modal {
+          box-shadow:
+            0 34px 96px rgba(0, 0, 0, 0.72),
+            var(--fcc-premium-shadow),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .avatar-editor-close {
+          color: var(--fcc-premium-text);
+          background:
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--fcc-premium-surface-strong) 92%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 92%, transparent)
+            );
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow: var(--fcc-premium-shadow-soft);
+        }
+
+        .avatar-editor-close:hover {
+          transform: translateY(-1px);
+          border-color: var(--fcc-premium-border-strong);
+          color: var(--fcc-premium-accent);
+        }
+
+        .avatar-editor-eyebrow {
+          margin-bottom: 0.2rem;
+          color: var(--fcc-premium-accent);
+          font-size: 0.7rem;
+          font-weight: 900;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+        }
+
+        .avatar-editor-title {
+          color: var(--fcc-premium-text);
+          font-size: clamp(1.35rem, 3vw, 1.9rem);
+          font-weight: 950;
+          letter-spacing: -0.04em;
+          line-height: 1;
+        }
+
+        .avatar-editor-preview-shell {
+          --fcc-user-avatar-core: color-mix(in srgb, var(--fcc-premium-cyan) 18%, transparent);
+          --fcc-user-avatar-a: color-mix(in srgb, var(--fcc-premium-accent) 34%, transparent);
+          --fcc-user-avatar-b: color-mix(in srgb, var(--fcc-premium-cyan) 28%, transparent);
+          --fcc-user-avatar-c: color-mix(in srgb, var(--fcc-premium-accent) 26%, transparent);
+          --fcc-user-avatar-border: color-mix(in srgb, var(--fcc-premium-accent) 28%, transparent);
+          --fcc-user-avatar-shadow-a: color-mix(in srgb, var(--fcc-premium-accent) 4%, transparent);
+          --fcc-user-avatar-shadow-b: color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+          --fcc-user-orbit-a: color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent);
+          --fcc-user-orbit-b: color-mix(in srgb, var(--fcc-premium-cyan) 22%, transparent);
+
+          justify-content: flex-start;
+          padding-top: 0;
+          overflow: visible;
+        }
+
+        .avatar-editor-avatar-stage {
+          position: relative;
+          width: min(100%, 420px);
+          height: 420px;
+          display: grid;
+          place-items: center;
+          overflow: visible;
+          isolation: isolate;
+        }
+
+        .avatar-editor-avatar-stage::before {
+          content: "";
+          position: absolute;
+          width: 82%;
+          height: 82%;
+          border-radius: 999px;
+          background:
+            radial-gradient(circle, var(--fcc-user-avatar-core), transparent 62%),
+            conic-gradient(
+              from 210deg,
+              transparent 0deg,
+              var(--fcc-user-avatar-a) 42deg,
+              transparent 84deg,
+              var(--fcc-user-avatar-b) 145deg,
+              transparent 210deg,
+              var(--fcc-user-avatar-c) 285deg,
+              transparent 360deg
+            );
+          filter: blur(0.2px);
+          opacity: 0.95;
+          z-index: -3;
+        }
+
+        .avatar-editor-avatar-stage::after {
+          content: "";
+          position: absolute;
+          width: 70%;
+          height: 70%;
+          border-radius: 999px;
+          border: 1px solid var(--fcc-user-avatar-border);
+          box-shadow:
+            0 0 0 14px var(--fcc-user-avatar-shadow-a),
+            0 0 42px var(--fcc-user-avatar-shadow-b);
+          z-index: -2;
+        }
+
+        .avatar-editor-avatar-orbit {
+          position: absolute;
+          inset: 17%;
+          z-index: -1;
+          border-radius: 999px;
+          background:
+            linear-gradient(
+              90deg,
+              transparent 0 12%,
+              var(--fcc-user-orbit-a) 12% 18%,
+              transparent 18% 100%
+            ),
+            linear-gradient(
+              180deg,
+              transparent 0 60%,
+              var(--fcc-user-orbit-b) 60% 64%,
+              transparent 64% 100%
+            );
+          transform: rotate(-18deg);
+          opacity: 0.95;
+        }
+
+        .avatar-editor-avatar-render {
+          position: relative;
+          z-index: 2;
+          transform-origin: center;
+        }
+
+        .avatar-editor-color-slot {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          min-height: 58px;
+          margin-top: 8px;
+        }
+
+        .avatar-editor-color-row {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          width: 100%;
+          justify-content: center;
+        }
+
+        .avatar-editor-color-dot {
+          width: 2.25rem;
+          height: 2.25rem;
+          border-radius: 999px;
+          border: 2px solid var(--fcc-premium-border);
+          box-shadow: none;
+          opacity: 0.96;
+        }
+
+        .avatar-editor-color-dot:hover {
+          transform: translateY(-1px) scale(1.04);
+        }
+
+        .avatar-editor-color-dot.is-selected {
+          transform: scale(1.08);
+          border: 4px solid var(--fcc-premium-accent);
+          box-shadow: none;
+        }
+
+        .avatar-editor-tabs {
+          scrollbar-width: thin;
+        }
+
+        .avatar-editor-tab {
+          min-height: 34px;
+          border-radius: 999px;
+          padding: 0 0.85rem;
+          color: var(--fcc-premium-muted);
+          background: transparent;
+          border: 1px solid transparent;
+          font-size: 0.76rem;
+          font-weight: 800;
+        }
+
+        .avatar-editor-tab:hover {
+          color: var(--fcc-premium-text);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent);
+          border-color: var(--fcc-premium-border);
+        }
+
+        .avatar-editor-tab.is-active {
+          color: white;
+          background: var(--fcc-premium-button);
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 32%, transparent);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        }
+
+        .theme-oscuro .avatar-editor-tab.is-active {
+          color: #050505;
+        }
+
+        .avatar-editor-options-scroll {
+          padding-bottom: 0.35rem;
+        }
+
+        .avatar-editor-section-title {
+          color: var(--fcc-premium-text);
+          font-weight: 900;
+          letter-spacing: -0.02em;
+        }
+
+        .avatar-editor-option {
+          cursor: pointer;
+          overflow: visible;
+          border-radius: 18px;
+          border: 1px solid var(--fcc-premium-border);
+          background:
+            radial-gradient(
+              circle at 72% 18%,
+              color-mix(in srgb, var(--fcc-premium-cyan) 8%, transparent),
+              transparent 34%
+            ),
+            linear-gradient(
+              135deg,
+              var(--fcc-premium-surface),
+              var(--fcc-premium-surface-soft)
+            );
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+          transition:
+            transform var(--fcc-transition),
+            box-shadow var(--fcc-transition),
+            border-color var(--fcc-transition),
+            filter var(--fcc-transition),
+            opacity var(--fcc-transition);
+        }
+
+        .theme-oscuro .avatar-editor-option {
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .avatar-editor-option:hover {
+          transform: translateY(-2px);
+          border-color: var(--fcc-premium-border-strong);
+        }
+
+        .avatar-editor-option.is-selected {
+          transform: translateY(-1px) scale(1.018);
+          border-width: 2px;
+          border-color: var(--fcc-premium-accent);
+          box-shadow:
+            0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent),
+            inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+        }
+
+        .avatar-editor-option-inner {
+          position: relative;
+          display: flex;
+          width: 100%;
+          height: 100%;
+          aspect-ratio: 1 / 1;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          border-radius: 16px;
+          background:
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--fcc-premium-surface-strong) 88%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 94%, transparent)
+            );
+        }
+
+        .avatar-editor-none-text {
+          color: var(--fcc-premium-muted);
+          font-size: 0.88rem;
+          font-weight: 700;
+        }
+
+        .avatar-editor-gender-option {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          text-align: center;
+        }
+
+        .avatar-editor-gender-label {
+          display: block;
+          width: 100%;
+          color: var(--fcc-premium-text);
+          font-size: 1rem;
+          font-weight: 900;
+          text-align: center;
+        }
+
+        .avatar-editor-option.is-locked {
+          z-index: 1;
+        }
+
+        .avatar-editor-option.is-locked:hover {
+          z-index: 80;
+        }
+
+        .avatar-editor-lock-layer {
+          z-index: 30;
+          background: rgba(0, 0, 0, 0.28);
+          overflow: visible;
+          pointer-events: none;
+        }
+
+        .avatar-editor-tooltip {
+          width: max-content;
+          max-width: 124px;
+          white-space: normal;
+          word-break: normal;
+          line-height: 1.08rem;
+          color: var(--fcc-premium-text);
+          background: var(--fcc-premium-surface-strong);
+          border: 1px solid var(--fcc-premium-border);
+          border-radius: 10px;
+          box-shadow: none;
+          opacity: 0;
+          transform: translate(-50%, -50%);
+          transition: opacity var(--fcc-transition);
+        }
+
+        .group:hover .avatar-editor-tooltip {
+          opacity: 1;
+          transform: translate(-50%, -50%);
+        }
+
+        .avatar-editor-secondary-button {
+          min-height: 40px;
+          border-radius: 12px;
+          color: var(--fcc-premium-text);
+          background:
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 94%, transparent)
+            );
+          border: 1px solid var(--fcc-premium-border);
+          font-weight: 850;
+          box-shadow: var(--fcc-premium-shadow-soft);
+        }
+
+        .avatar-editor-secondary-button:hover {
+          transform: translateY(-1px);
+          color: var(--fcc-premium-accent);
+          border-color: var(--fcc-premium-border-strong);
+        }
+
+        .avatar-editor-toast {
+          animation: avatar-editor-fade-in 0.3s ease-out;
+        }
+
+        @media (max-width: 640px) {
+          .avatar-editor-avatar-stage {
+            width: min(100%, 320px);
+            height: 340px;
+          }
+
+          .avatar-editor-preview-shell {
+            margin: 0 auto;
+          }
         }
       `}</style>
 
       {mensaje && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-md bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text)] px-4 py-2 rounded-lg shadow-lg animate-fade-in">
+        <div className="avatar-editor-toast fixed bottom-4 left-4 right-4 z-[10030] rounded-2xl border px-4 py-3 text-sm shadow-lg sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md">
           {mensaje}
         </div>
       )}
+
+      <style jsx global>{`
+        .avatar-editor-toast {
+          color: var(--fcc-premium-text);
+          background: var(--fcc-premium-surface-strong);
+          border-color: var(--fcc-premium-border);
+          box-shadow: var(--fcc-premium-shadow);
+        }
+      `}</style>
     </div>,
     document.body
   );

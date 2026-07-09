@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
@@ -14,8 +14,22 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import EditorQuizCampo from "@/components/EditorQuizCampo";
+import { Check, ChevronDown, ChevronUp, Plus, Save, Trash2, X } from "lucide-react";
 
-type Bloque = { id: string; titulo?: string | null; tipo: string };
+type Bloque = {
+  id: string;
+  titulo?: string | null;
+  tipo: string;
+  unidad_id?: string | null;
+  orden?: number | null;
+};
+
+type Unidad = {
+  id: string;
+  numero: number;
+  nombre?: string | null;
+  orden?: number | null;
+};
 type PreguntaLocal = {
   id: string;
   enunciado: string;
@@ -24,7 +38,12 @@ type PreguntaLocal = {
 
 export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   const [bloques, setBloques] = useState<Bloque[]>([]);
+  const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [bloqueId, setBloqueId] = useState<string>("");
+  const [unidadQuizzesAbiertaId, setUnidadQuizzesAbiertaId] =
+    useState<string | null>(null);
+  const [bloqueQuizzesAbiertoId, setBloqueQuizzesAbiertoId] =
+    useState<string | null>(null);
 
   const [titulo, setTitulo] = useState("");
   const [descripcion, setDescripcion] = useState("");
@@ -44,6 +63,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const [editQuiz, setEditQuiz] = useState<any | null>(null);
+  const [quizCargando, setQuizCargando] = useState<any | null>(null);
+  const [quizAEliminar, setQuizAEliminar] = useState<any | null>(null);
   const [deletedPreguntas, setDeletedPreguntas] = useState<string[]>([]);
   const [deletedRespuestas, setDeletedRespuestas] = useState<string[]>([]);
   const [portalReady, setPortalReady] = useState(false);
@@ -53,12 +74,23 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   }, []);
 
   useEffect(() => {
+    if (!editQuiz && !showFormulaModal && !quizAEliminar && !quizCargando) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editQuiz, showFormulaModal, quizAEliminar, quizCargando]);
+
+  useEffect(() => {
     if (!editQuiz?.id) return;
     setDeletedPreguntas([]);
     setDeletedRespuestas([]);
   }, [editQuiz?.id]);
 
-  const modalActivo = Boolean(editQuiz) || showFormulaModal;
+  const modalActivo = Boolean(editQuiz) || showFormulaModal || Boolean(quizCargando);
 
   useEffect(() => {
     if (!modalActivo) return;
@@ -221,14 +253,80 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       );
     };
 
+  const bloquesPorUnidad = useMemo(() => {
+    const agrupados: Record<string, Bloque[]> = {};
+
+    bloques.forEach((bloque) => {
+      const unidadKey = bloque.unidad_id || "__sin_unidad__";
+
+      if (!agrupados[unidadKey]) {
+        agrupados[unidadKey] = [];
+      }
+
+      agrupados[unidadKey].push(bloque);
+    });
+
+    return agrupados;
+  }, [bloques]);
+
+  const quizzesPorBloque = useMemo(() => {
+    const agrupados: Record<string, any[]> = {};
+
+    quizzesGuardados.forEach((quiz) => {
+      const bloqueKey = quiz.bloque_id || "__sin_bloque__";
+
+      if (!agrupados[bloqueKey]) {
+        agrupados[bloqueKey] = [];
+      }
+
+      agrupados[bloqueKey].push(quiz);
+    });
+
+    return agrupados;
+  }, [quizzesGuardados]);
+
+  const unidadesListado = useMemo(() => {
+    const salida: Array<Unidad & { synthetic?: boolean }> = [...unidades];
+
+    if ((bloquesPorUnidad["__sin_unidad__"] || []).length > 0) {
+      salida.push({
+        id: "__sin_unidad__",
+        numero: 0,
+        nombre: "Sin unidad",
+        synthetic: true,
+      });
+    }
+
+    return salida;
+  }, [unidades, bloquesPorUnidad]);
+
+  const contarQuizzesDeUnidad = (unidadId: string) => {
+    const bloquesUnidad = bloquesPorUnidad[unidadId] || [];
+
+    return bloquesUnidad.reduce(
+      (total, bloque) => total + (quizzesPorBloque[bloque.id]?.length || 0),
+      0
+    );
+  };
+
   useEffect(() => {
     const fetchBloques = async () => {
       const { data, error } = await supabase
         .from("curso_contenido_bloques")
-        .select("id,titulo,tipo")
+        .select("id,titulo,tipo,unidad_id,orden")
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
       if (!error && data) setBloques(data as Bloque[]);
+    };
+
+    const fetchUnidades = async () => {
+      const { data, error } = await supabase
+        .from("curso_unidades")
+        .select("id,numero,nombre,orden")
+        .eq("materia_id", materiaId)
+        .order("orden", { ascending: true });
+
+      if (!error && data) setUnidades(data as Unidad[]);
     };
 
     const fetchQuizzes = async () => {
@@ -241,6 +339,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       if (!error && data) setQuizzesGuardados(data);
     };
 
+    fetchUnidades();
     fetchBloques();
     fetchQuizzes();
 
@@ -265,47 +364,84 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     };
   }, [materiaId]);
 
-  useEffect(() => {
-    if (!editQuiz?.id) return;
+  const cargarPreguntasDeQuiz = async (quizId: string) => {
+    const { data: preguntasData, error: preguntasError } = await supabase
+      .from("preguntas")
+      .select("id, enunciado, orden")
+      .eq("quiz_id", quizId)
+      .order("orden", { ascending: true });
 
-    const fetchPreguntas = async () => {
-      const { data: preguntasData, error: preguntasError } = await supabase
-        .from("preguntas")
-        .select("id, enunciado, orden")
-        .eq("quiz_id", editQuiz.id)
+    if (preguntasError) {
+      console.error(preguntasError);
+      throw preguntasError;
+    }
+
+    const preguntasConRespuestas: any[] = [];
+
+    for (const pregunta of preguntasData || []) {
+      const { data: respuestasData, error: respuestasError } = await supabase
+        .from("respuestas")
+        .select("id, texto, es_correcta, orden")
+        .eq("pregunta_id", pregunta.id)
         .order("orden", { ascending: true });
 
-      if (preguntasError) {
-        console.error(preguntasError);
-        return;
+      if (respuestasError) {
+        console.error(respuestasError);
       }
 
-      const preguntasConRespuestas: any[] = [];
+      preguntasConRespuestas.push({
+        ...pregunta,
+        respuestas: respuestasData || [],
+      });
+    }
 
-      for (const pregunta of preguntasData || []) {
-        const { data: respuestasData, error: respuestasError } = await supabase
-          .from("respuestas")
-          .select("id, texto, es_correcta, orden")
-          .eq("pregunta_id", pregunta.id)
-          .order("orden", { ascending: true });
+    return preguntasConRespuestas;
+  };
 
-        if (respuestasError) {
-          console.error(respuestasError);
-        }
+  const abrirQuizGuardado = async (quiz: any) => {
+    setQuizCargando(quiz);
 
-        preguntasConRespuestas.push({
-          ...pregunta,
-          respuestas: respuestasData || [],
-        });
+    try {
+      const preguntasCargadas = await cargarPreguntasDeQuiz(quiz.id);
+
+      setDeletedPreguntas([]);
+      setDeletedRespuestas([]);
+      setEditQuiz({
+        ...quiz,
+        preguntas: preguntasCargadas,
+        preguntasCargadas: true,
+      });
+    } catch (error) {
+      console.error("Error cargando quiz:", error);
+      toast.error("No se pudo cargar el quiz");
+    } finally {
+      setQuizCargando(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!editQuiz?.id || editQuiz.preguntasCargadas) return;
+
+    const fetchPreguntas = async () => {
+      try {
+        const preguntasConRespuestas = await cargarPreguntasDeQuiz(editQuiz.id);
+
+        setEditQuiz((prev: any) =>
+          prev
+            ? {
+                ...prev,
+                preguntas: preguntasConRespuestas,
+                preguntasCargadas: true,
+              }
+            : prev
+        );
+      } catch (error) {
+        console.error(error);
       }
-
-      setEditQuiz((prev: any) =>
-        prev ? { ...prev, preguntas: preguntasConRespuestas } : prev
-      );
     };
 
     fetchPreguntas();
-  }, [editQuiz?.id]);
+  }, [editQuiz?.id, editQuiz?.preguntasCargadas]);
 
   const addPregunta = () => {
     setPreguntas((prev) => [
@@ -453,7 +589,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         }
       }
 
-      toast.success("Quiz guardado ✅");
+      toast.success("Quiz guardado");
 
       setTitulo("");
       setDescripcion("");
@@ -476,14 +612,13 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   };
 
   const deleteQuiz = async (id: string) => {
-    if (!confirm("¿Eliminar este quiz y todas sus preguntas/respuestas?")) return;
     const { error } = await supabase.from("quizzes").delete().eq("id", id);
     if (error) {
       console.error(error);
       toast.error("Error al eliminar quiz");
       return;
     }
-    toast.success("Quiz eliminado 🗑️");
+    toast.success("Quiz eliminado");
     setQuizzesGuardados((prev) => prev.filter((q) => q.id !== id));
   };
 
@@ -583,7 +718,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         }
       }
 
-      toast.success("Quiz actualizado ✅");
+      toast.success("Quiz actualizado");
 
       const { data } = await supabase
         .from("quizzes")
@@ -670,180 +805,810 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
     setShowFormulaModal(false);
   };
 
+  const estilos = (
+    <style>{`
+      .constructor-quiz,
+      .constructor-quiz-overlay {
+        --quiz-accent: var(--fcc-premium-accent);
+        --quiz-cyan: var(--fcc-premium-cyan);
+        --quiz-surface: var(--fcc-premium-surface);
+        --quiz-surface-soft: var(--fcc-premium-surface-soft);
+        --quiz-surface-strong: var(--fcc-premium-surface-strong);
+        --quiz-text: var(--fcc-premium-text);
+        --quiz-text-soft: var(--fcc-premium-text-soft);
+        --quiz-muted: var(--fcc-premium-muted);
+        --quiz-border: var(--fcc-premium-border);
+        --quiz-border-strong: var(--fcc-premium-border-strong);
+        --quiz-shadow: var(--fcc-premium-shadow);
+        --quiz-shadow-soft: var(--fcc-premium-shadow-soft);
+        --quiz-button: var(--fcc-premium-button);
+      }
+
+      .constructor-quiz {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .constructor-quiz-main-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(430px, 0.92fr);
+        gap: 16px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .constructor-quiz-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--quiz-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface) 96%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 14%, var(--quiz-border));
+        box-shadow:
+          var(--quiz-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--quiz-surface-strong) 65%, transparent);
+      }
+
+      .constructor-quiz-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--quiz-accent) 6%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 24%,
+            color-mix(in srgb, var(--quiz-accent) 4%, transparent) 24% 24.35%,
+            transparent 24.35% 100%
+          );
+        opacity: 0.62;
+      }
+
+      .constructor-quiz-card.no-line::before,
+      .constructor-quiz-question::before,
+      .constructor-quiz-answer::before {
+        content: none;
+      }
+
+      .constructor-quiz-card-content {
+        position: relative;
+        z-index: 2;
+        min-width: 0;
+      }
+
+      .constructor-quiz-form {
+        padding: clamp(16px, 2.8vw, 26px);
+      }
+
+      .constructor-quiz-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr);
+        gap: 14px;
+        align-items: end;
+      }
+
+      .constructor-quiz-full {
+        grid-column: 1 / -1;
+      }
+
+      .constructor-quiz-field {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .constructor-quiz-label {
+        color: var(--quiz-text-soft);
+        font-size: 0.78rem;
+        font-weight: 950;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .constructor-quiz-input,
+      .constructor-quiz-select,
+      .constructor-quiz-textarea {
+        min-height: 44px;
+        width: 100%;
+        border-radius: 14px;
+        padding: 0 13px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 74%, transparent);
+        border: 1px solid var(--quiz-border);
+        outline: none;
+        font-size: 0.92rem;
+        font-weight: 750;
+        transition:
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .constructor-quiz-textarea {
+        min-height: 76px;
+        padding: 12px 13px;
+        resize: vertical;
+      }
+
+      .constructor-quiz-input:focus,
+      .constructor-quiz-select:focus,
+      .constructor-quiz-textarea:focus {
+        border-color: color-mix(in srgb, var(--quiz-accent) 56%, var(--quiz-border));
+        background: color-mix(in srgb, var(--quiz-surface-strong) 90%, transparent);
+      }
+
+      .constructor-quiz-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin: 22px 0 14px;
+        color: var(--quiz-text);
+        font-size: 1.04rem;
+        font-weight: 950;
+        letter-spacing: -0.02em;
+        text-align: center;
+      }
+
+      .constructor-quiz-section-title::before,
+      .constructor-quiz-section-title::after {
+        content: "";
+        width: 42px;
+        height: 1px;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in srgb, var(--quiz-accent) 55%, transparent)
+        );
+      }
+
+      .constructor-quiz-section-title::after {
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--quiz-accent) 55%, transparent),
+          transparent
+        );
+      }
+
+      .constructor-quiz-empty {
+        border-radius: 18px;
+        padding: 16px;
+        color: var(--quiz-muted);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 58%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        font-size: 0.92rem;
+        font-weight: 750;
+        text-align: center;
+      }
+
+      .constructor-quiz-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .constructor-quiz-question {
+        position: relative;
+        overflow: visible;
+        border-radius: 22px;
+        padding: 54px 16px 18px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface) 98%, transparent),
+            color-mix(in srgb, var(--quiz-surface-strong) 58%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, #10b981 10%, var(--quiz-border));
+        box-shadow: inset 3px 0 0 color-mix(in srgb, #10b981 34%, var(--quiz-accent));
+      }
+
+      .constructor-quiz-number {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border-radius: 13px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 9%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 12%, transparent);
+        font-size: 0.9rem;
+        font-weight: 950;
+      }
+
+      .constructor-quiz-question-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .constructor-quiz-answers {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .constructor-quiz-answer {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .constructor-quiz-inline-actions,
+      .constructor-quiz-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .constructor-quiz-actions {
+        margin-top: 16px;
+      }
+
+      .constructor-quiz-button {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 14px;
+        padding: 0 15px;
+        color: #ffffff;
+        background: var(--quiz-button);
+        border: 1px solid transparent;
+        font-size: 0.9rem;
+        font-weight: 950;
+        transition:
+          transform 170ms ease,
+          opacity 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .theme-oscuro .constructor-quiz-button {
+        color: #050505;
+      }
+
+      .constructor-quiz-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .constructor-quiz-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
+      }
+
+      .constructor-quiz-button.secondary {
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 82%, transparent);
+        border-color: var(--quiz-border);
+      }
+
+      .constructor-quiz-button.danger {
+        color: #ffffff;
+        background: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 70%, white);
+      }
+
+      .constructor-quiz-button.success {
+        color: #ffffff;
+        background:
+          linear-gradient(
+            135deg,
+            #10b981,
+            color-mix(in srgb, #10b981 70%, var(--quiz-accent))
+          );
+      }
+
+      .constructor-quiz-icon-button {
+        width: 38px;
+        height: 38px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 13px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 82%, transparent);
+        border: 1px solid var(--quiz-border);
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease,
+          color 170ms ease;
+      }
+
+      .constructor-quiz-icon-button:hover {
+        transform: translateY(-1px);
+        border-color: var(--quiz-border-strong);
+      }
+
+      .constructor-quiz-icon-button.correct {
+        color: #10b981;
+        background: color-mix(in srgb, #10b981 10%, transparent);
+        border-color: color-mix(in srgb, #10b981 32%, var(--quiz-border));
+      }
+
+      .constructor-quiz-icon-button.danger {
+        color: #ffffff;
+        background: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 70%, white);
+      }
+
+      .constructor-quiz-saved {
+        padding: clamp(16px, 2.8vw, 22px);
+      }
+
+      .constructor-quiz-saved .constructor-quiz-section-title {
+        margin-top: 2px;
+      }
+
+      .constructor-quiz-saved-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .constructor-quiz-unit-card {
+        overflow: hidden;
+        border-radius: 22px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-accent) 5%, var(--quiz-surface-strong)),
+            color-mix(in srgb, var(--quiz-surface-soft) 92%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 12%, var(--quiz-border));
+      }
+
+      .constructor-quiz-unit-button,
+      .constructor-quiz-block-button {
+        width: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        color: var(--quiz-text);
+        text-align: center;
+      }
+
+      .constructor-quiz-unit-button {
+        min-height: 64px;
+        padding: 13px 14px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-accent) 6%, transparent),
+            color-mix(in srgb, var(--quiz-surface-strong) 72%, transparent)
+          );
+      }
+
+      .constructor-quiz-block-button {
+        min-height: 54px;
+        border-radius: 17px;
+        padding: 10px 12px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, #8b5cf6 5%, var(--quiz-surface)),
+            color-mix(in srgb, var(--quiz-surface-strong) 78%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, #8b5cf6 14%, var(--quiz-border));
+        box-shadow: inset 4px 0 0 color-mix(in srgb, #8b5cf6 28%, var(--quiz-accent));
+      }
+
+      .constructor-quiz-unit-title,
+      .constructor-quiz-block-title {
+        display: block;
+        color: var(--quiz-text);
+        font-weight: 950;
+        line-height: 1.18;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .constructor-quiz-unit-title {
+        font-size: 0.98rem;
+      }
+
+      .constructor-quiz-block-title {
+        font-size: 0.86rem;
+      }
+
+      .constructor-quiz-unit-meta,
+      .constructor-quiz-block-meta {
+        display: block;
+        margin-top: 3px;
+        color: var(--quiz-muted);
+        font-size: 0.74rem;
+        font-weight: 800;
+      }
+
+      .constructor-quiz-kind-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: max-content;
+        margin: 0 auto 5px;
+        border-radius: 999px;
+        padding: 3px 9px;
+        color: color-mix(in srgb, #8b5cf6 62%, var(--quiz-accent));
+        background: color-mix(in srgb, #8b5cf6 4%, transparent);
+        border: 1px solid color-mix(in srgb, #8b5cf6 12%, var(--quiz-border));
+        font-size: 0.62rem;
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .constructor-quiz-unit-body {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border-top: 1px solid color-mix(in srgb, var(--quiz-accent) 14%, var(--quiz-border));
+      }
+
+      .constructor-quiz-block-body {
+        display: grid;
+        gap: 8px;
+        margin-left: 12px;
+        padding: 10px 0 2px 12px;
+        border-left: 2px solid color-mix(in srgb, #8b5cf6 14%, var(--quiz-border));
+      }
+
+      .constructor-quiz-saved-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        border-radius: 18px;
+        padding: 12px 13px;
+        color: var(--quiz-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface) 98%, transparent),
+            color-mix(in srgb, var(--quiz-surface-strong) 58%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, #10b981 10%, var(--quiz-border));
+        box-shadow: inset 3px 0 0 color-mix(in srgb, #10b981 34%, var(--quiz-accent));
+        cursor: pointer;
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease;
+      }
+
+      .constructor-quiz-saved-row:hover {
+        transform: translateY(-1px);
+        border-color: var(--quiz-border-strong);
+      }
+
+      .constructor-quiz-saved-title {
+        color: var(--quiz-text);
+        font-size: 0.96rem;
+        font-weight: 950;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .constructor-quiz-saved-meta {
+        margin-top: 3px;
+        color: var(--quiz-muted);
+        font-size: 0.78rem;
+        font-weight: 750;
+      }
+
+      .constructor-quiz-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        background: rgba(2, 8, 23, 0.58);
+        backdrop-filter: blur(8px);
+      }
+
+      .constructor-quiz-modal {
+        position: relative;
+        width: min(100%, 980px);
+        max-height: 92dvh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--quiz-text, var(--fcc-premium-text));
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface, var(--fcc-premium-surface)) 98%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft, var(--fcc-premium-surface-soft)) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--quiz-accent, var(--fcc-premium-accent)) 16%, var(--quiz-border, var(--fcc-premium-border)));
+        box-shadow: var(--quiz-shadow, var(--fcc-premium-shadow));
+      }
+
+      .constructor-quiz-modal.small {
+        width: min(94vw, 560px);
+      }
+
+      .constructor-quiz-modal-scroll {
+        overflow-y: auto;
+        padding: 26px;
+      }
+
+      .constructor-quiz-modal-title {
+        color: var(--quiz-text);
+        font-size: clamp(1.45rem, 3vw, 2rem);
+        font-weight: 950;
+        letter-spacing: -0.055em;
+        line-height: 1;
+        text-align: center;
+      }
+
+      .constructor-quiz-modal-description {
+        max-width: 640px;
+        margin: 8px auto 20px;
+        color: var(--quiz-muted);
+        text-align: center;
+        font-size: 0.94rem;
+        font-weight: 750;
+        line-height: 1.42;
+      }
+
+      .constructor-quiz-modal-close {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        z-index: 3;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 82%, transparent);
+        border: 1px solid var(--quiz-border);
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          color 170ms ease;
+      }
+
+      .constructor-quiz-modal-close:hover {
+        transform: translateY(-1px);
+        color: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 34%, var(--quiz-border));
+      }
+
+      .constructor-quiz-modal-actions {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding-top: 16px;
+      }
+
+      .constructor-quiz-warning {
+        border-radius: 18px;
+        padding: 14px 16px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, #ef4444 8%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, #ef4444 28%, var(--quiz-border));
+        text-align: center;
+        font-size: 0.94rem;
+        font-weight: 850;
+        line-height: 1.45;
+      }
+
+      .constructor-quiz-loading-box {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--quiz-surface-strong) 58%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 16%, var(--quiz-border));
+      }
+
+      .constructor-quiz-loading-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--quiz-accent);
+        animation: constructorQuizLoading 950ms ease-in-out infinite;
+      }
+
+      .constructor-quiz-loading-dot:nth-child(2) {
+        animation-delay: 120ms;
+      }
+
+      .constructor-quiz-loading-dot:nth-child(3) {
+        animation-delay: 240ms;
+      }
+
+      @keyframes constructorQuizLoading {
+        0%, 100% {
+          opacity: 0.35;
+          transform: translateY(0);
+        }
+        50% {
+          opacity: 1;
+          transform: translateY(-4px);
+        }
+      }
+
+      .constructor-quiz-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .constructor-quiz-preview-box {
+        border-radius: 18px;
+        padding: 14px;
+        text-align: center;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface-strong) 66%, transparent);
+        border: 1px solid var(--quiz-border);
+        overflow-x: auto;
+      }
+
+      @media (max-width: 760px) {
+        .constructor-quiz-form,
+        .constructor-quiz-saved,
+        .constructor-quiz-modal-scroll {
+          padding: 16px;
+        }
+
+        .constructor-quiz-main-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .constructor-quiz-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .constructor-quiz-full {
+          grid-column: auto;
+        }
+
+        .constructor-quiz-question-main,
+        .constructor-quiz-answer,
+        .constructor-quiz-saved-row,
+        .constructor-quiz-unit-button,
+        .constructor-quiz-block-button {
+          grid-template-columns: 1fr;
+        }
+
+        .constructor-quiz-inline-actions,
+        .constructor-quiz-actions {
+          justify-content: stretch;
+        }
+
+        .constructor-quiz-button {
+          width: 100%;
+        }
+
+        .constructor-quiz-icon-button {
+          width: 100%;
+        }
+      }
+    `}</style>
+  );
+
   return (
-    <div
-      className="rounded-xl p-4 sm:p-5 shadow space-y-5 min-w-0 overflow-hidden"
-      style={{
-        backgroundColor: "var(--color-card)",
-        border: "1px solid var(--color-border)",
-        color: "var(--color-text)",
-      }}
-    >
-      <h3 className="text-xl font-semibold" style={{ color: "var(--color-heading)" }}>
-        Quiz
-      </h3>
+    <div className="constructor-quiz">
+      {estilos}
 
-      <div>
-        <label className="block text-sm mb-1">Ligar a bloque</label>
-        <select
-          value={bloqueId}
-          onChange={(e) => setBloqueId(e.target.value)}
-          className="w-full rounded-lg px-3 py-2"
-          style={{
-            backgroundColor: "var(--color-bg)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
-          }}
-        >
-          <option value="">— Selecciona un bloque —</option>
-          {bloques.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.titulo || "(Sin título)"} — {b.tipo.toUpperCase()}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-        <div className="md:col-span-2">
-          <label className="block text-sm mb-1">Título</label>
-          <input
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-            className="w-full rounded-lg px-3 py-2"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-            placeholder="Ej. Quiz 1: Estructuras básicas"
-          />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Tiempo límite (min)</label>
-          <input
-            type="number"
-            value={tiempoMin ?? ""}
-            onChange={(e) =>
-              setTiempoMin(e.target.value === "" ? null : parseInt(e.target.value))
-            }
-            className="w-full rounded-lg px-3 py-2"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-            min={0}
-            placeholder="Ej. 15"
-          />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Intentos máximos</label>
-          <input
-            type="number"
-            value={intentosMax}
-            onChange={(e) => setIntentosMax(parseInt(e.target.value || "1", 10))}
-            className="w-full rounded-lg px-3 py-2"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-            min={1}
-          />
-        </div>
-        <div className="md:col-span-6">
-          <label className="block text-sm mb-1">Descripción (opcional)</label>
-          <input
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            className="w-full rounded-lg px-3 py-2"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-            placeholder="Instrucciones o alcance del quiz"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div>
-          <h4 className="font-semibold">Preguntas</h4>
-        </div>
-
-        {preguntas.length === 0 && (
-          <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-            Aún no hay preguntas.
-          </p>
-        )}
-
-        {preguntas.map((p, idx) => (
-          <div
-            key={p.id}
-            className="rounded-lg p-3 space-y-2"
-            style={{
-              backgroundColor: "var(--color-card)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-          >
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 w-full min-w-0">
-                {idx + 1}.
-                <div className="flex flex-col gap-1 flex-1 min-w-0">
-                  <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
-                    <EditorQuizCampo
-                      value={p.enunciado}
-                      onChange={(value) => updatePregunta(p.id, value)}
-                      placeholder="Nueva pregunta"
-                      onUploadImage={async (file) => {
-                        const { url, originalName } = await uploadQuizImage(file);
-
-                        return {
-                          url,
-                          name: originalName,
-                        };
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => deletePregunta(p.id)}
-                className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-4 h-4 text-white"
-                >
-                  <path d="M3 6h18" />
-                  <path d="M8 6V4h8v2" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                </svg>
-              </button>
+      <div className="constructor-quiz-main-layout">
+        <section className="constructor-quiz-card constructor-quiz-form no-line">
+          <div className="constructor-quiz-card-content">
+          <div className="constructor-quiz-grid">
+            <div className="constructor-quiz-field">
+              <label className="constructor-quiz-label">Título del quiz</label>
+              <input
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                className="constructor-quiz-input"
+                placeholder="Ej. Quiz 1: Estructuras básicas"
+              />
             </div>
 
-            {p.respuestas.map((r) => (
-              <div key={r.id} className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-                <div className="flex flex-col gap-1 flex-1 min-w-0 w-full">
+            <div className="constructor-quiz-field">
+              <label className="constructor-quiz-label">Tiempo</label>
+              <input
+                type="number"
+                value={tiempoMin ?? ""}
+                onChange={(e) =>
+                  setTiempoMin(
+                    e.target.value === "" ? null : parseInt(e.target.value)
+                  )
+                }
+                className="constructor-quiz-input"
+                min={0}
+                placeholder="Min"
+              />
+            </div>
+
+            <div className="constructor-quiz-field">
+              <label className="constructor-quiz-label">Intentos</label>
+              <input
+                type="number"
+                value={intentosMax}
+                onChange={(e) =>
+                  setIntentosMax(parseInt(e.target.value || "1", 10))
+                }
+                className="constructor-quiz-input"
+                min={1}
+              />
+            </div>
+
+            <div className="constructor-quiz-field constructor-quiz-full">
+              <label className="constructor-quiz-label">
+                Descripción (opcional)
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                className="constructor-quiz-textarea"
+                placeholder="Descripción del quiz"
+              />
+            </div>
+
+            <div className="constructor-quiz-field constructor-quiz-full">
+              <label className="constructor-quiz-label">Ligar a bloque</label>
+              <select
+                value={bloqueId}
+                onChange={(e) => setBloqueId(e.target.value)}
+                className="constructor-quiz-select"
+              >
+                <option value="">— Selecciona un bloque —</option>
+                {bloques.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.titulo || "(Sin título)"} — {b.tipo.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <h4 className="constructor-quiz-section-title">Preguntas</h4>
+
+          <div className="constructor-quiz-list">
+            {preguntas.length === 0 && (
+              <p className="constructor-quiz-empty">Aún no hay preguntas.</p>
+            )}
+
+            {preguntas.map((p, idx) => (
+              <article key={p.id} className="constructor-quiz-question">
+                <span className="constructor-quiz-number">{idx + 1}</span>
+
+                <div className="constructor-quiz-question-main">
                   <EditorQuizCampo
-                    value={r.texto}
-                    onChange={(value) =>
-                      updateRespuesta(p.id, r.id, { texto: value })
-                    }
-                    placeholder="Opción de respuesta"
-                    compact
+                    value={p.enunciado}
+                    onChange={(value) => updatePregunta(p.id, value)}
+                    placeholder="Nueva pregunta"
                     onUploadImage={async (file) => {
                       const { url, originalName } = await uploadQuizImage(file);
 
@@ -853,148 +1618,333 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                       };
                     }}
                   />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => markCorrecta(p.id, r.id)}
-                  className={`h-[34px] px-3 flex items-center justify-center rounded text-white shrink-0 self-start ${
-                    r.es_correcta ? "bg-green-600 hover:bg-green-700" : "bg-gray-600 hover:bg-gray-700"
-                  }`}
-                >
-                  <span className="text-white leading-none">✓</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteRespuesta(p.id, r.id)}
-                  className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="w-4 h-4 text-white"
+
+                  <button
+                    type="button"
+                    onClick={() => deletePregunta(p.id)}
+                    className="constructor-quiz-icon-button danger"
+                    aria-label="Eliminar pregunta"
                   >
-                    <path d="M3 6h18" />
-                    <path d="M8 6V4h8v2" />
-                    <path d="M19 6l-1 14H6L5 6" />
-                    <path d="M10 11v6" />
-                    <path d="M14 11v6" />
-                  </svg>
-                </button>
-              </div>
+                    <Trash2 size={17} strokeWidth={2.5} />
+                  </button>
+                </div>
+
+                <div className="constructor-quiz-answers">
+                  {p.respuestas.map((r) => (
+                    <div key={r.id} className="constructor-quiz-answer">
+                      <EditorQuizCampo
+                        value={r.texto}
+                        onChange={(value) =>
+                          updateRespuesta(p.id, r.id, { texto: value })
+                        }
+                        placeholder="Opción de respuesta"
+                        compact
+                        onUploadImage={async (file) => {
+                          const { url, originalName } = await uploadQuizImage(file);
+
+                          return {
+                            url,
+                            name: originalName,
+                          };
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => markCorrecta(p.id, r.id)}
+                        className={`constructor-quiz-icon-button ${
+                          r.es_correcta ? "correct" : ""
+                        }`}
+                        aria-label="Marcar como correcta"
+                      >
+                        <Check size={18} strokeWidth={2.7} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => deleteRespuesta(p.id, r.id)}
+                        className="constructor-quiz-icon-button danger"
+                        aria-label="Eliminar respuesta"
+                      >
+                        <Trash2 size={17} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="constructor-quiz-inline-actions">
+                    <button
+                      type="button"
+                      onClick={() => addRespuesta(p.id)}
+                      className="constructor-quiz-button secondary"
+                    >
+                      <Plus size={16} strokeWidth={2.7} />
+                      Opción
+                    </button>
+                  </div>
+                </div>
+              </article>
             ))}
+          </div>
+
+          <div className="constructor-quiz-actions">
+            <button
+              type="button"
+              onClick={addPregunta}
+              className="constructor-quiz-button secondary"
+            >
+              <Plus size={17} strokeWidth={2.7} />
+              Pregunta
+            </button>
 
             <button
               type="button"
-              onClick={() => addRespuesta(p.id)}
-              className="px-2 py-1 rounded"
-              style={{
-                backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
+              onClick={saveQuiz}
+              disabled={saving}
+              className="constructor-quiz-button success"
             >
-              + Opción
+              <Save size={17} strokeWidth={2.6} />
+              {saving ? "Guardando..." : "Guardar quiz"}
             </button>
           </div>
-        ))}
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={addPregunta}
-            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white"
-          >
-            + Pregunta
-          </button>
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          onClick={saveQuiz}
-          disabled={saving}
-          className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white w-full sm:w-auto"
-        >
-          {saving ? "Guardando..." : "Guardar quiz"}
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className="font-semibold mt-4">Quizzes guardados</h4>
-        {quizzesGuardados.length === 0 && (
-          <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-            Aún no hay quizzes en este curso.
-          </p>
-        )}
-        {quizzesGuardados.map((q) => (
-          <div
-            key={q.id}
-            className="rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 cursor-pointer min-w-0"
-            style={{
-              backgroundColor: "var(--color-card)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-            }}
-            onClick={() => setEditQuiz({ ...q, preguntas: [] })}
-          >
-            <span className="break-words min-w-0">
-              {q.titulo} (XP {q.xp})
-              {typeof q.tiempo_limite_min === "number" && q.tiempo_limite_min > 0
-                ? ` — ${q.tiempo_limite_min} min`
-                : " — sin límite"}
-            </span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteQuiz(q.id);
-              }}
-              className="px-3 py-1 rounded bg-red-600 hover:bg-red-500  text-white"
-            >
-              Eliminar
-            </button>
           </div>
-        ))}
+        </section>
 
-        {/* Modal de edición */}
-        {editQuiz && renderPortal(
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-3 sm:p-4">
-            <div
-              className="p-4 sm:p-6 rounded-lg w-full max-w-5xl h-[92dvh] max-h-[92dvh] flex flex-col min-w-0"
-              style={{
-                backgroundColor: "var(--color-card)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
-            >
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                <h3 className="text-lg font-bold" style={{ color: "var(--color-heading)" }}>
-                  Editando quiz: {editQuiz.titulo}
+        <section className="constructor-quiz-card constructor-quiz-saved no-line">
+          <div className="constructor-quiz-card-content">
+          <h4 className="constructor-quiz-section-title">Quizzes guardados</h4>
+
+          {quizzesGuardados.length === 0 ? (
+            <p className="constructor-quiz-empty">
+              Aún no hay quizzes en este curso.
+            </p>
+          ) : (
+            <div className="constructor-quiz-saved-list">
+              {unidadesListado.map((unidadItem) => {
+                const unidadId = unidadItem.id;
+                const abierta = unidadQuizzesAbiertaId === unidadId;
+                const bloquesUnidad = bloquesPorUnidad[unidadId] || [];
+                const quizzesUnidad = contarQuizzesDeUnidad(unidadId);
+
+                return (
+                  <article key={unidadId} className="constructor-quiz-unit-card">
+                    <button
+                      type="button"
+                      className="constructor-quiz-unit-button"
+                      onClick={() =>
+                        setUnidadQuizzesAbiertaId((prev) =>
+                          prev === unidadId ? null : unidadId
+                        )
+                      }
+                    >
+                      <span className="min-w-0">
+                        <span
+                          className="constructor-quiz-unit-title"
+                          title={
+                            unidadItem.synthetic
+                              ? "Sin unidad"
+                              : `Unidad ${unidadItem.numero}${
+                                  unidadItem.nombre?.trim()
+                                    ? ` - ${unidadItem.nombre.trim()}`
+                                    : ""
+                                }`
+                          }
+                        >
+                          {unidadItem.synthetic
+                            ? "Sin unidad"
+                            : `Unidad ${unidadItem.numero}`}
+                        </span>
+                        <span className="constructor-quiz-unit-meta">
+                          {quizzesUnidad} quiz
+                          {quizzesUnidad === 1 ? "" : "zes"}
+                        </span>
+                      </span>
+
+                      {abierta ? (
+                        <ChevronUp size={19} strokeWidth={2.7} />
+                      ) : (
+                        <ChevronDown size={19} strokeWidth={2.7} />
+                      )}
+                    </button>
+
+                    {abierta && (
+                      <div className="constructor-quiz-unit-body">
+                        {bloquesUnidad.length === 0 ? (
+                          <p className="constructor-quiz-empty">
+                            Esta unidad aún no tiene bloques.
+                          </p>
+                        ) : (
+                          bloquesUnidad.map((bloque) => {
+                            const quizzesBloque = quizzesPorBloque[bloque.id] || [];
+                            const bloqueAbierto =
+                              bloqueQuizzesAbiertoId === bloque.id;
+
+                            return (
+                              <div key={bloque.id}>
+                                <button
+                                  type="button"
+                                  className="constructor-quiz-block-button"
+                                  onClick={() =>
+                                    setBloqueQuizzesAbiertoId((prev) =>
+                                      prev === bloque.id ? null : bloque.id
+                                    )
+                                  }
+                                >
+                                  <span className="min-w-0">
+                                    <span className="constructor-quiz-kind-label">
+                                      Tema
+                                    </span>
+                                    <span
+                                      className="constructor-quiz-block-title"
+                                      title={bloque.titulo || "(Sin título)"}
+                                    >
+                                      {bloque.titulo || "(Sin título)"}
+                                    </span>
+                                    <span className="constructor-quiz-block-meta">
+                                      {quizzesBloque.length} quiz
+                                      {quizzesBloque.length === 1 ? "" : "zes"}
+                                    </span>
+                                  </span>
+
+                                  {bloqueAbierto ? (
+                                    <ChevronUp size={18} strokeWidth={2.7} />
+                                  ) : (
+                                    <ChevronDown size={18} strokeWidth={2.7} />
+                                  )}
+                                </button>
+
+                                {bloqueAbierto && (
+                                  <div className="constructor-quiz-block-body">
+                                    {quizzesBloque.length === 0 ? (
+                                      <p className="constructor-quiz-empty">
+                                        Este bloque aún no tiene quizzes.
+                                      </p>
+                                    ) : (
+                                      quizzesBloque.map((q) => (
+                                        <article
+                                          key={q.id}
+                                          className="constructor-quiz-saved-row"
+                                          onClick={() => void abrirQuizGuardado(q)}
+                                        >
+                                          <div>
+                                            <p
+                                              className="constructor-quiz-saved-title"
+                                              title={q.titulo}
+                                            >
+                                              {q.titulo}
+                                            </p>
+                                            <p className="constructor-quiz-saved-meta">
+                                              {typeof q.tiempo_limite_min ===
+                                                "number" &&
+                                              q.tiempo_limite_min > 0
+                                                ? `${q.tiempo_limite_min} min`
+                                                : "Sin límite de tiempo"}
+                                              {" · "}
+                                              {q.intentos_max || 1}{" "}
+                                              {(q.intentos_max || 1) === 1
+                                                ? "intento"
+                                                : "intentos"}
+                                            </p>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setQuizAEliminar(q);
+                                            }}
+                                            className="constructor-quiz-icon-button danger"
+                                            aria-label="Eliminar quiz"
+                                          >
+                                            <Trash2 size={17} strokeWidth={2.5} />
+                                          </button>
+                                        </article>
+                                      ))
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          </div>
+        </section>
+      </div>
+
+      {quizCargando &&
+        renderPortal(
+          <div className="constructor-quiz-overlay">
+            <div className="constructor-quiz-modal small">
+              <div className="constructor-quiz-modal-scroll">
+                <h3 className="constructor-quiz-modal-title">
+                  Cargando quiz
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm mb-1">Título</label>
+                <p className="constructor-quiz-modal-description">
+                  Estamos preparando las preguntas y respuestas.
+                </p>
+
+                <div className="constructor-quiz-loading-box">
+                  <span className="constructor-quiz-loading-dot" />
+                  <span className="constructor-quiz-loading-dot" />
+                  <span className="constructor-quiz-loading-dot" />
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {editQuiz &&
+        renderPortal(
+          <div className="constructor-quiz-overlay">
+            <div className="constructor-quiz-modal">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditQuiz(null);
+                  setDeletedPreguntas([]);
+                  setDeletedRespuestas([]);
+                }}
+                className="constructor-quiz-modal-close"
+                aria-label="Cerrar edición"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+
+              <div className="constructor-quiz-modal-scroll">
+                <h3 className="constructor-quiz-modal-title">
+                  Editar quiz
+                </h3>
+
+                <p className="constructor-quiz-modal-description">
+                  Actualiza los datos, preguntas y respuestas de este quiz.
+                </p>
+
+                <div className="constructor-quiz-grid">
+                  <div className="constructor-quiz-field">
+                    <label className="constructor-quiz-label">Título</label>
                     <input
                       value={editQuiz.titulo}
                       onChange={(e) =>
-                        setEditQuiz((prev: any) => ({ ...prev, titulo: e.target.value }))
+                        setEditQuiz((prev: any) => ({
+                          ...prev,
+                          titulo: e.target.value,
+                        }))
                       }
-                      className="w-full rounded px-3 py-2"
-                      style={{
-                        backgroundColor: "var(--color-bg)",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text)",
-                      }}
+                      className="constructor-quiz-input"
                       placeholder="Título"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm mb-1">Tiempo límite (min)</label>
+                  <div className="constructor-quiz-field">
+                    <label className="constructor-quiz-label">Tiempo</label>
                     <input
                       type="number"
                       value={editQuiz.tiempo_limite_min ?? ""}
@@ -1002,21 +1952,18 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                         setEditQuiz((prev: any) => ({
                           ...prev,
                           tiempo_limite_min:
-                            e.target.value === "" ? null : parseInt(e.target.value, 10),
+                            e.target.value === ""
+                              ? null
+                              : parseInt(e.target.value, 10),
                         }))
                       }
-                      className="w-full rounded px-3 py-2"
-                      style={{
-                        backgroundColor: "var(--color-bg)",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text)",
-                      }}
-                      placeholder="Tiempo (min)"
+                      className="constructor-quiz-input"
+                      placeholder="Min"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm mb-1">Intentos máximos</label>
+                  <div className="constructor-quiz-field">
+                    <label className="constructor-quiz-label">Intentos</label>
                     <input
                       type="number"
                       value={editQuiz.intentos_max || 1}
@@ -1026,48 +1973,111 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                           intentos_max: parseInt(e.target.value || "1", 10),
                         }))
                       }
-                      className="w-full rounded px-3 py-2"
-                      style={{
-                        backgroundColor: "var(--color-bg)",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text)",
-                      }}
-                      placeholder="Intentos máx"
+                      className="constructor-quiz-input"
+                      placeholder="Intentos"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <h4 className="font-semibold">Preguntas</h4>
-                  {Array.isArray(editQuiz.preguntas) && editQuiz.preguntas.length > 0 ? (
-                    editQuiz.preguntas.map((p: any, idx: number) => (
-                      <div
-                        key={p.id}
-                        className="p-3 rounded space-y-2"
-                        style={{
-                          backgroundColor: "var(--color-card)",
-                          border: "1px solid var(--color-border)",
-                          color: "var(--color-text)",
-                        }}
-                      >
-                        <div className="flex flex-col gap-1 min-w-0">
-                          <div className="flex flex-col sm:flex-row sm:items-start gap-2 min-w-0">
-                            <span className="font-semibold pt-1">#{idx + 1}</span>
+                <h4 className="constructor-quiz-section-title">
+                  Preguntas
+                </h4>
 
-                            <div className="flex flex-col gap-1 flex-1 min-w-0">
+                <div className="constructor-quiz-list">
+                  {Array.isArray(editQuiz.preguntas) &&
+                  editQuiz.preguntas.length > 0 ? (
+                    editQuiz.preguntas.map((p: any, idx: number) => (
+                      <article key={p.id} className="constructor-quiz-question">
+                        <span className="constructor-quiz-number">{idx + 1}</span>
+
+                        <div className="constructor-quiz-question-main">
+                          <EditorQuizCampo
+                            value={p.enunciado}
+                            onChange={(value) =>
+                              setEditQuiz((prev: any) => ({
+                                ...prev,
+                                preguntas: prev.preguntas.map((q: any) =>
+                                  q.id === p.id
+                                    ? { ...q, enunciado: value }
+                                    : q
+                                ),
+                              }))
+                            }
+                            placeholder="Nueva pregunta"
+                            onUploadImage={async (file) => {
+                              const { url, originalName } =
+                                await uploadQuizImage(file);
+
+                              return {
+                                url,
+                                name: originalName,
+                              };
+                            }}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!String(p.id).startsWith("_new_")) {
+                                setDeletedPreguntas((prev) =>
+                                  prev.includes(p.id) ? prev : [...prev, p.id]
+                                );
+
+                                const respuestasExistentes = (p.respuestas || [])
+                                  .filter(
+                                    (r: any) => !String(r.id).startsWith("_new_")
+                                  )
+                                  .map((r: any) => r.id);
+
+                                setDeletedRespuestas((prev) =>
+                                  Array.from(
+                                    new Set([...prev, ...respuestasExistentes])
+                                  )
+                                );
+                              }
+
+                              setEditQuiz((prev: any) => ({
+                                ...prev,
+                                preguntas: prev.preguntas.filter(
+                                  (q: any) => q.id !== p.id
+                                ),
+                              }));
+                            }}
+                            className="constructor-quiz-icon-button danger"
+                            aria-label="Eliminar pregunta"
+                          >
+                            <Trash2 size={17} strokeWidth={2.5} />
+                          </button>
+                        </div>
+
+                        <div className="constructor-quiz-answers">
+                          {p.respuestas.map((r: any) => (
+                            <div key={r.id} className="constructor-quiz-answer">
                               <EditorQuizCampo
-                                value={p.enunciado}
+                                value={r.texto}
                                 onChange={(value) =>
                                   setEditQuiz((prev: any) => ({
                                     ...prev,
                                     preguntas: prev.preguntas.map((q: any) =>
-                                      q.id === p.id ? { ...q, enunciado: value } : q
+                                      q.id === p.id
+                                        ? {
+                                            ...q,
+                                            respuestas: q.respuestas.map(
+                                              (x: any) =>
+                                                x.id === r.id
+                                                  ? { ...x, texto: value }
+                                                  : x
+                                            ),
+                                          }
+                                        : q
                                     ),
                                   }))
                                 }
-                                placeholder="Nueva pregunta"
+                                placeholder="Opción de respuesta"
+                                compact
                                 onUploadImage={async (file) => {
-                                  const { url, originalName } = await uploadQuizImage(file);
+                                  const { url, originalName } =
+                                    await uploadQuizImage(file);
 
                                   return {
                                     url,
@@ -1075,85 +2085,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                   };
                                 }}
                               />
-                            </div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!String(p.id).startsWith("_new_")) {
-                                  setDeletedPreguntas((prev) =>
-                                    prev.includes(p.id) ? prev : [...prev, p.id]
-                                  );
-
-                                  const respuestasExistentes = (p.respuestas || [])
-                                    .filter((r: any) => !String(r.id).startsWith("_new_"))
-                                    .map((r: any) => r.id);
-
-                                  setDeletedRespuestas((prev) =>
-                                    Array.from(new Set([...prev, ...respuestasExistentes]))
-                                  );
-                                }
-
-                                setEditQuiz((prev: any) => ({
-                                  ...prev,
-                                  preguntas: prev.preguntas.filter((q: any) => q.id !== p.id),
-                                }));
-                              }}
-                              className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="w-4 h-4 text-white"
-                              >
-                                <path d="M3 6h18" />
-                                <path d="M8 6V4h8v2" />
-                                <path d="M19 6l-1 14H6L5 6" />
-                                <path d="M10 11v6" />
-                                <path d="M14 11v6" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          {p.respuestas.map((r: any) => (
-                            <div key={r.id} className="flex flex-col sm:flex-row sm:items-start gap-2 min-w-0">
-                              <div className="flex flex-col gap-1 flex-1 min-w-0 w-full">
-                                <EditorQuizCampo
-                                  value={r.texto}
-                                  onChange={(value) =>
-                                    setEditQuiz((prev: any) => ({
-                                      ...prev,
-                                      preguntas: prev.preguntas.map((q: any) =>
-                                        q.id === p.id
-                                          ? {
-                                              ...q,
-                                              respuestas: q.respuestas.map((x: any) =>
-                                                x.id === r.id ? { ...x, texto: value } : x
-                                              ),
-                                            }
-                                          : q
-                                      ),
-                                    }))
-                                  }
-                                  placeholder="Opción de respuesta"
-                                  compact
-                                  onUploadImage={async (file) => {
-                                    const { url, originalName } = await uploadQuizImage(file);
-
-                                    return {
-                                      url,
-                                      name: originalName,
-                                    };
-                                  }}
-                                />
-                              </div>
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1163,23 +2095,25 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                       q.id === p.id
                                         ? {
                                             ...q,
-                                            respuestas: q.respuestas.map((x: any) => ({
-                                              ...x,
-                                              es_correcta: x.id === r.id,
-                                            })),
+                                            respuestas: q.respuestas.map(
+                                              (x: any) => ({
+                                                ...x,
+                                                es_correcta: x.id === r.id,
+                                              })
+                                            ),
                                           }
                                         : q
                                     ),
                                   }))
                                 }
-                                className={`h-[34px] px-3 flex items-center justify-center rounded text-white shrink-0 self-start ${
-                                  r.es_correcta
-                                    ? "bg-green-600 hover:bg-green-700"
-                                    : "bg-gray-600 hover:bg-gray-700"
+                                className={`constructor-quiz-icon-button ${
+                                  r.es_correcta ? "correct" : ""
                                 }`}
+                                aria-label="Marcar como correcta"
                               >
-                                <span className="text-white leading-none">✓</span>
+                                <Check size={18} strokeWidth={2.7} />
                               </button>
+
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1195,71 +2129,61 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                       q.id === p.id
                                         ? {
                                             ...q,
-                                            respuestas: q.respuestas.filter((x: any) => x.id !== r.id),
+                                            respuestas: q.respuestas.filter(
+                                              (x: any) => x.id !== r.id
+                                            ),
                                           }
                                         : q
                                     ),
                                   }));
                                 }}
-                                className="h-[34px] px-3 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded text-white shrink-0 self-start"
+                                className="constructor-quiz-icon-button danger"
+                                aria-label="Eliminar respuesta"
                               >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  className="w-4 h-4 text-white"
-                                >
-                                  <path d="M3 6h18" />
-                                  <path d="M8 6V4h8v2" />
-                                  <path d="M19 6l-1 14H6L5 6" />
-                                  <path d="M10 11v6" />
-                                  <path d="M14 11v6" />
-                                </svg>
+                                <Trash2 size={17} strokeWidth={2.5} />
                               </button>
                             </div>
                           ))}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditQuiz((prev: any) => ({
-                                ...prev,
-                                preguntas: prev.preguntas.map((q: any) =>
-                                  q.id === p.id
-                                    ? {
-                                        ...q,
-                                        respuestas: [
-                                          ...(q.respuestas || []),
-                                          {
-                                            id: `_new_${crypto.randomUUID()}`,
-                                            texto: "",
-                                            es_correcta: false,
-                                          },
-                                        ],
-                                      }
-                                    : q
-                                ),
-                              }))
-                            }
-                            className="px-2 py-1 rounded"
-                            style={{
-                              backgroundColor: "var(--color-bg)",
-                              border: "1px solid var(--color-border)",
-                              color: "var(--color-text)",
-                            }}
-                          >
-                            + Opción
-                          </button>
+
+                          <div className="constructor-quiz-inline-actions">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditQuiz((prev: any) => ({
+                                  ...prev,
+                                  preguntas: prev.preguntas.map((q: any) =>
+                                    q.id === p.id
+                                      ? {
+                                          ...q,
+                                          respuestas: [
+                                            ...(q.respuestas || []),
+                                            {
+                                              id: `_new_${crypto.randomUUID()}`,
+                                              texto: "",
+                                              es_correcta: false,
+                                            },
+                                          ],
+                                        }
+                                      : q
+                                  ),
+                                }))
+                              }
+                              className="constructor-quiz-button secondary"
+                            >
+                              <Plus size={16} strokeWidth={2.7} />
+                              Opción
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      </article>
                     ))
                   ) : (
-                    <p className="text-gray-400 text-sm">Aún no hay preguntas.</p>
+                    <p className="constructor-quiz-empty">
+                      Aún no hay preguntas.
+                    </p>
                   )}
-                  <div className="flex justify-end">
+
+                  <div className="constructor-quiz-actions">
                     <button
                       type="button"
                       onClick={() =>
@@ -1275,141 +2199,203 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                           ],
                         }))
                       }
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white"
+                      className="constructor-quiz-button secondary"
                     >
-                      + Pregunta
+                      <Plus size={17} strokeWidth={2.7} />
+                      Pregunta
                     </button>
                   </div>
                 </div>
-              </div>
-              <div
-                className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t"
-                style={{ borderColor: "var(--color-border)" }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditQuiz(null);
-                    setDeletedPreguntas([]);
-                    setDeletedRespuestas([]);
-                  }}
-                  className="px-3 py-2 bg-gray-600 rounded text-white w-full sm:w-auto"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveEditQuiz}
-                  className="px-3 py-2 bg-green-600 rounded text-white w-full sm:w-auto"
-                >
-                  Guardar cambios
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Modal de fórmulas */}
-        {showFormulaModal && renderPortal(
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-            <div
-              className="p-4 sm:p-6 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4"
-              style={{
-                backgroundColor: "var(--color-card)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
-            >
-              <h3 className="text-lg font-bold">Insertar fórmula</h3>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFormulaMode("latex")}
-                  className={`px-3 py-1 rounded ${
-                    formulaMode === "latex" ? "bg-blue-600 text-white" : ""
-                  }`}
-                  style={ formulaMode !== "latex" ? {
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  } : {} }
-                >
-                  LaTeX
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormulaMode("image")}
-                  className={`px-3 py-1 rounded ${
-                    formulaMode === "image" ? "bg-blue-600 text-white" : ""
-                  }`}
-                  style={ formulaMode !== "image" ? {
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  } : {} }
-                >
-                  Imagen
-                </button>
-              </div>
-
-              {formulaMode === "latex" ? (
-                <>
-                  <textarea
-                    value={formulaLatex}
-                    onChange={(e) => setFormulaLatex(e.target.value)}
-                    rows={3}
-                    className="w-full rounded px-3 py-2"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
+                <div className="constructor-quiz-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditQuiz(null);
+                      setDeletedPreguntas([]);
+                      setDeletedRespuestas([]);
                     }}
-                    placeholder="Ecuación en LaTeX, ej. \int_0^1 x^2 dx"
-                  />
-                  <div
-                    className="rounded p-3 text-center"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
+                    className="constructor-quiz-button secondary"
                   >
-                    <p className="text-xs mb-2" style={{ color: "var(--color-muted)" }}>
-                      Vista previa:
-                    </p>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {`$$${formulaLatex}$$`}
-                    </ReactMarkdown>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-2">
-                  <input type="file" accept="image/*" className="w-full text-sm" />
-                  <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-                    Funcionalidad NO disponible por el momento
-                  </p>
-                </div>
-              )}
+                    Cancelar
+                  </button>
 
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFormulaModal(false)}
-                  className="px-3 py-1 bg-gray-600 rounded text-white"
-                >
-                  Cancelar
-                </button>
-                <button onClick={onInsertFormula} className="px-3 py-1 bg-green-600 rounded text-white">
-                  Insertar
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEditQuiz}
+                    className="constructor-quiz-button success"
+                  >
+                    <Save size={17} strokeWidth={2.6} />
+                    Guardar cambios
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
+
+      {quizAEliminar &&
+        renderPortal(
+          <div
+            className="constructor-quiz-overlay"
+            onClick={() => setQuizAEliminar(null)}
+          >
+            <div
+              className="constructor-quiz-modal small"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setQuizAEliminar(null)}
+                className="constructor-quiz-modal-close"
+                aria-label="Cerrar"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+
+              <div className="constructor-quiz-modal-scroll">
+                <h3 className="constructor-quiz-modal-title">
+                  Eliminar quiz
+                </h3>
+
+                <p className="constructor-quiz-modal-description">
+                  Esta acción eliminará el quiz seleccionado.
+                </p>
+
+                <div className="constructor-quiz-warning">
+                  Si ya existen intentos de estudiantes, esta acción puede afectar
+                  sus datos relacionados.
+                </div>
+
+                <div className="constructor-quiz-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => setQuizAEliminar(null)}
+                    className="constructor-quiz-button secondary"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await deleteQuiz(quizAEliminar.id);
+                      setQuizAEliminar(null);
+                    }}
+                    className="constructor-quiz-button danger"
+                  >
+                    <Trash2 size={17} strokeWidth={2.5} />
+                    Confirmar eliminación
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {showFormulaModal &&
+        renderPortal(
+          <div className="constructor-quiz-overlay">
+            <div className="constructor-quiz-modal small">
+              <button
+                type="button"
+                onClick={() => setShowFormulaModal(false)}
+                className="constructor-quiz-modal-close"
+                aria-label="Cerrar"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+
+              <div className="constructor-quiz-modal-scroll">
+                <h3 className="constructor-quiz-modal-title">
+                  Insertar fórmula
+                </h3>
+
+                <div className="constructor-quiz-tabs">
+                  <button
+                    type="button"
+                    onClick={() => setFormulaMode("latex")}
+                    className={`constructor-quiz-button ${
+                      formulaMode === "latex" ? "" : "secondary"
+                    }`}
+                  >
+                    LaTeX
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormulaMode("image")}
+                    className={`constructor-quiz-button ${
+                      formulaMode === "image" ? "" : "secondary"
+                    }`}
+                  >
+                    Imagen
+                  </button>
+                </div>
+
+                {formulaMode === "latex" ? (
+                  <div className="constructor-quiz-list">
+                    <textarea
+                      value={formulaLatex}
+                      onChange={(e) => setFormulaLatex(e.target.value)}
+                      rows={3}
+                      className="constructor-quiz-textarea"
+                      placeholder="Ecuación en LaTeX, ej. \\int_0^1 x^2 dx"
+                    />
+
+                    <div className="constructor-quiz-preview-box">
+                      <p
+                        style={{
+                          color: "var(--quiz-muted)",
+                          fontSize: "0.78rem",
+                          fontWeight: 850,
+                          marginBottom: 8,
+                        }}
+                      >
+                        Vista previa
+                      </p>
+
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                      >
+                        {`$$${formulaLatex}$$`}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="constructor-quiz-list">
+                    <input type="file" accept="image/*" />
+                    <p style={{ color: "var(--quiz-muted)", fontSize: "0.82rem" }}>
+                      Funcionalidad no disponible por el momento.
+                    </p>
+                  </div>
+                )}
+
+                <div className="constructor-quiz-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => setShowFormulaModal(false)}
+                    className="constructor-quiz-button secondary"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onInsertFormula}
+                    className="constructor-quiz-button success"
+                  >
+                    Insertar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

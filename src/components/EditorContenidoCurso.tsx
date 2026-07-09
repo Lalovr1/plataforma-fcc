@@ -18,6 +18,7 @@ import { useRef } from "react";
 import OcrFormula from "@/components/OcrFormula";
 import EditorBasico, { type EditorBasicoRef } from "@/components/EditorBasico";
 import { createPortal } from "react-dom";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 
 type BlockType = "texto" | "imagen" | "video" | "documento";
 
@@ -122,7 +123,10 @@ export default function EditorContenidoCurso({
   const [tipo, setTipo] = useState<BlockType>("texto");
   const [unidades, setUnidades] = useState<UnidadItem[]>([]);
   const [unidad, setUnidad] = useState("");
+  const [unidadGestionId, setUnidadGestionId] = useState("");
   const [unidadAbiertaId, setUnidadAbiertaId] = useState<string | null>(null);
+  const [unidadAEliminarId, setUnidadAEliminarId] = useState<string | null>(null);
+  const [eliminandoUnidad, setEliminandoUnidad] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [intro, setIntro] = useState("");
   const [contenidoPrincipal, setContenidoPrincipal] = useState("");
@@ -183,7 +187,8 @@ export default function EditorContenidoCurso({
       showVideoModal ||
       showDocModal ||
       showLinkModal ||
-      showFormulaPanel;
+      showFormulaPanel ||
+      Boolean(unidadAEliminarId);
 
     useEffect(() => {
       if (!modalActivo) return;
@@ -217,6 +222,15 @@ export default function EditorContenidoCurso({
       return agrupados;
     }, [blocks]);
 
+    const unidadAEliminar = useMemo(
+      () => unidades.find((u) => u.id === unidadAEliminarId) || null,
+      [unidadAEliminarId, unidades]
+    );
+
+    const bloquesUnidadAEliminar = unidadAEliminarId
+      ? bloquesPorUnidad[unidadAEliminarId] || []
+      : [];
+
     const nextOrden = useMemo(
       () => (blocks.length ? Math.max(...blocks.map((b) => b.orden)) + 1 : 0),
       [blocks]
@@ -246,7 +260,7 @@ export default function EditorContenidoCurso({
 
   if (data && data.length > 0) {
     setUnidades(data as UnidadItem[]);
-    setUnidad((prev) => prev || data[0].id);
+    setUnidadGestionId((prev) => prev || data[0].id);
     return;
   }
 
@@ -270,7 +284,8 @@ export default function EditorContenidoCurso({
     }
 
     setUnidades([nuevaUnidad as UnidadItem]);
-    setUnidad(nuevaUnidad.id);
+    setUnidadGestionId(nuevaUnidad.id);
+    setUnidad("");
   };
 
   const getTipoArchivo = (name: string): "imagen" | "video" | "documento" => {
@@ -389,6 +404,15 @@ export default function EditorContenidoCurso({
 
   const handleAddBlock = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!unidad) {
+      setToast({
+        message: "Antes de continuar tienes que seleccionar una unidad.",
+        type: "error",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       let contenido = "";
@@ -539,9 +563,7 @@ export default function EditorContenidoCurso({
       setContenidoPrincipal("");
       contenidoPrincipalEditorRef.current?.setContent("");
 
-      if (unidades.length > 0) {
-        setUnidad(unidades[0].id);
-      }
+      setUnidad("");
 
       setFile(null);
       setTipo("texto");
@@ -573,64 +595,91 @@ export default function EditorContenidoCurso({
     fetchBlocks();
   };
 
-  const handleDeleteUnidad = async (unidadId: string) => {
+  const handleDeleteUnidad = (unidadId: string) => {
     if (unidades.length <= 1) {
-      alert("No puedes eliminar la única unidad del curso.");
+      setToast({
+        message: "No puedes eliminar la única unidad del curso.",
+        type: "error",
+      });
       return;
     }
 
-    const bloquesLocales = bloquesPorUnidad[unidadId] || [];
+    setUnidadAEliminarId(unidadId);
+  };
 
-    if (bloquesLocales.length > 0) {
-      alert("Solo puedes eliminar unidades vacías.");
-      return;
-    }
+  const confirmarEliminarUnidad = async () => {
+    if (!unidadAEliminarId || eliminandoUnidad) return;
 
-    const { count, error: countError } = await supabase
-      .from("curso_contenido_bloques")
-      .select("id", { count: "exact", head: true })
-      .eq("materia_id", materiaId)
-      .eq("unidad_id", unidadId);
+    setEliminandoUnidad(true);
 
-    if (countError) {
-      console.error(countError);
-      alert("No se pudo verificar si la unidad está vacía.");
-      return;
-    }
+    try {
+      const bloquesLocales = bloquesPorUnidad[unidadAEliminarId] || [];
 
-    if ((count || 0) > 0) {
-      alert("Solo puedes eliminar unidades vacías.");
+      if (bloquesLocales.length > 0) {
+        const { error: bloquesError } = await supabase
+          .from("curso_contenido_bloques")
+          .delete()
+          .eq("materia_id", materiaId)
+          .eq("unidad_id", unidadAEliminarId);
+
+        if (bloquesError) {
+          console.error(bloquesError);
+          setToast({
+            message: "No se pudieron eliminar los bloques de la unidad.",
+            type: "error",
+          });
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from("curso_unidades")
+        .delete()
+        .eq("id", unidadAEliminarId)
+        .eq("materia_id", materiaId);
+
+      if (error) {
+        console.error(error);
+        setToast({
+          message: "No se pudo eliminar la unidad.",
+          type: "error",
+        });
+        return;
+      }
+
+      const unidadesRestantes = unidades.filter(
+        (u) => u.id !== unidadAEliminarId
+      );
+
+      setUnidades(unidadesRestantes);
+
+      if (unidad === unidadAEliminarId) {
+        setUnidad("");
+      }
+
+      if (unidadGestionId === unidadAEliminarId) {
+        setUnidadGestionId(unidadesRestantes[0]?.id || "");
+      }
+
+      if (unidadAbiertaId === unidadAEliminarId) {
+        setUnidadAbiertaId(null);
+      }
+
+      setUnidadAEliminarId(null);
       await fetchBlocks();
-      return;
+
+      setToast({
+        message:
+          bloquesLocales.length > 0
+            ? "Unidad y bloques eliminados correctamente"
+            : "Unidad eliminada correctamente",
+        type: "success",
+      });
+
+      if (onBloquesChange) onBloquesChange();
+    } finally {
+      setEliminandoUnidad(false);
     }
-
-    if (!confirm("¿Eliminar esta unidad vacía?")) return;
-
-    const { error } = await supabase
-      .from("curso_unidades")
-      .delete()
-      .eq("id", unidadId)
-      .eq("materia_id", materiaId);
-
-    if (error) {
-      console.error(error);
-      alert("No se pudo eliminar la unidad.");
-      return;
-    }
-
-    const unidadesRestantes = unidades.filter((u) => u.id !== unidadId);
-
-    setUnidades(unidadesRestantes);
-
-    if (unidad === unidadId) {
-      setUnidad(unidadesRestantes[0]?.id || "");
-    }
-
-    if (unidadAbiertaId === unidadId) {
-      setUnidadAbiertaId(null);
-    }
-
-    setToast({ message: "Unidad eliminada correctamente", type: "success" });
   };
 
   const move = async (id: string, dir: "up" | "down") => {
@@ -807,633 +856,1702 @@ export default function EditorContenidoCurso({
       );
   };
 
+  const estilos = (
+    <style>{`
+      .contenido-editor,
+      .contenido-editor-overlay,
+      .contenido-edit-overlay {
+        --contenido-accent: var(--fcc-premium-accent);
+        --contenido-cyan: var(--fcc-premium-cyan);
+        --contenido-surface: var(--fcc-premium-surface);
+        --contenido-surface-soft: var(--fcc-premium-surface-soft);
+        --contenido-surface-strong: var(--fcc-premium-surface-strong);
+        --contenido-text: var(--fcc-premium-text);
+        --contenido-text-soft: var(--fcc-premium-text-soft);
+        --contenido-muted: var(--fcc-premium-muted);
+        --contenido-border: var(--fcc-premium-border);
+        --contenido-border-strong: var(--fcc-premium-border-strong);
+        --contenido-shadow: var(--fcc-premium-shadow);
+        --contenido-shadow-soft: var(--fcc-premium-shadow-soft);
+        --contenido-button: var(--fcc-premium-button);
+      }
+
+      .contenido-editor {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+        color: var(--contenido-text);
+      }
+
+      .contenido-editor-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.72fr);
+        gap: 16px;
+        align-items: start;
+        min-width: 0;
+        width: 100%;
+      }
+
+      .contenido-side-column {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .contenido-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--contenido-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-surface) 96%, transparent),
+            color-mix(in srgb, var(--contenido-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 14%, var(--contenido-border));
+        box-shadow:
+          var(--contenido-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--contenido-surface-strong) 65%, transparent);
+      }
+
+      .contenido-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--contenido-accent) 6%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 24%,
+            color-mix(in srgb, var(--contenido-accent) 4%, transparent) 24% 24.35%,
+            transparent 24.35% 100%
+          );
+        opacity: 0.62;
+      }
+
+      .contenido-card.no-line::before,
+      .contenido-block-row::before,
+      .contenido-unit-card::before {
+        content: none;
+      }
+
+      .contenido-card-content {
+        position: relative;
+        z-index: 2;
+        min-width: 0;
+      }
+
+      .contenido-form-card,
+      .contenido-list-card,
+      .contenido-units-card {
+        padding: clamp(16px, 2.8vw, 22px);
+      }
+
+      .contenido-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin: 2px 0 16px;
+        color: var(--contenido-text);
+        font-size: 1.04rem;
+        font-weight: 950;
+        letter-spacing: -0.02em;
+        text-align: center;
+      }
+
+      .contenido-section-title::before,
+      .contenido-section-title::after {
+        content: "";
+        width: 42px;
+        height: 1px;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in srgb, var(--contenido-accent) 55%, transparent)
+        );
+      }
+
+      .contenido-section-title::after {
+        background: linear-gradient(
+          90deg,
+          color-mix(in srgb, var(--contenido-accent) 55%, transparent),
+          transparent
+        );
+      }
+
+      .contenido-form {
+        display: grid;
+        gap: 14px;
+      }
+
+      .contenido-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .contenido-units-form {
+        display: grid;
+        gap: 12px;
+      }
+
+      .contenido-units-actions {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .contenido-unit-open-name {
+        border-radius: 16px;
+        padding: 9px 12px;
+        color: var(--contenido-muted);
+        background: color-mix(in srgb, var(--contenido-accent) 4%, var(--contenido-surface-strong));
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 12%, var(--contenido-border));
+        font-size: 0.78rem;
+        font-weight: 850;
+        line-height: 1.32;
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+
+      .contenido-editor-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        background: rgba(2, 8, 23, 0.58);
+        backdrop-filter: blur(8px);
+      }
+
+      .contenido-editor-modal {
+        position: relative;
+        width: min(94vw, 560px);
+        overflow: hidden;
+        border-radius: 28px;
+        color: var(--contenido-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-surface) 98%, transparent),
+            color-mix(in srgb, var(--contenido-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 16%, var(--contenido-border));
+        box-shadow: var(--contenido-shadow);
+      }
+
+      .contenido-editor-modal-content {
+        padding: 28px;
+      }
+
+      .contenido-editor-modal-close {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        z-index: 3;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 82%, transparent);
+        border: 1px solid var(--contenido-border);
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          color 170ms ease;
+      }
+
+      .contenido-editor-modal-close:hover {
+        transform: translateY(-1px);
+        color: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 34%, var(--contenido-border));
+      }
+
+      .contenido-editor-modal-title {
+        color: var(--contenido-text);
+        font-size: clamp(1.45rem, 3vw, 2rem);
+        font-weight: 950;
+        letter-spacing: -0.055em;
+        line-height: 1;
+        text-align: center;
+      }
+
+      .contenido-editor-modal-description {
+        max-width: 460px;
+        margin: 8px auto 18px;
+        color: var(--contenido-muted);
+        text-align: center;
+        font-size: 0.94rem;
+        font-weight: 750;
+        line-height: 1.42;
+      }
+
+      .contenido-editor-warning {
+        border-radius: 18px;
+        padding: 14px 16px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, #ef4444 8%, var(--contenido-surface));
+        border: 1px solid color-mix(in srgb, #ef4444 28%, var(--contenido-border));
+        text-align: center;
+        font-size: 0.94rem;
+        font-weight: 850;
+        line-height: 1.45;
+      }
+
+      .contenido-editor-modal-actions {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding-top: 18px;
+      }
+
+      .contenido-edit-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        background: rgba(2, 8, 23, 0.58);
+        backdrop-filter: blur(8px);
+      }
+
+      .contenido-edit-shell {
+        width: min(94vw, 920px);
+        max-height: 92dvh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .contenido-edit-shell.with-panel {
+        width: min(94vw, 920px);
+      }
+
+      .contenido-edit-modal {
+        width: min(94vw, 920px);
+        max-height: 92dvh;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 14px;
+        overflow: hidden;
+        border-radius: 26px;
+        padding: clamp(16px, 2.3vw, 24px);
+        color: var(--contenido-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-surface) 98%, transparent),
+            color-mix(in srgb, var(--contenido-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 16%, var(--contenido-border));
+        box-shadow: var(--contenido-shadow);
+        min-width: 0;
+      }
+
+      .contenido-edit-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+        gap: 12px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .contenido-edit-title-input,
+      .contenido-edit-select,
+      .contenido-edit-intro,
+      .contenido-modal-input,
+      .contenido-modal-textarea,
+      .contenido-panel-input,
+      .contenido-panel-textarea {
+        width: 100%;
+        border-radius: 14px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 74%, transparent);
+        border: 1px solid var(--contenido-border);
+        outline: none;
+        transition:
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-edit-title-input {
+        min-height: 44px;
+        padding: 0 14px;
+        font-size: clamp(1rem, 1.6vw, 1.18rem);
+        font-weight: 950;
+        line-height: 1.1;
+        text-align: center;
+      }
+
+      .contenido-edit-select {
+        min-height: 44px;
+        padding: 0 12px;
+        font-size: 0.92rem;
+        font-weight: 850;
+        text-align: center;
+        text-align-last: center;
+      }
+
+      .contenido-edit-intro {
+        min-height: 58px;
+        max-height: 152px;
+        padding: 12px 14px;
+        resize: none;
+        color: var(--contenido-muted);
+        font-size: 0.92rem;
+        font-style: italic;
+        line-height: 1.45;
+        text-align: center;
+      }
+
+      .contenido-edit-title-input:focus,
+      .contenido-edit-select:focus,
+      .contenido-edit-intro:focus,
+      .contenido-modal-input:focus,
+      .contenido-modal-textarea:focus,
+      .contenido-panel-input:focus,
+      .contenido-panel-textarea:focus {
+        border-color: color-mix(in srgb, var(--contenido-accent) 56%, var(--contenido-border));
+        background: color-mix(in srgb, var(--contenido-surface-strong) 90%, transparent);
+      }
+
+      .contenido-edit-editor-box {
+        min-height: 0;
+        overflow: hidden;
+        border-radius: 20px;
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 18%, var(--contenido-border));
+      }
+
+      .contenido-edit-actions {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .contenido-formula-panel {
+        position: fixed;
+        top: 50%;
+        left: calc(50% + min(47vw, 460px) + 10px);
+        z-index: 86;
+        width: 340px;
+        max-width: 340px;
+        height: 92dvh;
+        max-height: 92dvh;
+        overflow-y: auto;
+        transform: translateY(-50%);
+        border-radius: 22px;
+        padding: 14px;
+        color: var(--contenido-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-surface) 98%, transparent),
+            color-mix(in srgb, var(--contenido-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 18%, var(--contenido-border));
+        box-shadow: var(--contenido-shadow-soft);
+      }
+
+      .contenido-formula-panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .contenido-formula-panel-title {
+        color: var(--contenido-text);
+        font-size: 0.95rem;
+        font-weight: 950;
+      }
+
+      .contenido-formula-card {
+        display: grid;
+        gap: 10px;
+        border-radius: 18px;
+        padding: 12px;
+        background: color-mix(in srgb, var(--contenido-surface-strong) 70%, transparent);
+        border: 1px solid var(--contenido-border);
+      }
+
+      .contenido-formula-card + .contenido-formula-card {
+        margin-top: 10px;
+      }
+
+      .contenido-formula-add-button {
+        width: max-content;
+        margin: 14px auto 0;
+      }
+
+      .contenido-panel-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .contenido-panel-input,
+      .contenido-panel-textarea {
+        min-height: 36px;
+        padding: 8px 10px;
+        font-size: 0.78rem;
+        font-weight: 780;
+        line-height: 1.28;
+        resize: none;
+      }
+
+      .contenido-panel-input {
+        max-height: 58px;
+      }
+
+      .contenido-panel-textarea {
+        min-height: 38px;
+        max-height: 86px;
+      }
+
+      .contenido-panel-checkbox {
+        width: max-content;
+        min-height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 0 10px;
+        color: var(--contenido-muted);
+        background: color-mix(in srgb, var(--contenido-accent) 6%, transparent);
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 16%, var(--contenido-border));
+        font-size: 0.74rem;
+        font-weight: 850;
+        white-space: nowrap;
+      }
+
+      .contenido-panel-checkbox input {
+        accent-color: var(--contenido-accent);
+      }
+
+      .contenido-formula-preview {
+        color: var(--contenido-accent);
+        text-align: center;
+        font-size: 0.86rem;
+        line-height: 1.16;
+        overflow-x: auto;
+      }
+
+      .contenido-formula-preview .katex {
+        font-size: 1em;
+      }
+
+      .contenido-formula-preview .katex-display {
+        margin: 0.18em 0;
+      }
+
+      .contenido-formula-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .contenido-formula-card-actions {
+        display: grid;
+        grid-template-columns: auto auto auto;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .contenido-mini-button {
+        min-height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        padding: 0 9px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 82%, transparent);
+        border: 1px solid var(--contenido-border);
+        font-size: 0.75rem;
+        font-weight: 900;
+      }
+
+      .contenido-mini-button.icon {
+        width: 32px;
+        padding: 0;
+      }
+
+      .contenido-mini-button.warning {
+        color: #ffffff;
+        background: #f59e0b;
+        border-color: color-mix(in srgb, #f59e0b 70%, white);
+      }
+
+      .contenido-mini-button.danger {
+        color: #ffffff;
+        background: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 70%, white);
+      }
+
+      .contenido-resource-modal {
+        width: min(94vw, 560px);
+      }
+
+      .contenido-resource-modal .contenido-editor-modal-title {
+        margin: 0 0 16px;
+        font-size: clamp(1.35rem, 3vw, 1.75rem);
+      }
+
+      .contenido-resource-modal .contenido-modal-input,
+      .contenido-resource-modal .contenido-modal-textarea,
+      .contenido-resource-modal .contenido-formula-preview-box {
+        margin-top: 12px;
+        box-sizing: border-box;
+      }
+
+      .contenido-resource-modal .contenido-resource-tabs + .contenido-modal-input,
+      .contenido-resource-modal .contenido-resource-tabs + .contenido-modal-textarea {
+        margin-top: 0;
+      }
+
+      .contenido-resource-modal .contenido-modal-input:focus,
+      .contenido-resource-modal .contenido-modal-textarea:focus {
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--contenido-accent) 18%, transparent);
+      }
+
+      .contenido-file-picker {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        padding: 0 14px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 74%, transparent);
+        border: 1px solid var(--contenido-border);
+        font-size: 0.92rem;
+        font-weight: 900;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-file-picker:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--contenido-accent) 42%, var(--contenido-border));
+        background: color-mix(in srgb, var(--contenido-accent) 8%, var(--contenido-surface-strong));
+      }
+
+      .contenido-file-picker input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .contenido-resource-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin: 16px 0 14px;
+      }
+
+      .contenido-resource-tab {
+        min-height: 36px;
+        border-radius: 12px;
+        padding: 0 14px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 76%, transparent);
+        border: 1px solid var(--contenido-border);
+        font-size: 0.9rem;
+        font-weight: 900;
+      }
+
+      .contenido-resource-tab.active {
+        color: #ffffff;
+        background: var(--contenido-button);
+        border-color: transparent;
+      }
+
+      .theme-oscuro .contenido-resource-tab.active {
+        color: #050505;
+      }
+
+      .contenido-modal-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .contenido-modal-input,
+      .contenido-modal-textarea {
+        min-height: 44px;
+        padding: 0 13px;
+        font-size: 0.92rem;
+        font-weight: 750;
+      }
+
+      .contenido-modal-textarea {
+        min-height: 92px;
+        padding: 12px 13px;
+        resize: vertical;
+        line-height: 1.45;
+      }
+
+      .contenido-modal-check {
+        width: max-content;
+        min-height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin: 12px auto 0;
+        border-radius: 999px;
+        padding: 0 14px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-accent) 7%, transparent);
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 20%, var(--contenido-border));
+        font-size: 0.88rem;
+        font-weight: 900;
+      }
+
+      .contenido-modal-check input {
+        accent-color: var(--contenido-accent);
+      }
+
+      .contenido-formula-preview-box {
+        border-radius: 18px;
+        padding: 14px;
+        text-align: center;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 66%, transparent);
+        border: 1px solid var(--contenido-border);
+        overflow-x: auto;
+      }
+
+      .contenido-field {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .contenido-label {
+        color: var(--contenido-text-soft);
+        font-size: 0.78rem;
+        font-weight: 950;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .contenido-input,
+      .contenido-select,
+      .contenido-textarea {
+        min-height: 44px;
+        width: 100%;
+        border-radius: 14px;
+        padding: 0 13px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 74%, transparent);
+        border: 1px solid var(--contenido-border);
+        outline: none;
+        font-size: 0.92rem;
+        font-weight: 750;
+        transition:
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-textarea {
+        min-height: 72px;
+        padding: 12px 13px;
+        resize: vertical;
+        color: var(--contenido-muted);
+        text-align: center;
+        font-style: italic;
+      }
+
+      .contenido-input:focus,
+      .contenido-select:focus,
+      .contenido-textarea:focus {
+        border-color: color-mix(in srgb, var(--contenido-accent) 56%, var(--contenido-border));
+        background: color-mix(in srgb, var(--contenido-surface-strong) 90%, transparent);
+      }
+
+      .contenido-form .contenido-input,
+      .contenido-form .contenido-select,
+      .contenido-units-form .contenido-input,
+      .contenido-units-form .contenido-select {
+        text-align: center;
+        text-align-last: center;
+      }
+
+      .contenido-editor-box {
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid var(--contenido-border);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 62%, transparent);
+      }
+
+      .contenido-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 4px;
+      }
+
+      .contenido-button {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 14px;
+        padding: 0 15px;
+        color: #ffffff;
+        background: var(--contenido-button);
+        border: 1px solid transparent;
+        font-size: 0.9rem;
+        font-weight: 950;
+        transition:
+          transform 170ms ease,
+          opacity 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .theme-oscuro .contenido-button {
+        color: #050505;
+      }
+
+      .contenido-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .contenido-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
+      }
+
+      .contenido-button.secondary {
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 82%, transparent);
+        border-color: var(--contenido-border);
+      }
+
+      .contenido-button.danger,
+      .contenido-icon-button.danger {
+        color: #ffffff;
+        background: var(--color-danger);
+        border-color: color-mix(in srgb, var(--color-danger) 70%, white);
+      }
+
+      .contenido-icon-button {
+        width: 38px;
+        height: 38px;
+        display: inline-grid;
+        place-items: center;
+        flex: 0 0 auto;
+        border-radius: 13px;
+        color: var(--contenido-text);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 82%, transparent);
+        border: 1px solid var(--contenido-border);
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-icon-button:hover {
+        transform: translateY(-1px);
+        border-color: var(--contenido-border-strong);
+      }
+
+      .contenido-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .contenido-empty {
+        border-radius: 18px;
+        padding: 16px;
+        color: var(--contenido-muted);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 58%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--contenido-accent) 20%, var(--contenido-border));
+        font-size: 0.92rem;
+        font-weight: 750;
+        text-align: center;
+      }
+
+      .contenido-unit-card {
+        overflow: hidden;
+        border-radius: 22px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-accent) 5%, var(--contenido-surface-strong)),
+            color-mix(in srgb, var(--contenido-surface-soft) 92%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 12%, var(--contenido-border));
+      }
+
+      .contenido-unit-button {
+        width: 100%;
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 14px;
+        color: var(--contenido-text);
+        text-align: left;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--contenido-accent) 6%, transparent),
+            color-mix(in srgb, var(--contenido-surface-strong) 72%, transparent)
+          );
+      }
+
+      .contenido-unit-title {
+        display: block;
+        color: var(--contenido-text);
+        font-size: 0.96rem;
+        font-weight: 950;
+        line-height: 1.18;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .contenido-unit-meta {
+        display: block;
+        margin-top: 3px;
+        color: var(--contenido-muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      .contenido-unit-body {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border-top: 1px solid color-mix(in srgb, var(--contenido-accent) 12%, var(--contenido-border));
+      }
+
+      .contenido-unit-empty {
+        display: grid;
+        gap: 10px;
+      }
+
+      .contenido-block-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        border-radius: 17px;
+        padding: 11px 12px;
+        color: var(--contenido-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, #8b5cf6 4%, var(--contenido-surface)),
+            color-mix(in srgb, var(--contenido-surface-strong) 72%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, #8b5cf6 12%, var(--contenido-border));
+        box-shadow: inset 4px 0 0 color-mix(in srgb, #8b5cf6 26%, var(--contenido-accent));
+        cursor: pointer;
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease;
+      }
+
+      .contenido-block-row:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, #8b5cf6 24%, var(--contenido-border));
+      }
+
+      .contenido-block-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: center;
+        justify-items: center;
+        min-width: 0;
+      }
+
+      .contenido-kind-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: max-content;
+        margin: 0 auto 5px;
+        border-radius: 999px;
+        padding: 3px 9px;
+        color: color-mix(in srgb, #8b5cf6 60%, var(--contenido-accent));
+        background: color-mix(in srgb, #8b5cf6 4%, transparent);
+        border: 1px solid color-mix(in srgb, #8b5cf6 12%, var(--contenido-border));
+        font-size: 0.62rem;
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .contenido-block-title {
+        color: var(--contenido-text);
+        font-size: 0.8rem;
+        font-weight: 950;
+        line-height: 1.12;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .contenido-block-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      @media (max-width: 1640px) {
+        .contenido-formula-panel {
+          display: none !important;
+        }
+      }
+
+      @media (max-width: 980px) {
+        .contenido-editor-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .contenido-form-card,
+        .contenido-list-card,
+        .contenido-units-card {
+          padding: 16px;
+        }
+
+        .contenido-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .contenido-button {
+          width: 100%;
+        }
+
+        .contenido-units-actions {
+          grid-template-columns: 1fr;
+        }
+
+        .contenido-block-row {
+          grid-template-columns: 1fr;
+        }
+
+        .contenido-block-actions {
+          justify-content: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .contenido-edit-header {
+          grid-template-columns: 1fr;
+        }
+
+        .contenido-edit-actions {
+          justify-content: stretch;
+        }
+      }
+    `}</style>
+  );
+
   return (
-    <div
-      className="rounded-xl p-4 sm:p-5 shadow space-y-5 min-w-0 overflow-hidden"
-      style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-    >
-      {/* Formulario para agregar bloque */}
-      <form onSubmit={handleAddBlock} className="space-y-4">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Unidad</label>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-              <select
-                value={unidad}
-                onChange={(e) => setUnidad(e.target.value)}
-                className="w-full rounded-lg px-3 py-2"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                {unidades.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    Unidad {u.numero}
-                    {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
-                  </option>
-                ))}
-              </select>
+    <div className="contenido-editor">
+      {estilos}
 
-              <input
-                type="text"
-                value={unidades.find((u) => u.id === unidad)?.nombre || ""}
-                onChange={async (e) => {
-                  const nuevoNombre = e.target.value;
+      <div className="contenido-editor-layout">
+        <section className="contenido-card contenido-form-card no-line">
+          <div className="contenido-card-content">
+            <h2 className="contenido-section-title">Crear contenido</h2>
 
-                  setUnidades((prev) =>
-                    prev.map((u) =>
-                      u.id === unidad ? { ...u, nombre: nuevoNombre } : u
-                    )
-                  );
+            <form onSubmit={handleAddBlock} className="contenido-form">
+              <div className="contenido-field">
+                <label className="contenido-label">Título</label>
+                <input
+                  type="text"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  className="contenido-input"
+                  placeholder=""
+                />
+              </div>
 
-                  const { error } = await supabase
-                    .from("curso_unidades")
-                    .update({ nombre: nuevoNombre })
-                    .eq("id", unidad);
+              <div className="contenido-field">
+                <label className="contenido-label">Unidad</label>
+                <select
+                  value={unidad}
+                  onChange={(e) => setUnidad(e.target.value)}
+                  className="contenido-select"
+                >
+                  <option value="">— Selecciona una unidad —</option>
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      Unidad {u.numero}
+                      {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  if (error) {
-                    console.error(error);
-                  }
-                }}
-                className="w-full rounded-lg px-3 py-2"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-text)",
-                  border: "1px solid var(--color-border)",
-                }}
-                placeholder="Título de la unidad (opcional)"
-              />
-              <button
-                type="button"
-                onClick={async () => {
-                  const nextNumero =
-                    unidades.length > 0
-                      ? Math.max(...unidades.map((u) => u.numero)) + 1
-                      : 1;
+              <div className="contenido-field">
+                <label className="contenido-label">Introducción (opcional)</label>
+                <textarea
+                  value={intro}
+                  onChange={(e) => setIntro(e.target.value)}
+                  className="contenido-textarea"
+                />
+              </div>
 
-                  const { data, error } = await supabase
-                    .from("curso_unidades")
-                    .insert({
-                      materia_id: materiaId,
-                      numero: nextNumero,
-                      nombre: "",
-                      orden: nextNumero - 1,
-                    })
-                    .select("*")
-                    .single();
+              <div className="contenido-field">
+                <label className="contenido-label">Contenido principal</label>
+                <div className="contenido-editor-box">
+                  <EditorBasico
+                    ref={contenidoPrincipalEditorRef}
+                    value={contenidoPrincipal}
+                    onChange={setContenidoPrincipal}
+                    onRequestFormula={() => {
+                      setTargetTextarea(null);
+                      setShowFormulaModal(true);
+                    }}
+                    onRequestImage={() => {
+                      setTargetTextarea(null);
+                      setShowImageModal(true);
+                    }}
+                    onRequestVideo={() => {
+                      setTargetTextarea(null);
+                      setShowVideoModal(true);
+                    }}
+                    onRequestDocument={() => {
+                      setTargetTextarea(null);
+                      setShowDocModal(true);
+                    }}
+                    onRequestLink={() => {
+                      setTargetTextarea(null);
+                      setShowLinkModal(true);
+                    }}
+                    onPasteImage={async (file) => {
+                      const { url, originalName } = await uploadToStorage(
+                        file,
+                        "imagenes"
+                      );
 
-                  if (error) {
-                    console.error(error);
-                    alert("No se pudo crear la unidad.");
-                    return;
-                  }
+                      setFileMap((prev) => ({
+                        ...prev,
+                        [originalName]: JSON.stringify({
+                          name: originalName,
+                          url,
+                        }),
+                      }));
 
-                  setUnidades((prev) => [...prev, data as UnidadItem]);
-                  setUnidad(data.id);
-                }}
-                className="rounded-lg px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 whitespace-nowrap w-full md:w-auto"
-              >
-                ➕ Agregar unidad
-              </button>
-            </div>
+                      return {
+                        url,
+                        name: originalName,
+                      };
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="contenido-actions">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="contenido-button"
+                >
+                  <Save size={17} strokeWidth={2.6} />
+                  {loading ? "Guardando..." : "Agregar bloque"}
+                </button>
+              </div>
+            </form>
           </div>
+        </section>
 
-          <div>
-            <label className="block text-sm mb-1">Título</label>
-            <input
-              type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              className="w-full rounded-lg px-3 py-2"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                border: "1px solid var(--color-border)",
-              }}
-              placeholder="Título del bloque (se mostrará grande)"
-            />
-          </div>
+        <div className="contenido-side-column">
+          <section className="contenido-card contenido-units-card no-line">
+            <div className="contenido-card-content">
+              <h2 className="contenido-section-title">Unidades</h2>
 
-          <div>
-            <label className="block text-sm mb-1">Introducción (opcional)</label>
-            <div className="relative">
-              <textarea
-                value={intro}
-                onChange={(e) => setIntro(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 resize-none"
-                style={{
-                  backgroundColor: "var(--color-card)",
-                  color: "var(--color-muted)",
-                  border: "1px solid var(--color-border)",
-                  textAlign: "center",
-                  fontStyle: "italic",
-                  fontSize: "0.95rem",
-                }}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Contenido principal</label>
-            <div className="relative">
-              <EditorBasico
-                ref={contenidoPrincipalEditorRef}
-                value={contenidoPrincipal}
-                onChange={setContenidoPrincipal}
-                onRequestFormula={() => {
-                  setTargetTextarea(null);
-                  setShowFormulaModal(true);
-                }}
-                onRequestImage={() => {
-                  setTargetTextarea(null);
-                  setShowImageModal(true);
-                }}
-                onRequestVideo={() => {
-                  setTargetTextarea(null);
-                  setShowVideoModal(true);
-                }}
-                onRequestDocument={() => {
-                  setTargetTextarea(null);
-                  setShowDocModal(true);
-                }}
-                onRequestLink={() => {
-                  setTargetTextarea(null);
-                  setShowLinkModal(true);
-                }}
-                onPasteImage={async (file) => {
-                  const { url, originalName } = await uploadToStorage(file, "imagenes");
-
-                  setFileMap((prev) => ({
-                    ...prev,
-                    [originalName]: JSON.stringify({ name: originalName, url }),
-                  }));
-
-                  return {
-                    url,
-                    name: originalName,
-                  };
-                }}
-              />
-            </div>
-          </div>
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white w-full sm:w-auto"
-        >
-          {loading ? "Guardando..." : "Agregar bloque"}
-        </button>
-      </form>
-
-      <div className="space-y-3">
-        {blocks.length === 0 && (
-          <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-            Aún no hay contenido.
-          </p>
-        )}
-
-        {unidades.map((u) => {
-          const bloquesUnidad = bloquesPorUnidad[u.id] || [];
-          const abierta = unidadAbiertaId === u.id;
-
-          return (
-            <div
-              key={u.id}
-              className="rounded-lg border overflow-hidden"
-              style={{
-                backgroundColor: "var(--color-card)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setUnidadAbiertaId((prev) => (prev === u.id ? null : u.id))
-                }
-                className="w-full px-3 sm:px-4 py-3 flex items-center justify-between gap-3 text-left"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  color: "var(--color-text)",
-                }}
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold break-words">
-                    Unidad {u.numero}
-                    {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-                    {bloquesUnidad.length} bloque{bloquesUnidad.length === 1 ? "" : "s"}
-                  </p>
+              <div className="contenido-units-form">
+                <div className="contenido-field">
+                  <label className="contenido-label">Unidad</label>
+                  <select
+                    value={unidadGestionId}
+                    onChange={(e) => setUnidadGestionId(e.target.value)}
+                    className="contenido-select"
+                  >
+                    {unidades.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        Unidad {u.numero}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <span className="text-lg shrink-0">
-                  {abierta ? "▲" : "▼"}
-                </span>
-              </button>
+                <div className="contenido-field">
+                  <label className="contenido-label">Nombre de unidad</label>
+                  <input
+                    type="text"
+                    value={unidades.find((u) => u.id === unidadGestionId)?.nombre || ""}
+                    onChange={async (e) => {
+                      const nuevoNombre = e.target.value;
 
-              {abierta && (
-                <div className="p-3 space-y-3">
-                  {bloquesUnidad.length === 0 ? (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                        Esta unidad aún no tiene bloques.
-                      </p>
+                      setUnidades((prev) =>
+                        prev.map((u) =>
+                          u.id === unidadGestionId ? { ...u, nombre: nuevoNombre } : u
+                        )
+                      );
 
-                      {unidades.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteUnidad(u.id);
-                          }}
-                          className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm w-full sm:w-auto"
+                      const { error } = await supabase
+                        .from("curso_unidades")
+                        .update({ nombre: nuevoNombre })
+                        .eq("id", unidadGestionId);
+
+                      if (error) {
+                        console.error(error);
+                      }
+                    }}
+                    className="contenido-input"
+                    placeholder="Nombre opcional"
+                  />
+                </div>
+
+                <div className="contenido-units-actions">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nextNumero =
+                        unidades.length > 0
+                          ? Math.max(...unidades.map((u) => u.numero)) + 1
+                          : 1;
+
+                      const { data, error } = await supabase
+                        .from("curso_unidades")
+                        .insert({
+                          materia_id: materiaId,
+                          numero: nextNumero,
+                          nombre: "",
+                          orden: nextNumero - 1,
+                        })
+                        .select("*")
+                        .single();
+
+                      if (error) {
+                        console.error(error);
+                        setToast({
+                          message: "No se pudo crear la unidad.",
+                          type: "error",
+                        });
+                        return;
+                      }
+
+                      setUnidades((prev) => [...prev, data as UnidadItem]);
+                      setUnidadGestionId(data.id);
+                    }}
+                    className="contenido-button secondary"
+                  >
+                    <Plus size={17} strokeWidth={2.7} />
+                    Agregar unidad
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUnidad(unidadGestionId)}
+                    className="contenido-button danger"
+                    disabled={!unidadGestionId || unidades.length <= 1}
+                  >
+                    <Trash2 size={17} strokeWidth={2.5} />
+                    Eliminar unidad
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="contenido-card contenido-list-card no-line">
+            <div className="contenido-card-content">
+              <h2 className="contenido-section-title">Contenido creado</h2>
+
+              <div className="contenido-list">
+              {blocks.length === 0 && (
+                <p className="contenido-empty">Aún no hay contenido.</p>
+              )}
+
+              {unidades.map((u) => {
+                const bloquesUnidad = bloquesPorUnidad[u.id] || [];
+                const abierta = unidadAbiertaId === u.id;
+
+                return (
+                  <article key={u.id} className="contenido-unit-card">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUnidadAbiertaId((prev) =>
+                          prev === u.id ? null : u.id
+                        )
+                      }
+                      className="contenido-unit-button"
+                    >
+                      <span className="min-w-0">
+                        <span
+                          className="contenido-unit-title"
+                          title={`Unidad ${u.numero}${
+                            u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""
+                          }`}
                         >
-                          Eliminar unidad
-                        </button>
+                          Unidad {u.numero}
+                        </span>
+                        <span className="contenido-unit-meta">
+                          {bloquesUnidad.length} bloque
+                          {bloquesUnidad.length === 1 ? "" : "s"}
+                        </span>
+                      </span>
+
+                      {abierta ? (
+                        <ChevronUp size={19} strokeWidth={2.7} />
+                      ) : (
+                        <ChevronDown size={19} strokeWidth={2.7} />
                       )}
-                    </div>
-                  ) : (
-                    bloquesUnidad.map((b) => (
-                      <div
-                        key={b.id}
-                        className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
-                        style={{
-                          backgroundColor: "var(--color-card)",
-                          color: "var(--color-text)",
-                          borderColor: "var(--color-border)",
-                        }}
-                        onClick={() => handleOpenEdit(b)}
-                        title="Haz clic para editar este bloque"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className="text-xs px-2 py-1 rounded shrink-0"
-                              style={{
-                                backgroundColor: "var(--color-border)",
-                                color: "var(--color-text)",
-                              }}
+                    </button>
+
+                    {abierta && (
+                      <div className="contenido-unit-body">
+                        {u.nombre?.trim() && (
+                          <p className="contenido-unit-open-name">
+                            {u.nombre.trim()}
+                          </p>
+                        )}
+
+                        {bloquesUnidad.length === 0 ? (
+                          <div className="contenido-unit-empty">
+                            <p className="contenido-empty">
+                              Esta unidad aún no tiene bloques.
+                            </p>
+
+                            {unidades.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteUnidad(u.id);
+                                }}
+                                className="contenido-button danger"
+                              >
+                                <Trash2 size={17} strokeWidth={2.5} />
+                                Eliminar unidad
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          bloquesUnidad.map((b) => (
+                            <article
+                              key={b.id}
+                              className="contenido-block-row"
+                              onClick={() => handleOpenEdit(b)}
+                              title="Haz clic para editar este bloque"
                             >
-                              {b.tipo.toUpperCase()}
+                              <div className="contenido-block-main">
+                                <span className="contenido-kind-label">
+                                  Tema
+                                </span>
+                                <span
+                                  className="contenido-block-title"
+                                  title={b.titulo || "(Sin título)"}
+                                >
+                                  {b.titulo || "(Sin título)"}
+                                </span>
+                              </div>
+
+                              <div className="contenido-block-actions">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    move(b.id, "up");
+                                  }}
+                                  className="contenido-icon-button"
+                                  aria-label="Subir bloque"
+                                  title="Subir"
+                                >
+                                  <ArrowUp size={16} strokeWidth={2.7} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    move(b.id, "down");
+                                  }}
+                                  className="contenido-icon-button"
+                                  aria-label="Bajar bloque"
+                                  title="Bajar"
+                                >
+                                  <ArrowDown size={16} strokeWidth={2.7} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(b.id);
+                                  }}
+                                  className="contenido-icon-button danger"
+                                  aria-label="Eliminar bloque"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 size={16} strokeWidth={2.5} />
+                                </button>
+                              </div>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+
+              {bloquesPorUnidad["__sin_unidad__"]?.length > 0 && (
+                <article className="contenido-unit-card">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setUnidadAbiertaId((prev) =>
+                        prev === "__sin_unidad__" ? null : "__sin_unidad__"
+                      )
+                    }
+                    className="contenido-unit-button"
+                  >
+                    <span className="min-w-0">
+                      <span className="contenido-unit-title">Sin unidad</span>
+                      <span className="contenido-unit-meta">
+                        {bloquesPorUnidad["__sin_unidad__"].length} bloques
+                      </span>
+                    </span>
+
+                    {unidadAbiertaId === "__sin_unidad__" ? (
+                      <ChevronUp size={19} strokeWidth={2.7} />
+                    ) : (
+                      <ChevronDown size={19} strokeWidth={2.7} />
+                    )}
+                  </button>
+
+                  {unidadAbiertaId === "__sin_unidad__" && (
+                    <div className="contenido-unit-body">
+                      {bloquesPorUnidad["__sin_unidad__"].map((b) => (
+                        <article
+                          key={b.id}
+                          className="contenido-block-row"
+                          onClick={() => handleOpenEdit(b)}
+                          title="Haz clic para editar este bloque"
+                        >
+                          <div className="contenido-block-main">
+                            <span className="contenido-kind-label">
+                              Tema
                             </span>
                             <span
-                              className="font-semibold break-words min-w-0"
-                              style={{ color: "var(--color-heading)" }}
+                              className="contenido-block-title"
                               title={b.titulo || "(Sin título)"}
                             >
                               {b.titulo || "(Sin título)"}
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 shrink-0">
+                          <div className="contenido-block-actions">
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 move(b.id, "up");
                               }}
-                              className="px-2 py-1 rounded"
-                              style={{
-                                backgroundColor: "var(--color-border)",
-                                color: "var(--color-text)",
-                              }}
+                              className="contenido-icon-button"
+                              aria-label="Subir bloque"
+                              title="Subir"
                             >
-                              ↑
+                              <ArrowUp size={16} strokeWidth={2.7} />
                             </button>
+
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 move(b.id, "down");
                               }}
-                              className="px-2 py-1 rounded"
-                              style={{
-                                backgroundColor: "var(--color-border)",
-                                color: "var(--color-text)",
-                              }}
+                              className="contenido-icon-button"
+                              aria-label="Bajar bloque"
+                              title="Bajar"
                             >
-                              ↓
+                              <ArrowDown size={16} strokeWidth={2.7} />
                             </button>
+
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDelete(b.id);
                               }}
-                              className="px-2 py-1 bg-red-600 rounded text-white"
+                              className="contenido-icon-button danger"
+                              aria-label="Eliminar bloque"
+                              title="Eliminar"
                             >
-                              Eliminar
+                              <Trash2 size={16} strokeWidth={2.5} />
                             </button>
                           </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {bloquesPorUnidad["__sin_unidad__"]?.length > 0 && (
-          <div
-            className="rounded-lg border overflow-hidden"
-            style={{
-              backgroundColor: "var(--color-card)",
-              borderColor: "var(--color-border)",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() =>
-                setUnidadAbiertaId((prev) =>
-                  prev === "__sin_unidad__" ? null : "__sin_unidad__"
-                )
-              }
-              className="w-full px-3 sm:px-4 py-3 flex items-center justify-between gap-3 text-left"
-              style={{
-                backgroundColor: "var(--color-bg)",
-                color: "var(--color-text)",
-              }}
-            >
-              <div className="min-w-0">
-                <p className="font-semibold break-words">Sin unidad</p>
-                <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-                  {bloquesPorUnidad["__sin_unidad__"].length} bloques
-                </p>
-              </div>
-
-              <span className="text-lg shrink-0">
-                {unidadAbiertaId === "__sin_unidad__" ? "▲" : "▼"}
-              </span>
-            </button>
-
-            {unidadAbiertaId === "__sin_unidad__" && (
-              <div className="p-3 space-y-3">
-                {bloquesPorUnidad["__sin_unidad__"].map((b) => (
-                  <div
-                    key={b.id}
-                    className="rounded-lg p-3 sm:p-4 cursor-pointer border min-w-0"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      color: "var(--color-text)",
-                      borderColor: "var(--color-border)",
-                    }}
-                    onClick={() => handleOpenEdit(b)}
-                    title="Haz clic para editar este bloque"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="text-xs px-2 py-1 rounded shrink-0"
-                          style={{
-                            backgroundColor: "var(--color-border)",
-                            color: "var(--color-text)",
-                          }}
-                        >
-                          {b.tipo.toUpperCase()}
-                        </span>
-                        <span
-                          className="font-semibold break-words min-w-0"
-                          style={{ color: "var(--color-heading)" }}
-                          title={b.titulo || "(Sin título)"}
-                        >
-                          {b.titulo || "(Sin título)"}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            move(b.id, "up");
-                          }}
-                          className="px-2 py-1 rounded"
-                          style={{
-                            backgroundColor: "var(--color-border)",
-                            color: "var(--color-text)",
-                          }}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            move(b.id, "down");
-                          }}
-                          className="px-2 py-1 rounded"
-                          style={{
-                            backgroundColor: "var(--color-border)",
-                            color: "var(--color-text)",
-                          }}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(b.id);
-                          }}
-                          className="px-2 py-1 bg-red-600 rounded text-white"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
+                        </article>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  )}
+                </article>
+              )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          </section>
+        </div>
       </div>
-      
+
+      {unidadAEliminar &&
+        renderPortal(
+          <div
+            className="contenido-editor-overlay"
+            onClick={() => setUnidadAEliminarId(null)}
+          >
+            <div
+              className="contenido-editor-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setUnidadAEliminarId(null)}
+                className="contenido-editor-modal-close"
+                aria-label="Cerrar"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+
+              <div className="contenido-editor-modal-content">
+                <h3 className="contenido-editor-modal-title">
+                  Eliminar unidad
+                </h3>
+
+                <p className="contenido-editor-modal-description">
+                  ¿Seguro que quieres eliminar Unidad {unidadAEliminar.numero}?
+                </p>
+
+                <div className="contenido-editor-warning">
+                  {bloquesUnidadAEliminar.length > 0
+                    ? `Esta unidad tiene ${bloquesUnidadAEliminar.length} bloque${
+                        bloquesUnidadAEliminar.length === 1 ? "" : "s"
+                      }. Si confirmas, también se eliminará ese contenido.`
+                    : "Esta unidad no tiene bloques asociados."}
+                </div>
+
+                <div className="contenido-editor-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => setUnidadAEliminarId(null)}
+                    className="contenido-button secondary"
+                    disabled={eliminandoUnidad}
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void confirmarEliminarUnidad()}
+                    className="contenido-button danger"
+                    disabled={eliminandoUnidad}
+                  >
+                    <Trash2 size={17} strokeWidth={2.5} />
+                    {eliminandoUnidad
+                      ? "Eliminando..."
+                      : "Confirmar eliminación"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       {editBlock && renderPortal(
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80] p-3 sm:p-4"
-        >
-        <div
-          className="relative rounded-xl shadow-lg w-[94vw] max-w-[920px] p-4 sm:p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
-          style={{
-            backgroundColor: "var(--color-card)",
-            color: "var(--color-text)",
-          }}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_220px] gap-3 items-center">
-            <h2 className="text-xl font-bold whitespace-nowrap">
-              Editando bloque:
-            </h2>
+        <div className="contenido-edit-overlay">
+          <div
+            className={`contenido-edit-shell ${
+              showFormulaPanel ? "with-panel" : ""
+            }`}
+          >
+            <section className="contenido-edit-modal">
+              <div className="contenido-edit-header">
+                <input
+                  type="text"
+                  value={editTitulo}
+                  onChange={(e) => setEditTitulo(e.target.value)}
+                  className="contenido-edit-title-input"
+                />
 
-            <input
-              type="text"
-              value={editTitulo}
-              onChange={(e) => setEditTitulo(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 font-bold text-xl text-center"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                border: "1px solid var(--color-border)",
-              }}
-            />
+                <select
+                  value={editUnidad}
+                  onChange={(e) => setEditUnidad(e.target.value)}
+                  className="contenido-edit-select"
+                >
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      Unidad {u.numero}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <select
-              value={editUnidad}
-              onChange={(e) => setEditUnidad(e.target.value)}
-              className="w-full rounded-lg px-3 py-2"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              {unidades.map((u) => (
-                <option key={u.id} value={u.id}>
-                  Unidad {u.numero}
-                  {u.nombre?.trim() ? ` - ${u.nombre.trim()}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+              <TextareaAutosize
+                minRows={2}
+                maxRows={6}
+                value={editIntro}
+                onChange={(e) => setEditIntro(e.target.value)}
+                className="contenido-edit-intro"
+              />
 
-          <textarea
-            value={editIntro}
-            onChange={(e) => setEditIntro(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 resize-none"
-            style={{
-              backgroundColor: "var(--color-card)",
-              color: "var(--color-muted)",
-              border: "1px solid var(--color-border)",
-              textAlign: "center",
-              fontStyle: "italic",
-              fontSize: "0.95rem",
-            }}
-          />
+              <div className="contenido-edit-editor-box">
+                <EditorBasico
+                  key={editorKey}
+                  ref={editContenidoEditorRef}
+                  value={editContenido}
+                  onChange={setEditContenido}
+                  fillHeight
+                  onRequestFormula={() => {
+                    setTargetTextarea(null);
+                    setShowFormulaModal(true);
+                  }}
+                  onRequestImage={() => {
+                    setTargetTextarea(null);
+                    setShowImageModal(true);
+                  }}
+                  onRequestVideo={() => {
+                    setTargetTextarea(null);
+                    setShowVideoModal(true);
+                  }}
+                  onRequestDocument={() => {
+                    setTargetTextarea(null);
+                    setShowDocModal(true);
+                  }}
+                  onRequestLink={() => {
+                    setTargetTextarea(null);
+                    setShowLinkModal(true);
+                  }}
+                  showFormulaPanelButton={true}
+                  formulaPanelOpen={showFormulaPanel}
+                  onCloseFormulaPanel={() => setShowFormulaPanel(false)}
+                  onRequestFormulaPanel={() =>
+                    setShowFormulaPanel((prev) => !prev)
+                  }
+                  onPasteImage={async (file) => {
+                    const { url, originalName } = await uploadToStorage(
+                      file,
+                      "imagenes"
+                    );
 
-          <div>
-            <EditorBasico
-              key={editorKey}
-              ref={editContenidoEditorRef}
-              value={editContenido}
-              onChange={setEditContenido}
-              fillHeight
-              onRequestFormula={() => {
-                setTargetTextarea(null);
-                setShowFormulaModal(true);
-              }}
-              onRequestImage={() => {
-                setTargetTextarea(null);
-                setShowImageModal(true);
-              }}
-              onRequestVideo={() => {
-                setTargetTextarea(null);
-                setShowVideoModal(true);
-              }}
-              onRequestDocument={() => {
-                setTargetTextarea(null);
-                setShowDocModal(true);
-              }}
-              onRequestLink={() => {
-                setTargetTextarea(null);
-                setShowLinkModal(true);
-              }}
-              showFormulaPanelButton={true}
-              onRequestFormulaPanel={() => setShowFormulaPanel((prev) => !prev)}
-              onPasteImage={async (file) => {
-                const { url, originalName } = await uploadToStorage(file, "imagenes");
+                    setFileMap((prev) => ({
+                      ...prev,
+                      [originalName]: JSON.stringify({
+                        name: originalName,
+                        url,
+                      }),
+                    }));
 
-                setFileMap((prev) => ({
-                  ...prev,
-                  [originalName]: JSON.stringify({ name: originalName, url }),
-                }));
+                    return {
+                      url,
+                      name: originalName,
+                    };
+                  }}
+                />
+              </div>
 
-                return {
-                  url,
-                  name: originalName,
-                };
-              }}
-            />
+              <div className="contenido-edit-actions">
+                <button
+                  type="button"
+                  onClick={() => setEditBlock(null)}
+                  className="contenido-button secondary"
+                >
+                  Cancelar
+                </button>
 
-            {showFormulaPanel && renderPortal(
-            <aside
-              className="hidden 2xl:block rounded-lg border p-3 text-sm space-y-3 z-[100] overflow-y-auto shadow-lg"
-              style={{
-                position: "fixed",
-                top: "50%",
-                left: "calc(50% + min(94vw, 920px) / 2 + 32px)",
-                transform: "translateY(-50%)",
-                width: "min(340px, calc(50vw - min(94vw, 920px) / 2 - 24px))",
-                height: "92dvh",
-                maxHeight: "92dvh",
-                backgroundColor: "var(--color-border)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Fórmulas del bloque</h3>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="contenido-button"
+                >
+                  Guardar cambios
+                </button>
+              </div>
+            </section>
+
+            {showFormulaPanel && (
+              <aside className="hidden 2xl:block contenido-formula-panel">
+                <div className="contenido-formula-panel-head">
+                  <h3 className="contenido-formula-panel-title">
+                    Fórmulas del bloque
+                  </h3>
 
                   <button
                     type="button"
                     onClick={() => setShowFormulaPanel(false)}
-                    className="px-2 py-1 rounded text-xs"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      color: "var(--color-text)",
-                    }}
+                    className="contenido-mini-button"
                   >
                     ×
                   </button>
                 </div>
 
                 {editFormulas.length === 0 ? (
-                  <p className="text-xs opacity-70">Este bloque no tiene fórmulas.</p>
+                  <p className="contenido-empty">
+                    Este bloque no tiene fórmulas.
+                  </p>
                 ) : (
                   editFormulas.map((f, index) => (
-                    <div
-                      key={f.id}
-                      className="rounded-md p-3 space-y-2"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        color: "var(--color-text)",
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <input
-                          value={f.titulo}
-                          onChange={(e) =>
-                            setEditFormulas((prev) =>
-                              prev.map((item) =>
-                                item.id === f.id ? { ...item, titulo: e.target.value } : item
-                              )
-                            )
-                          }
-                          className="w-full rounded px-2 py-1 text-xs"
-                          style={{
-                            backgroundColor: "var(--color-card)",
-                            border: "1px solid var(--color-border)",
-                          }}
-                          placeholder="Título"
-                        />
+                    <div key={f.id} className="contenido-formula-card">
+                      <div className="contenido-formula-preview">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                        >
+                          {`$$${f.ecuacion}$$`}
+                        </ReactMarkdown>
+                      </div>
 
-                        <textarea
-                          value={f.descripcion}
-                          onChange={(e) =>
-                            setEditFormulas((prev) =>
-                              prev.map((item) =>
-                                item.id === f.id
-                                  ? { ...item, descripcion: e.target.value }
-                                  : item
-                              )
-                            )
-                          }
-                          className="w-full rounded px-2 py-1 text-xs resize-none"
-                          rows={2}
-                          style={{
-                            backgroundColor: "var(--color-card)",
-                            border: "1px solid var(--color-border)",
-                          }}
-                          placeholder="Descripción (opcional)"
-                        />
-
-                        <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                      <div className="contenido-formula-card-actions">
+                        <label className="contenido-panel-checkbox">
                           <input
                             type="checkbox"
                             checked={f.publica}
@@ -1449,25 +2567,34 @@ export default function EditorContenidoCurso({
                           />
                           Visible
                         </label>
-                      </div>
 
-                      <div className="text-center text-sky-500">
-                        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                          {`$$${f.ecuacion}$$`}
-                        </ReactMarkdown>
-                      </div>
+                        <div className="contenido-formula-actions">
+                          {editFormulas.length > 1 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => moveFormula(index, "up")}
+                                className="contenido-mini-button icon"
+                                aria-label="Subir fórmula"
+                                title="Subir"
+                              >
+                                ↑
+                              </button>
 
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => moveFormula(index, "up")}>
-                            ↑
-                          </button>
-                          <button type="button" onClick={() => moveFormula(index, "down")}>
-                            ↓
-                          </button>
+                              <button
+                                type="button"
+                                onClick={() => moveFormula(index, "down")}
+                                className="contenido-mini-button icon"
+                                aria-label="Bajar fórmula"
+                                title="Bajar"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="contenido-formula-actions">
                           <button
                             type="button"
                             onClick={() => {
@@ -1478,20 +2605,26 @@ export default function EditorContenidoCurso({
                               setFormulaPublica(Boolean(f.publica));
                               setShowFormulaModal(true);
                             }}
-                            className="px-2 py-1 rounded bg-yellow-500 text-white text-xs"
+                            className="contenido-mini-button warning icon"
+                            aria-label="Editar fórmula"
+                            title="Editar"
                           >
-                            Editar
+                            <Pencil size={14} strokeWidth={2.7} />
                           </button>
 
                           <button
                             type="button"
                             onClick={() => {
                               setDeletedFormulas((prev) => [...prev, f.id]);
-                              setEditFormulas((prev) => prev.filter((item) => item.id !== f.id));
+                              setEditFormulas((prev) =>
+                                prev.filter((item) => item.id !== f.id)
+                              );
                             }}
-                            className="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                            className="contenido-mini-button danger icon"
+                            aria-label="Eliminar fórmula"
+                            title="Eliminar"
                           >
-                            Eliminar
+                            <Trash2 size={14} strokeWidth={2.6} />
                           </button>
                         </div>
                       </div>
@@ -1509,53 +2642,34 @@ export default function EditorContenidoCurso({
                     setFormulaPublica(false);
                     setShowFormulaModal(true);
                   }}
-                  className="w-full rounded bg-blue-600 text-white py-2 text-sm font-semibold"
+                  className="contenido-button contenido-formula-add-button"
                 >
-                  ＋ Agregar fórmula
+                  Agregar fórmula
                 </button>
               </aside>
             )}
           </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={() => setEditBlock(null)}
-              className="px-4 py-2 bg-gray-600 rounded text-white"
-            >
-              Cancelar
-            </button>
-
-            <button
-              onClick={handleSaveEdit}
-              className="px-4 py-2 bg-green-600 rounded text-white"
-            >
-              Guardar cambios
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+        </div>,
+        document.body
+      )}
 
       {showFormulaModal && renderPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-          <div
-            className="rounded-xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-lg font-bold mb-3">Insertar fórmula</h2>
+        <div className="contenido-editor-overlay">
+          <div className="contenido-editor-modal contenido-resource-modal">
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">
+                Insertar fórmula
+              </h2>
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-3">
+              <div className="contenido-resource-tabs">
               <button
-                className={`px-3 py-1 rounded ${formulaMode === "latex" ? "bg-blue-600 text-white" : ""}`}
-                style={formulaMode !== "latex" ? { backgroundColor: "var(--color-border)", color: "var(--color-text)" } : {}}
+                className={`contenido-resource-tab ${formulaMode === "latex" ? "active" : ""}`}
                 onClick={() => setFormulaMode("latex")}
               >
                 LaTeX
               </button>
               <button
-                className={`px-3 py-1 rounded ${formulaMode === "image" ? "bg-blue-600 text-white" : ""}`}
-                style={formulaMode !== "image" ? { backgroundColor: "var(--color-border)", color: "var(--color-text)" } : {}}
+                className={`contenido-resource-tab ${formulaMode === "image" ? "active" : ""}`}
                 onClick={() => setFormulaMode("image")}
                 title={
                   FORMULA_IMAGEN_SOLO_LOCAL
@@ -1574,8 +2688,7 @@ export default function EditorContenidoCurso({
                   placeholder="Título (opcional)"
                   value={formulaTitulo}
                   onChange={(e) => setFormulaTitulo(e.target.value)}
-                  className="w-full rounded px-3 py-2 mb-3"
-                  style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
+                  className="contenido-modal-input"
                 />
 
                 <TextareaAutosize
@@ -1583,8 +2696,7 @@ export default function EditorContenidoCurso({
                   value={formulaEcuacion}
                   onChange={(e) => setFormulaEcuacion(e.target.value)}
                   placeholder="Escribe LaTeX aquí"
-                  className="w-full rounded px-3 py-2 mb-3 resize-none"
-                  style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
+                  className="contenido-modal-textarea"
                 />
 
                 <TextareaAutosize
@@ -1592,17 +2704,11 @@ export default function EditorContenidoCurso({
                   value={formulaDescripcion}
                   onChange={(e) => setFormulaDescripcion(e.target.value)}
                   placeholder="Descripción de la fórmula (opcional)"
-                  className="w-full rounded px-3 py-2 mb-3 resize-none"
-                  style={{
-                    backgroundColor: "var(--color-card)",
-                    color: "var(--color-text)",
-                    border: "1px solid var(--color-border)",
-                  }}
+                  className="contenido-modal-textarea"
                 />
 
                 <label
-                  className="flex items-center gap-2 text-sm mb-3"
-                  style={{ color: "var(--color-text)" }}
+                  className="contenido-modal-check"
                 >
                   <input
                     type="checkbox"
@@ -1613,8 +2719,7 @@ export default function EditorContenidoCurso({
                 </label>
 
                 <div
-                  className="rounded p-3 text-center"
-                  style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                  className="contenido-formula-preview-box"
                 >
                   <p className="text-xs mb-2" style={{ color: "var(--color-muted)" }}>
                     Vista previa:
@@ -1660,16 +2765,15 @@ export default function EditorContenidoCurso({
               )
             )}
 
-            <div className="flex justify-end gap-2 mt-4">
+            <div className="contenido-editor-modal-actions">
               <button
-                className="px-3 py-1 rounded"
-                style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                className="contenido-button secondary"
                 onClick={() => setShowFormulaModal(false)}
               >
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="contenido-button"
                 disabled={formulaMode === "image" && !FORMULA_IMAGEN_SOLO_LOCAL}
                 onClick={() => {
                   if (targetTextarea) {
@@ -1803,34 +2907,33 @@ export default function EditorContenidoCurso({
                 {targetFormulaId ? "Actualizar" : "Insertar"}
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
       {/* Modal Imagen */}
       {showImageModal && renderPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-          <div
-            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-lg font-bold mb-3">Insertar imagen</h2>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full p-2 rounded mb-3"
-              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
-            />
-            <div className="flex justify-end gap-2">
+        <div className="contenido-editor-overlay">
+          <div className="contenido-editor-modal contenido-resource-modal">
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">Insertar imagen</h2>
+              <label className="contenido-file-picker">
+                <span>{file?.name || "Seleccionar imagen"}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            <div className="contenido-editor-modal-actions">
               <button
-                className="px-3 py-1 rounded"
-                style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                className="contenido-button secondary"
                 onClick={() => setShowImageModal(false)}
               >
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white"
+                className="contenido-button"
                 onClick={async () => {
                   if (!file) return;
 
@@ -1912,35 +3015,34 @@ export default function EditorContenidoCurso({
                 Insertar
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Modal Video */}
       {showVideoModal && renderPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-          <div
-            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-lg font-bold mb-3">Insertar video</h2>
-            <input
-              type="file"
-              accept="video/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full p-2 rounded mb-3"
-              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
-            />
-            <div className="flex justify-end gap-2">
+        <div className="contenido-editor-overlay">
+          <div className="contenido-editor-modal contenido-resource-modal">
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">Insertar video</h2>
+              <label className="contenido-file-picker">
+                <span>{file?.name || "Seleccionar video"}</span>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            <div className="contenido-editor-modal-actions">
               <button
-                className="px-3 py-1 rounded"
-                style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                className="contenido-button secondary"
                 onClick={() => setShowVideoModal(false)}
               >
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white"
+                className="contenido-button"
                 onClick={async () => {
                   if (!file) return;
 
@@ -2022,35 +3124,34 @@ export default function EditorContenidoCurso({
                 Insertar
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Modal Documento */}
       {showDocModal && renderPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-          <div
-            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-lg font-bold mb-3">Insertar documento</h2>
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full p-2 rounded mb-3"
-              style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
-            />
-            <div className="flex justify-end gap-2">
+        <div className="contenido-editor-overlay">
+          <div className="contenido-editor-modal contenido-resource-modal">
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">Insertar documento</h2>
+              <label className="contenido-file-picker">
+                <span>{file?.name || "Seleccionar documento"}</span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            <div className="contenido-editor-modal-actions">
               <button
-                className="px-3 py-1 rounded"
-                style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                className="contenido-button secondary"
                 onClick={() => setShowDocModal(false)}
               >
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white"
+                className="contenido-button"
                 onClick={async () => {
                   if (!file) return;
 
@@ -2132,24 +3233,23 @@ export default function EditorContenidoCurso({
                 Insertar
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Modal Enlace */}
       {showLinkModal && renderPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-3 sm:p-4">
-          <div
-            className="rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
-            style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)" }}
-          >
-            <h2 className="text-lg font-bold mb-3">Insertar enlace</h2>
+        <div className="contenido-editor-overlay">
+          <div className="contenido-editor-modal contenido-resource-modal">
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">Insertar enlace</h2>
             <input
               type="text"
               placeholder="Texto a mostrar"
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
-              className="w-full rounded px-3 py-2 mb-3"
+              className="contenido-modal-input"
               style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
             />
             <input
@@ -2157,19 +3257,18 @@ export default function EditorContenidoCurso({
               placeholder="URL destino"
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
-              className="w-full rounded px-3 py-2 mb-3"
+              className="contenido-modal-input"
               style={{ backgroundColor: "var(--color-card)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
             />
-            <div className="flex justify-end gap-2">
+            <div className="contenido-editor-modal-actions">
               <button
-                className="px-3 py-1 rounded"
-                style={{ backgroundColor: "var(--color-border)", color: "var(--color-text)" }}
+                className="contenido-button secondary"
                 onClick={() => setShowLinkModal(false)}
               >
                 Cancelar
               </button>
               <button
-                className="px-3 py-1 rounded bg-green-600 text-white"
+                className="contenido-button"
                 onClick={() => {
                   if (!linkUrl) return;
 
@@ -2205,6 +3304,7 @@ export default function EditorContenidoCurso({
               >
                 Insertar
               </button>
+            </div>
             </div>
           </div>
         </div>

@@ -37,9 +37,10 @@ const CustomImage = ImageBase.extend({
           max-height:140px;
           max-width:100%;
           height:auto;
-          border-radius:8px;
+          border-radius:12px;
           margin:6px auto;
           display:block;
+          border:1px solid var(--editor-quiz-border, transparent);
         `,
       },
     ];
@@ -149,15 +150,15 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
     });
 
     useEffect(() => {
-        if (!editor) return;
+      if (!editor) return;
 
-        const nextRaw = markdownMathToTiptapHtml(value || "");
-        const currentNormalized = cleanEmptyEditorHtml(editor.getHTML() || "");
-        const nextNormalized = cleanEmptyEditorHtml(nextRaw || "");
+      const nextRaw = markdownMathToTiptapHtml(value || "");
+      const currentNormalized = cleanEmptyEditorHtml(editor.getHTML() || "");
+      const nextNormalized = cleanEmptyEditorHtml(nextRaw || "");
 
-        if (currentNormalized !== nextNormalized) {
-            editor.commands.setContent(nextRaw || "");
-        }
+      if (currentNormalized !== nextNormalized) {
+        editor.commands.setContent(nextRaw || "");
+      }
     }, [editor, value]);
 
     useImperativeHandle(
@@ -210,14 +211,321 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
     if (!editor) return null;
 
     return (
-      <div className="flex flex-col sm:flex-row gap-2 w-full min-w-0">
+      <div className={`editor-quiz-campo ${compact ? "compact" : ""}`}>
+        <style>{`
+          .editor-quiz-campo,
+          .editor-quiz-overlay {
+            --editor-quiz-accent: var(--fcc-premium-accent, var(--color-accent));
+            --editor-quiz-cyan: var(--fcc-premium-cyan, var(--color-accent));
+            --editor-quiz-surface: var(--fcc-premium-surface, var(--color-card));
+            --editor-quiz-surface-soft: var(--fcc-premium-surface-soft, var(--color-card));
+            --editor-quiz-surface-strong: var(--fcc-premium-surface-strong, var(--color-card));
+            --editor-quiz-text: var(--fcc-premium-text, var(--color-text));
+            --editor-quiz-muted: var(--fcc-premium-muted, var(--color-muted));
+            --editor-quiz-border: var(--fcc-premium-border, var(--color-border));
+            --editor-quiz-shadow: var(--fcc-premium-shadow, 0 24px 70px rgba(2, 8, 23, 0.18));
+          }
+
+          .editor-quiz-campo {
+            width: 100%;
+            min-width: 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            color: var(--editor-quiz-text);
+          }
+
+          .editor-quiz-box {
+            width: 100%;
+            min-width: 0;
+            min-height: 36px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-radius: 14px;
+            padding: 8px 11px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 74%, transparent);
+            border: 1px solid var(--editor-quiz-border);
+            transition:
+              border-color 170ms ease,
+              background 170ms ease,
+              box-shadow 170ms ease;
+          }
+
+          .editor-quiz-box:focus-within {
+            border-color: color-mix(in srgb, var(--editor-quiz-accent) 52%, var(--editor-quiz-border));
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 88%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--editor-quiz-accent) 10%, transparent);
+          }
+
+          .editor-quiz-box .ProseMirror {
+            min-height: 20px;
+            outline: none;
+            color: var(--editor-quiz-text);
+            font-size: 0.9rem;
+            font-weight: 760;
+            line-height: 1.35;
+          }
+
+          .editor-quiz-box .ProseMirror p {
+            margin: 0;
+          }
+
+          .editor-quiz-box .ProseMirror img {
+            cursor: zoom-in;
+          }
+
+          .editor-quiz-placeholder {
+            pointer-events: none;
+            margin-top: -20px;
+            color: var(--editor-quiz-muted);
+            font-size: 0.88rem;
+            font-weight: 750;
+            line-height: 20px;
+          }
+
+          .editor-quiz-toolbar {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 7px;
+          }
+
+          .editor-quiz-action {
+            min-height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            padding: 0 11px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 76%, transparent);
+            border: 1px solid var(--editor-quiz-border);
+            font-size: 0.75rem;
+            font-weight: 950;
+            white-space: nowrap;
+            transition:
+              transform 170ms ease,
+              border-color 170ms ease,
+              background 170ms ease;
+          }
+
+          .editor-quiz-action:hover {
+            transform: translateY(-1px);
+          }
+
+          .editor-quiz-action.formula {
+            color: color-mix(in srgb, #3b82f6 68%, var(--editor-quiz-text));
+            background: color-mix(in srgb, #3b82f6 7%, var(--editor-quiz-surface-strong));
+            border-color: color-mix(in srgb, #3b82f6 18%, var(--editor-quiz-border));
+          }
+
+          .editor-quiz-action.image {
+            color: color-mix(in srgb, #10b981 68%, var(--editor-quiz-text));
+            background: color-mix(in srgb, #10b981 7%, var(--editor-quiz-surface-strong));
+            border-color: color-mix(in srgb, #10b981 18%, var(--editor-quiz-border));
+          }
+
+          .editor-quiz-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 130;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(2, 8, 23, 0.58);
+            backdrop-filter: blur(8px);
+          }
+
+          .editor-quiz-modal {
+            width: min(94vw, 460px);
+            overflow: hidden;
+            border-radius: 26px;
+            padding: 20px;
+            color: var(--editor-quiz-text);
+            background:
+              linear-gradient(
+                135deg,
+                var(--editor-quiz-surface),
+                var(--editor-quiz-surface-soft)
+              );
+            border: 1px solid color-mix(in srgb, var(--editor-quiz-accent) 14%, var(--editor-quiz-border));
+            box-shadow: var(--editor-quiz-shadow);
+          }
+
+          .editor-quiz-modal-title {
+            margin: 0 0 14px;
+            color: var(--editor-quiz-text);
+            font-size: 1.12rem;
+            font-weight: 950;
+            line-height: 1.08;
+            letter-spacing: -0.035em;
+            text-align: center;
+          }
+
+          .editor-quiz-textarea {
+            width: 100%;
+            min-height: 96px;
+            border-radius: 14px;
+            padding: 12px 13px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 74%, transparent);
+            border: 1px solid var(--editor-quiz-border);
+            outline: none;
+            resize: none;
+            font-size: 0.92rem;
+            font-weight: 760;
+            line-height: 1.45;
+            transition:
+              border-color 170ms ease,
+              background 170ms ease;
+          }
+
+          .editor-quiz-textarea:focus {
+            border-color: color-mix(in srgb, var(--editor-quiz-accent) 52%, var(--editor-quiz-border));
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 88%, transparent);
+          }
+
+          .editor-quiz-file-picker {
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            padding: 0 14px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 74%, transparent);
+            border: 1px solid var(--editor-quiz-border);
+            font-size: 0.92rem;
+            font-weight: 900;
+            text-align: center;
+            cursor: pointer;
+            transition:
+              transform 170ms ease,
+              border-color 170ms ease,
+              background 170ms ease;
+          }
+
+          .editor-quiz-file-picker:hover {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--editor-quiz-accent) 42%, var(--editor-quiz-border));
+            background: color-mix(in srgb, var(--editor-quiz-accent) 8%, var(--editor-quiz-surface-strong));
+          }
+
+          .editor-quiz-file-picker input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          .editor-quiz-file-name {
+            margin: 10px 0 0;
+            color: var(--editor-quiz-muted);
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-align: center;
+            overflow-wrap: anywhere;
+          }
+
+          .editor-quiz-modal-actions {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+          }
+
+          .editor-quiz-modal-button {
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            padding: 0 15px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 76%, transparent);
+            border: 1px solid var(--editor-quiz-border);
+            font-size: 0.84rem;
+            font-weight: 950;
+            transition:
+              transform 170ms ease,
+              opacity 170ms ease,
+              border-color 170ms ease;
+          }
+
+          .editor-quiz-modal-button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--editor-quiz-accent) 28%, var(--editor-quiz-border));
+          }
+
+          .editor-quiz-modal-button.primary {
+            color: #ffffff;
+            background: var(--editor-quiz-accent);
+            border-color: color-mix(in srgb, var(--editor-quiz-accent) 64%, white);
+          }
+
+          .theme-oscuro .editor-quiz-modal-button.primary {
+            color: #050505;
+          }
+
+          .editor-quiz-modal-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.58;
+          }
+
+          .editor-quiz-preview-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 140;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: rgba(2, 8, 23, 0.72);
+            backdrop-filter: blur(6px);
+          }
+
+          .editor-quiz-preview-image {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 18px;
+            border: 1px solid color-mix(in srgb, white 18%, transparent);
+            box-shadow: var(--editor-quiz-shadow);
+          }
+
+          @media (max-width: 640px) {
+            .editor-quiz-campo {
+              flex-direction: column;
+            }
+
+            .editor-quiz-toolbar {
+              width: 100%;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+            }
+
+            .editor-quiz-action {
+              width: 100%;
+            }
+
+            .editor-quiz-modal {
+              padding: 18px;
+              border-radius: 22px;
+            }
+
+            .editor-quiz-modal-actions {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+            }
+          }
+        `}</style>
+
         <div
-          className="w-full rounded px-3 py-1.5 text-sm min-h-[34px] flex flex-col justify-center"
-          style={{
-            backgroundColor: "var(--color-bg)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
-          }}
+          className="editor-quiz-box"
           onClick={(e) => {
             const target = e.target as HTMLElement;
 
@@ -230,68 +538,51 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
           <EditorContent editor={editor} />
 
           {editor.isEmpty && (
-            <div
-              className="pointer-events-none text-sm -mt-[20px] leading-[20px]"
-              style={{ color: "var(--color-muted)" }}
-            >
+            <div className="editor-quiz-placeholder">
               {placeholder}
             </div>
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowFormulaModal(true)}
-          className="bg-blue-600 text-white text-xs px-3 py-1 rounded h-[34px] shrink-0 self-start"
-        >
-          ➕ Fórmula
-        </button>
+        <div className="editor-quiz-toolbar">
+          <button
+            type="button"
+            onClick={() => setShowFormulaModal(true)}
+            className="editor-quiz-action formula"
+          >
+            + Fórmula
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setShowImageModal(true)}
-          className="bg-green-600 text-white text-xs px-3 py-1 rounded h-[34px] shrink-0 self-start"
-        >
-          ➕ Imagen
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowImageModal(true)}
+            className="editor-quiz-action image"
+          >
+            + Imagen
+          </button>
+        </div>
 
         {showFormulaModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[130] p-3 sm:p-4">
-            <div
-              className="rounded-xl p-4 sm:p-5 w-full max-w-md"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <h3 className="font-bold mb-3">Insertar fórmula</h3>
+          <div className="editor-quiz-overlay">
+            <div className="editor-quiz-modal">
+              <h3 className="editor-quiz-modal-title">Insertar fórmula</h3>
 
               <textarea
                 value={formulaLatex}
                 onChange={(e) => setFormulaLatex(e.target.value)}
                 rows={3}
-                className="w-full rounded px-3 py-2 mb-3"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
+                className="editor-quiz-textarea"
                 placeholder="Ej. x + 1"
               />
 
-              <div className="flex justify-end gap-2">
+              <div className="editor-quiz-modal-actions">
                 <button
                   type="button"
                   onClick={() => {
                     setFormulaLatex("");
                     setShowFormulaModal(false);
                   }}
-                  className="px-3 py-1 rounded"
-                  style={{
-                    backgroundColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="editor-quiz-modal-button"
                 >
                   Cancelar
                 </button>
@@ -315,7 +606,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
                     setFormulaLatex("");
                     setShowFormulaModal(false);
                   }}
-                  className="px-3 py-1 rounded bg-green-600 text-white"
+                  className="editor-quiz-modal-button primary"
                 >
                   Insertar
                 </button>
@@ -325,41 +616,31 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
         )}
 
         {showImageModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[130] p-3 sm:p-4">
-            <div
-              className="rounded-xl p-4 sm:p-5 w-full max-w-md"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <h3 className="font-bold mb-3">Insertar imagen</h3>
+          <div className="editor-quiz-overlay">
+            <div className="editor-quiz-modal">
+              <h3 className="editor-quiz-modal-title">Insertar imagen</h3>
 
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                className="w-full rounded px-3 py-2 mb-3 text-sm"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-              />
+              <label className="editor-quiz-file-picker">
+                {imageFile ? "Cambiar imagen" : "Seleccionar imagen"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                />
+              </label>
 
-              <div className="flex justify-end gap-2">
+              {imageFile && (
+                <p className="editor-quiz-file-name">{imageFile.name}</p>
+              )}
+
+              <div className="editor-quiz-modal-actions">
                 <button
                   type="button"
                   onClick={() => {
                     setImageFile(null);
                     setShowImageModal(false);
                   }}
-                  className="px-3 py-1 rounded"
-                  style={{
-                    backgroundColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="editor-quiz-modal-button"
                 >
                   Cancelar
                 </button>
@@ -395,7 +676,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
                       setUploadingImage(false);
                     }
                   }}
-                  className="px-3 py-1 rounded bg-green-600 text-white disabled:opacity-50"
+                  className="editor-quiz-modal-button primary"
                 >
                   {uploadingImage ? "Subiendo..." : "Insertar"}
                 </button>
@@ -406,12 +687,12 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 
         {previewImage && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[140] p-3"
+            className="editor-quiz-preview-overlay"
             onClick={() => setPreviewImage(null)}
           >
             <img
               src={previewImage}
-              className="max-w-full max-h-[90vh] rounded-lg"
+              className="editor-quiz-preview-image"
               alt="Vista ampliada"
             />
           </div>

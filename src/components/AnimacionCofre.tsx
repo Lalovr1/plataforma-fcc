@@ -171,8 +171,13 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
         </p>
         <button
           onClick={onFinish}
-          className="px-5 py-2 rounded-lg text-white font-semibold shadow-md hover:opacity-90"
-          style={{ backgroundColor: "var(--color-primary)" }}
+          className="px-5 py-2 rounded-[14px] text-white font-black shadow-md hover:opacity-90"
+          style={{
+            backgroundColor: "var(--fcc-premium-accent, var(--color-primary))",
+            border: "1px solid color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 64%, white)",
+            boxShadow:
+              "0 12px 26px color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 16%, transparent)",
+          }}
         >
           Continuar
         </button>
@@ -362,8 +367,13 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5, duration: 0.6 }}
-                  className="mt-6 px-5 py-2 rounded-lg text-white font-semibold shadow-md hover:opacity-90"
-                  style={{ backgroundColor: "var(--color-primary)" }}
+                  className="mt-6 px-5 py-2 rounded-[14px] text-white font-black shadow-md hover:opacity-90"
+                  style={{
+                    backgroundColor: "var(--fcc-premium-accent, var(--color-primary))",
+                    border: "1px solid color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 64%, white)",
+                    boxShadow:
+                      "0 12px 26px color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 16%, transparent)",
+                  }}
                 >
                   Continuar
                 </motion.button>

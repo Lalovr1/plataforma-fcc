@@ -8,6 +8,8 @@
 
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import BarraXP from "@/components/BarraXP";
 import { supabase } from "@/utils/supabaseClient";
@@ -161,60 +163,36 @@ function ModalEditarNombre({
   };
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative p-4 sm:p-6 rounded-xl shadow w-[92vw] max-w-sm"
-        style={{ backgroundColor: "var(--color-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="perfil-modal-overlay" onClick={onClose}>
+      <div className="perfil-modal-card" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 w-8 h-8 rounded-full flex items-center justify-center text-xl leading-none"
-          style={{
-            backgroundColor: "var(--color-border)",
-            color: "var(--color-text)",
-          }}
+          className="perfil-modal-close"
           title="Cerrar"
         >
           ×
         </button>
 
-        <h2
-          className="text-xl font-bold mb-4 pr-8"
-          style={{ color: "var(--color-heading)" }}
-        >
-          Editar nombre
-        </h2>
+        <div className="perfil-modal-head">
+          <p className="perfil-kicker">Perfil</p>
+          <h2>Editar nombre</h2>
+        </div>
 
         <input
           type="text"
           value={nombreLocal}
           onChange={(e) => setNombreLocal(e.target.value)}
-          className="w-full p-2 rounded-lg border"
-          style={{
-            borderColor: "var(--color-border)",
-            backgroundColor: "var(--color-bg)",
-            color: "var(--color-text)",
-          }}
+          className="perfil-input"
           placeholder="Ingresa tu nombre"
         />
 
-        <div className="flex flex-col-reverse sm:flex-row justify-end mt-4 gap-2">
-          <button
-            className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white transition"
-            onClick={onClose}
-          >
+        <div className="perfil-modal-actions">
+          <button className="perfil-secondary-button" onClick={onClose}>
             Cancelar
           </button>
 
-          <button
-            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition"
-            onClick={handleSave}
-          >
+          <button className="perfil-primary-button" onClick={handleSave}>
             Guardar cambios
           </button>
         </div>
@@ -314,95 +292,712 @@ export default function PerfilEstudiantePage() {
     run();
   }, []);
 
-  useEffect(() => {
-    if (usuario?.id) {
-      guardarPerfilCache(usuario);
-    }
-  }, [usuario]);
+  const estilos = (
+    <style>{`
+      .perfil-page,
+      .perfil-modal-overlay {
+        --perfil-accent: var(--fcc-premium-accent);
+        --perfil-cyan: var(--fcc-premium-cyan);
+        --perfil-surface: var(--fcc-premium-surface);
+        --perfil-surface-soft: var(--fcc-premium-surface-soft);
+        --perfil-surface-strong: var(--fcc-premium-surface-strong);
+        --perfil-text: var(--fcc-premium-text);
+        --perfil-heading: var(--fcc-premium-heading);
+        --perfil-muted: var(--fcc-premium-muted);
+        --perfil-border: var(--fcc-premium-border);
+        --perfil-border-strong: var(--fcc-premium-border-strong);
+
+        --perfil-avatar-core: color-mix(in srgb, var(--perfil-cyan) 18%, transparent);
+        --perfil-avatar-a: color-mix(in srgb, var(--perfil-accent) 34%, transparent);
+        --perfil-avatar-b: color-mix(in srgb, var(--perfil-cyan) 28%, transparent);
+        --perfil-avatar-c: color-mix(in srgb, var(--perfil-accent) 26%, transparent);
+        --perfil-avatar-border: color-mix(in srgb, var(--perfil-accent) 28%, transparent);
+        --perfil-avatar-shadow-a: color-mix(in srgb, var(--perfil-accent) 4%, transparent);
+        --perfil-avatar-shadow-b: color-mix(in srgb, var(--perfil-accent) 18%, transparent);
+        --perfil-avatar-orbit-a: color-mix(in srgb, var(--perfil-accent) 20%, transparent);
+        --perfil-avatar-orbit-b: color-mix(in srgb, var(--perfil-cyan) 22%, transparent);
+      }
+
+      .perfil-page {
+        display: grid;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .perfil-back-link {
+        position: absolute;
+        left: 16px;
+        top: 16px;
+        z-index: 5;
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 0 12px;
+        border-radius: 999px;
+        color: var(--perfil-accent);
+        font-weight: 950;
+        font-size: 0.86rem;
+        white-space: nowrap;
+        background: color-mix(in srgb, var(--perfil-surface) 88%, transparent);
+        border: 1px solid color-mix(in srgb, var(--perfil-accent) 16%, var(--perfil-border));
+        box-shadow:
+          0 12px 26px color-mix(in srgb, var(--perfil-accent) 10%, transparent),
+          inset 0 1px 0 color-mix(in srgb, var(--perfil-surface-strong) 70%, transparent);
+        backdrop-filter: blur(10px);
+        transition:
+          transform 170ms ease,
+          border-color 170ms ease,
+          box-shadow 170ms ease,
+          background 170ms ease;
+      }
+
+      .perfil-back-link:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--perfil-surface-strong) 92%, transparent);
+        border-color: color-mix(in srgb, var(--perfil-accent) 28%, var(--perfil-border));
+        box-shadow: 0 16px 30px color-mix(in srgb, var(--perfil-accent) 14%, transparent);
+      }
+
+      .perfil-grid {
+        display: grid;
+        grid-template-columns: minmax(470px, 540px) minmax(0, 980px);
+        gap: 20px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .perfil-stack {
+        display: grid;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .perfil-stack-right {
+        width: 100%;
+      }
+
+      .perfil-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--perfil-surface) 96%, transparent),
+            color-mix(in srgb, var(--perfil-surface-soft) 98%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--perfil-accent) 14%, var(--perfil-border));
+        box-shadow:
+          var(--fcc-premium-shadow-soft),
+          inset 0 1px 0 color-mix(in srgb, var(--perfil-surface-strong) 65%, transparent);
+      }
+
+      .perfil-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--perfil-accent) 10%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 22%,
+            color-mix(in srgb, var(--perfil-accent) 7%, transparent) 22% 22.4%,
+            transparent 22.4% 100%
+          );
+        opacity: 0.9;
+      }
+
+      .perfil-xp-card::before {
+        background:
+          radial-gradient(
+            circle at 18% 18%,
+            color-mix(in srgb, var(--perfil-cyan) 7%, transparent),
+            transparent 30%
+          ),
+          radial-gradient(
+            circle at 82% 78%,
+            color-mix(in srgb, var(--perfil-cyan) 5%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 22%,
+            color-mix(in srgb, var(--perfil-cyan) 5%, transparent) 22% 22.4%,
+            transparent 22.4% 100%
+          );
+        opacity: 0.68;
+      }
+
+      .perfil-card-content {
+        position: relative;
+        z-index: 2;
+      }
+
+      .perfil-user-card {
+        padding: 24px 20px 24px;
+        min-height: 610px;
+        text-align: center;
+      }
+
+      .perfil-avatar-stage {
+        position: relative;
+        width: min(100%, 390px);
+        height: 390px;
+        margin: 0 auto 6px;
+        display: grid;
+        place-items: center;
+        overflow: visible;
+        isolation: isolate;
+      }
+
+      .perfil-avatar-stage::before {
+        content: "";
+        position: absolute;
+        width: 82%;
+        height: 82%;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle, var(--perfil-avatar-core), transparent 62%),
+          conic-gradient(
+            from 210deg,
+            transparent 0deg,
+            var(--perfil-avatar-a) 42deg,
+            transparent 84deg,
+            var(--perfil-avatar-b) 145deg,
+            transparent 210deg,
+            var(--perfil-avatar-c) 285deg,
+            transparent 360deg
+          );
+        filter: blur(0.2px);
+        opacity: 0.95;
+        z-index: -3;
+      }
+
+      .perfil-avatar-stage::after {
+        content: "";
+        position: absolute;
+        width: 70%;
+        height: 70%;
+        border-radius: 999px;
+        border: 1px solid var(--perfil-avatar-border);
+        box-shadow:
+          0 0 0 14px var(--perfil-avatar-shadow-a),
+          0 0 42px var(--perfil-avatar-shadow-b);
+        z-index: -2;
+      }
+
+      .perfil-avatar-orbit {
+        position: absolute;
+        inset: 17%;
+        z-index: -1;
+        border-radius: 999px;
+        background:
+          linear-gradient(
+            90deg,
+            transparent 0 12%,
+            var(--perfil-avatar-orbit-a) 12% 18%,
+            transparent 18% 100%
+          ),
+          linear-gradient(
+            180deg,
+            transparent 0 60%,
+            var(--perfil-avatar-orbit-b) 60% 64%,
+            transparent 64% 100%
+          );
+        transform: rotate(-18deg);
+        opacity: 0.95;
+      }
+
+      .perfil-avatar-render {
+        position: relative;
+        z-index: 2;
+        transform: none;
+        transform-origin: center;
+      }
+
+      .perfil-name {
+        margin-top: 2px;
+        color: var(--perfil-heading);
+        font-size: clamp(1.85rem, 4vw, 2.5rem);
+        font-weight: 950;
+        line-height: 1;
+        letter-spacing: -0.055em;
+        overflow-wrap: anywhere;
+      }
+
+      .perfil-level {
+        margin-top: 10px;
+        color: var(--perfil-muted);
+        font-size: 1rem;
+        font-weight: 850;
+      }
+
+      .perfil-primary-button,
+      .perfil-secondary-button {
+        min-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 15px;
+        padding: 0 16px;
+        font-size: 0.94rem;
+        font-weight: 950;
+        transition:
+          transform 170ms ease,
+          filter 170ms ease,
+          background 170ms ease,
+          border-color 170ms ease;
+      }
+
+      .perfil-primary-button {
+        color: #ffffff;
+        background:
+          linear-gradient(
+            135deg,
+            var(--perfil-accent),
+            color-mix(in srgb, var(--perfil-accent) 72%, var(--perfil-cyan))
+          );
+        box-shadow: 0 14px 26px color-mix(in srgb, var(--perfil-accent) 22%, transparent);
+      }
+
+      .theme-oscuro .perfil-primary-button {
+        color: #050505;
+      }
+
+      .perfil-secondary-button {
+        color: var(--perfil-text);
+        background: color-mix(in srgb, var(--perfil-surface-strong) 78%, transparent);
+        border: 1px solid var(--perfil-border);
+      }
+
+      .perfil-primary-button:hover,
+      .perfil-secondary-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .perfil-user-card .perfil-primary-button {
+        margin-top: 20px;
+        width: 100%;
+      }
+
+      .perfil-info-card {
+        padding: 20px;
+        min-height: 150px;
+        text-align: center;
+      }
+
+      .perfil-section-title {
+        color: var(--perfil-heading);
+        font-size: 1.22rem;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+      }
+
+      .perfil-info-button {
+        width: 100%;
+        margin-top: 18px;
+      }
+
+      .perfil-xp-card {
+        padding: 16px 18px;
+      }
+
+      .perfil-logros-card {
+        padding: 18px 18px 20px;
+      }
+
+      .perfil-logros-content {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        gap: 24px;
+      }
+
+      .perfil-logros-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        text-align: center;
+      }
+
+      .perfil-logros-title {
+        color: var(--perfil-heading);
+        font-size: clamp(1.45rem, 3vw, 1.9rem);
+        font-weight: 950;
+        letter-spacing: -0.055em;
+      }
+
+      .perfil-logros-group {
+        display: grid;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .perfil-subtitle {
+        color: var(--perfil-heading);
+        font-size: 1.05rem;
+        font-weight: 920;
+        letter-spacing: -0.035em;
+      }
+
+      .perfil-empty {
+        color: var(--perfil-muted);
+        font-size: 0.92rem;
+        font-weight: 750;
+        line-height: 1.45;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--perfil-surface-strong) 62%, transparent);
+        border: 1px solid var(--perfil-border);
+      }
+
+      .perfil-logros-grid-wrap {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .perfil-logros-grid-wrap > * {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(74px, 74px)) !important;
+        justify-content: start !important;
+        justify-items: center !important;
+        align-items: center !important;
+        gap: 18px 18px !important;
+      }
+
+      .perfil-skeleton {
+        animation: perfilPulse 1.35s ease-in-out infinite;
+      }
+
+      .perfil-skeleton-block {
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--perfil-border-strong) 30%, transparent);
+      }
+
+      .perfil-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: rgba(0, 0, 0, 0.62);
+        backdrop-filter: blur(8px);
+      }
+
+      .perfil-modal-card {
+        position: relative;
+        width: min(92vw, 390px);
+        overflow: hidden;
+        border-radius: 28px;
+        padding: 24px;
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--perfil-surface) 97%, transparent),
+            color-mix(in srgb, var(--perfil-surface-soft) 99%, transparent)
+          );
+        border: 1px solid color-mix(in srgb, var(--perfil-accent) 16%, var(--perfil-border));
+        box-shadow: var(--fcc-premium-shadow-hover);
+      }
+
+      .perfil-modal-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            circle at 50% 0%,
+            color-mix(in srgb, var(--perfil-accent) 10%, transparent),
+            transparent 40%
+          ),
+          linear-gradient(
+            135deg,
+            transparent 0 22%,
+            color-mix(in srgb, var(--perfil-accent) 8%, transparent) 22% 22.5%,
+            transparent 22.5% 100%
+          );
+      }
+
+      .perfil-modal-card > * {
+        position: relative;
+        z-index: 2;
+      }
+
+      .perfil-modal-close {
+        position: absolute;
+        right: 14px;
+        top: 14px;
+        z-index: 3;
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        color: var(--perfil-text);
+        background: color-mix(in srgb, var(--perfil-surface-strong) 76%, transparent);
+        border: 1px solid var(--perfil-border);
+        font-size: 1.35rem;
+        line-height: 1;
+        transition: transform 170ms ease;
+      }
+
+      .perfil-modal-close:hover {
+        transform: scale(1.04);
+      }
+
+      .perfil-modal-head {
+        display: grid;
+        gap: 8px;
+        padding-right: 34px;
+        margin-bottom: 16px;
+      }
+
+      .perfil-kicker {
+        color: var(--perfil-accent);
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+
+      .perfil-modal-head h2 {
+        color: var(--perfil-heading);
+        font-size: 1.55rem;
+        font-weight: 950;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .perfil-input {
+        width: 100%;
+        min-height: 48px;
+        border-radius: 16px;
+        padding: 0 14px;
+        color: var(--perfil-text);
+        background: color-mix(in srgb, var(--perfil-surface-strong) 78%, transparent);
+        border: 1px solid color-mix(in srgb, var(--perfil-accent) 18%, var(--perfil-border));
+        outline: none;
+        font-size: 0.94rem;
+        font-weight: 760;
+      }
+
+      .perfil-input::placeholder {
+        color: var(--perfil-muted);
+      }
+
+      .perfil-input:focus {
+        border-color: color-mix(in srgb, var(--perfil-accent) 58%, var(--perfil-border));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--perfil-accent) 12%, transparent);
+      }
+
+      .perfil-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      @keyframes perfilPulse {
+        0%, 100% {
+          opacity: 0.58;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 1280px) {
+        .perfil-grid {
+          grid-template-columns: minmax(420px, 500px) minmax(0, 1fr);
+        }
+      }
+
+      @media (max-width: 1024px) {
+        .perfil-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .perfil-stack-left,
+        .perfil-stack-right {
+          max-width: 100%;
+        }
+
+        .perfil-user-card {
+          min-height: unset;
+          max-width: 620px;
+          width: 100%;
+          margin: 0 auto;
+        }
+
+        .perfil-info-card,
+        .perfil-xp-card,
+        .perfil-logros-card {
+          max-width: 100%;
+          width: 100%;
+          margin: 0 auto;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .perfil-grid {
+          gap: 16px;
+        }
+
+        .perfil-card {
+          border-radius: 24px;
+        }
+
+        .perfil-user-card,
+        .perfil-info-card,
+        .perfil-xp-card,
+        .perfil-logros-card {
+          padding: 16px;
+        }
+
+        .perfil-avatar-stage {
+          width: min(100%, 320px);
+          height: 320px;
+        }
+
+        .perfil-avatar-render {
+          transform: scale(0.82);
+        }
+
+        .perfil-logros-grid-wrap > * {
+          grid-template-columns: repeat(auto-fill, minmax(68px, 68px)) !important;
+          gap: 14px 14px !important;
+        }
+
+        .perfil-modal-actions {
+          flex-direction: column-reverse;
+        }
+
+        .perfil-modal-actions button {
+          width: 100%;
+        }
+      }
+    `}</style>
+  );
 
   if (loading && !usuario) {
     return (
       <LayoutGeneral rol="estudiante">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8 min-w-0">
-          <div className="lg:col-span-1 space-y-4 lg:space-y-6 min-w-0">
-            <div
-              className="flex flex-col items-center rounded-xl p-4 sm:p-8 shadow overflow-hidden animate-pulse"
-              style={{
-                backgroundColor: "var(--color-card)",
-                color: "var(--color-text)",
-              }}
-            >
-              <div
-                className="w-56 h-56 rounded-full"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+        {estilos}
 
-              <div
-                className="h-8 rounded w-48 mt-6"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+        <div className="perfil-page">
 
-              <div
-                className="h-4 rounded w-20 mt-3"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+          <div className="perfil-grid">
+            <div className="perfil-stack perfil-stack-left">
+              <section className="perfil-card perfil-user-card perfil-skeleton">
+                <Link href="/dashboard/estudiante" className="perfil-back-link">
+                  <ArrowLeft size={18} strokeWidth={2.4} />
+                  <span>Volver a inicio</span>
+                </Link>
 
-              <div
-                className="h-10 rounded-lg w-36 mt-4"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+                <div className="perfil-card-content">
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "305px",
+                      height: "305px",
+                      borderRadius: "999px",
+                      margin: "0 auto",
+                    }}
+                  />
+
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "72%",
+                      height: "34px",
+                      margin: "18px auto 0",
+                    }}
+                  />
+
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "32%",
+                      height: "18px",
+                      margin: "12px auto 0",
+                    }}
+                  />
+
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "100%",
+                      height: "46px",
+                      marginTop: "20px",
+                    }}
+                  />
+                </div>
+              </section>
+
+              <section className="perfil-card perfil-info-card perfil-skeleton">
+                <div className="perfil-card-content">
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "48%",
+                      height: "26px",
+                      margin: "0 auto",
+                    }}
+                  />
+
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "100%",
+                      height: "46px",
+                      marginTop: "18px",
+                    }}
+                  />
+                </div>
+              </section>
             </div>
 
-            <div
-              className="p-4 sm:p-6 rounded-xl shadow animate-pulse"
-              style={{ backgroundColor: "var(--color-card)" }}
-            >
-              <div
-                className="h-7 rounded w-32 mb-4"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+            <div className="perfil-stack perfil-stack-right">
+              <section className="perfil-card perfil-xp-card perfil-skeleton">
+                <div
+                  className="perfil-skeleton-block"
+                  style={{ width: "100%", height: "86px" }}
+                />
+              </section>
 
-              <div
-                className="h-10 rounded-lg w-32"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
-            </div>
-          </div>
+              <section className="perfil-card perfil-logros-card perfil-skeleton">
+                <div className="perfil-logros-content">
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{
+                      width: "34%",
+                      height: "32px",
+                      margin: "0 auto",
+                    }}
+                  />
 
-          <div className="lg:col-span-2 space-y-4 lg:space-y-6 min-w-0">
-            <div
-              className="text-base sm:text-2xl p-4 sm:p-6 rounded-xl shadow animate-pulse"
-              style={{ backgroundColor: "var(--color-card)" }}
-            >
-              <div
-                className="h-8 rounded w-40 mb-4"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{ width: "100%", height: "120px" }}
+                  />
 
-              <div
-                className="h-5 rounded w-full"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
-            </div>
-
-            <div
-              className="p-4 sm:p-6 rounded-xl shadow space-y-6 sm:space-y-8 animate-pulse"
-              style={{ backgroundColor: "var(--color-card)" }}
-            >
-              <div
-                className="h-8 rounded w-32"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
-
-              <div
-                className="h-28 rounded-lg"
-                style={{ backgroundColor: "var(--color-bg)" }}
-              />
-
-              <div
-                className="h-28 rounded-lg"
-                style={{ backgroundColor: "var(--color-bg)" }}
-              />
+                  <div
+                    className="perfil-skeleton-block"
+                    style={{ width: "100%", height: "120px" }}
+                  />
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -413,6 +1008,8 @@ export default function PerfilEstudiantePage() {
   if (!usuario) {
     return (
       <LayoutGeneral rol="estudiante">
+        {estilos}
+
         <p style={{ color: "var(--color-muted)" }}>
           No se pudo cargar el perfil.
         </p>
@@ -454,105 +1051,96 @@ export default function PerfilEstudiantePage() {
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8 min-w-0">
-        <div className="lg:col-span-1 space-y-4 lg:space-y-6 min-w-0">
-          <div
-            className="flex flex-col items-center rounded-xl p-4 sm:p-8 shadow overflow-hidden"
-            style={{
-              backgroundColor: "var(--color-card)",
-              color: "var(--color-text)",
-            }}
-          >
-            <div className="scale-[0.7] sm:scale-100 -my-12 sm:my-0">
-              <RenderizadorAvatar config={config} size={350} />
-            </div>
+      {estilos}
 
-            <h1 className="text-2xl sm:text-3xl font-bold mt-2 sm:mt-4 text-center break-words max-w-full">
-              {usuario.nombre}
-            </h1>
+      <div className="perfil-page">
 
-            <p style={{ color: "var(--color-muted)" }}>Nivel {level}</p>
+        <div className="perfil-grid">
+          <div className="perfil-stack perfil-stack-left">
+            <section className="perfil-card perfil-user-card">
+              <Link href="/dashboard/estudiante" className="perfil-back-link">
+                <ArrowLeft size={18} strokeWidth={2.4} />
+                <span>Volver a inicio</span>
+              </Link>
 
-            <button
-              className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition"
-              onClick={() => setOpenAvatar(true)}
-            >
-              Cambiar avatar
-            </button>
+              <div className="perfil-card-content">
+                <div className="perfil-avatar-stage">
+                  <span className="perfil-avatar-orbit" />
+
+                  <div className="perfil-avatar-render">
+                    <RenderizadorAvatar config={config} size={350} />
+                  </div>
+                </div>
+
+                <h1 className="perfil-name">{usuario.nombre}</h1>
+
+                <p className="perfil-level">Nivel {level}</p>
+
+                <button
+                  className="perfil-primary-button"
+                  onClick={() => setOpenAvatar(true)}
+                >
+                  Cambiar avatar
+                </button>
+              </div>
+            </section>
+
+            <section className="perfil-card perfil-info-card">
+              <div className="perfil-card-content">
+                <h2 className="perfil-section-title">Información</h2>
+
+                <button
+                  className="perfil-primary-button perfil-info-button"
+                  onClick={() => setOpenNombre(true)}
+                >
+                  Editar nombre
+                </button>
+              </div>
+            </section>
           </div>
 
-          <div
-            className="p-4 sm:p-6 rounded-xl shadow"
-            style={{ backgroundColor: "var(--color-card)" }}
-          >
-            <h2
-              className="text-xl font-bold mb-2"
-              style={{ color: "var(--color-heading)" }}
-            >
-              Información
-            </h2>
+          <div className="perfil-stack perfil-stack-right">
+            <section className="perfil-card perfil-xp-card">
+              <div className="perfil-card-content">
+                <BarraXP xp={usuario.puntos ?? 0} />
+              </div>
+            </section>
 
-            <button
-              className="mt-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition"
-              onClick={() => setOpenNombre(true)}
-            >
-              Editar nombre
-            </button>
-          </div>
-        </div>
+            <section className="perfil-card perfil-logros-card">
+              <div className="perfil-logros-content">
+                <div className="perfil-logros-header">
+                  <h2 className="perfil-logros-title">Logros</h2>
+                </div>
 
-        <div className="lg:col-span-2 space-y-4 lg:space-y-6 min-w-0">
-          <div
-            className="text-base sm:text-2xl p-4 sm:p-6 rounded-xl shadow"
-            style={{ backgroundColor: "var(--color-card)" }}
-          >
-            <BarraXP xp={usuario.puntos ?? 0} />
-          </div>
+                <div className="perfil-logros-group">
+                  <h3 className="perfil-subtitle">Desbloqueados</h3>
 
-          <div
-            className="p-4 sm:p-6 rounded-xl shadow space-y-6 sm:space-y-8 overflow-visible"
-            style={{ backgroundColor: "var(--color-card)" }}
-          >
-            <h2
-              className="text-xl sm:text-2xl font-bold"
-              style={{ color: "var(--color-heading)" }}
-            >
-              Logros
-            </h2>
+                  {usuario.logrosDesbloqueados.length === 0 ? (
+                    <p className="perfil-empty">
+                      Aún no has desbloqueado logros.
+                    </p>
+                  ) : (
+                    <div className="perfil-logros-grid-wrap">
+                      <GridLogros logros={usuario.logrosDesbloqueados} />
+                    </div>
+                  )}
+                </div>
 
-            <div>
-              <h3
-                className="font-semibold mb-3 text-lg"
-                style={{ color: "var(--color-heading)" }}
-              >
-                Desbloqueados
-              </h3>
+                <div className="perfil-logros-group">
+                  <h3 className="perfil-subtitle">Bloqueados</h3>
 
-              {usuario.logrosDesbloqueados.length === 0 ? (
-                <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                  Aún no has desbloqueado logros.
-                </p>
-              ) : (
-                <GridLogros logros={usuario.logrosDesbloqueados} />
-              )}
-            </div>
-
-            <div>
-              <h3
-                className="font-semibold mb-3 text-lg"
-                style={{ color: "var(--color-heading)" }}
-              >
-                Bloqueados
-              </h3>
-
-              {usuario.logrosBloqueados.length === 0 ? (
-                <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                  ¡Has desbloqueado todos los logros disponibles!
-                </p>
-              ) : (
-                <GridLogros logros={usuario.logrosBloqueados} />
-              )}
-            </div>
+                  {usuario.logrosBloqueados.length === 0 ? (
+                    <p className="perfil-empty">
+                      ¡Has desbloqueado todos los logros disponibles!
+                    </p>
+                  ) : (
+                    <div className="perfil-logros-grid-wrap">
+                      <GridLogros logros={usuario.logrosBloqueados} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>

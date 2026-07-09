@@ -1,30 +1,41 @@
+"use client";
+
 /**
  * Este componente define la estructura base de las páginas internas.
- * Incluye el menú lateral (según rol) y la barra superior,
- * dejando el área central para el contenido dinámico.
+ * Incluye el menú lateral según rol y deja el área central para contenido.
  */
-
-"use client";
 
 import { useEffect, useLayoutEffect, useState } from "react";
 import MenuLateral from "./MenuLateral";
 import TutorialInicio from "./TutorialInicio";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
+import {
+  CLASES_TEMA,
+  TEMA_PREDETERMINADO,
+  normalizarTema,
+  type Tema,
+} from "@/lib/temas";
 
-type Tema = "oscuro" | "claro";
-
-function esTemaValido(valor: any): valor is Tema {
-  return valor === "oscuro" || valor === "claro";
-}
+const CLASES_TEMA_ANTERIORES = [
+  "theme-azul",
+  "theme-grafito",
+  "theme-lavanda",
+  "theme-aurora",
+  "theme-bosque",
+  "theme-arena",
+];
 
 function aplicarTema(tema: Tema) {
   if (typeof document === "undefined") return;
 
-  document.documentElement.classList.remove("theme-oscuro", "theme-claro");
+  document.documentElement.classList.remove(
+    ...CLASES_TEMA,
+    ...CLASES_TEMA_ANTERIORES
+  );
   document.documentElement.classList.add(`theme-${tema}`);
 
-  document.body.classList.remove("theme-oscuro", "theme-claro");
+  document.body.classList.remove(...CLASES_TEMA, ...CLASES_TEMA_ANTERIORES);
   document.body.classList.add(`theme-${tema}`);
 }
 
@@ -54,6 +65,7 @@ function VerificarTutorial() {
         console.error("Error verificando logro tutorial:", err);
       }
     }
+
     verificar();
   }, []);
 
@@ -67,7 +79,6 @@ export default function LayoutGeneral({
   children: React.ReactNode;
   rol?: string;
 }) {
-  // Cambio de tema
   useLayoutEffect(() => {
     function guardarTemaLocal(tema: Tema) {
       try {
@@ -76,33 +87,37 @@ export default function LayoutGeneral({
 
         localStorage.setItem(
           "preferencias_usuario",
-          JSON.stringify({ tema })
+          JSON.stringify({
+            ...prefs,
+            tema,
+          })
         );
       } catch {
-        localStorage.setItem(
-          "preferencias_usuario",
-          JSON.stringify({ tema })
-        );
+        localStorage.setItem("preferencias_usuario", JSON.stringify({ tema }));
       }
     }
 
     function cargarPreferenciasLocales(): Tema | null {
       try {
         const saved = localStorage.getItem("preferencias_usuario");
+
         if (!saved) {
-          aplicarTema("claro");
+          aplicarTema(TEMA_PREDETERMINADO);
           return null;
         }
 
         const prefs = JSON.parse(saved);
+        const temaNormalizado = normalizarTema(prefs.tema);
 
-        if (esTemaValido(prefs.tema)) {
-          aplicarTema(prefs.tema);
-          return prefs.tema;
+        if (temaNormalizado) {
+          aplicarTema(temaNormalizado);
+          return temaNormalizado;
         }
+
+        guardarTemaLocal(TEMA_PREDETERMINADO);
       } catch {}
 
-      aplicarTema("claro");
+      aplicarTema(TEMA_PREDETERMINADO);
       return null;
     }
 
@@ -122,15 +137,17 @@ export default function LayoutGeneral({
           .eq("usuario_id", user.id)
           .maybeSingle();
 
-        if (!pref || !esTemaValido(pref.tema)) return;
+        const temaSupabase = normalizarTema(pref?.tema);
 
-        guardarTemaLocal(pref.tema);
-        aplicarTema(pref.tema);
+        if (!temaSupabase) return;
+
+        guardarTemaLocal(temaSupabase);
+        aplicarTema(temaSupabase);
 
         window.dispatchEvent(
           new CustomEvent("app:preferencias", {
             detail: {
-              tema: pref.tema,
+              tema: temaSupabase,
             },
           })
         );
@@ -140,9 +157,11 @@ export default function LayoutGeneral({
     }
 
     function handler(e: any) {
-      if (esTemaValido(e.detail?.tema)) {
-        guardarTemaLocal(e.detail.tema);
-        aplicarTema(e.detail.tema);
+      const temaNormalizado = normalizarTema(e.detail?.tema);
+
+      if (temaNormalizado) {
+        guardarTemaLocal(temaNormalizado);
+        aplicarTema(temaNormalizado);
       }
     }
 
@@ -159,20 +178,28 @@ export default function LayoutGeneral({
 
   useEffect(() => {
     (window as any).__tutorialActivo = false;
-    window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
+    window.dispatchEvent(
+      new CustomEvent("tutorial:estado", { detail: { activo: false } })
+    );
   }, []);
 
-    // Sincronizar rol_usuario con sesión activa
   useEffect(() => {
     const syncRol = async () => {
       try {
         const { data: user } = await import("@/utils/supabaseClient").then((m) =>
           m.supabase.auth.getUser()
         );
+
         if (user?.user?.id) {
-          const { data: usuario } = await import("@/utils/supabaseClient").then((m) =>
-            m.supabase.from("usuarios").select("rol").eq("id", user.user.id).single()
+          const { data: usuario } = await import("@/utils/supabaseClient").then(
+            (m) =>
+              m.supabase
+                .from("usuarios")
+                .select("rol")
+                .eq("id", user.user.id)
+                .single()
           );
+
           if (usuario?.rol) {
             localStorage.setItem("rol_usuario", usuario.rol);
           }
@@ -184,7 +211,6 @@ export default function LayoutGeneral({
 
     syncRol();
 
-    // ✅ Reaccionar a eventos de cierre de sesión
     const handleLogout = () => {
       localStorage.removeItem("rol_usuario");
       localStorage.removeItem("tutorial_visto");
@@ -196,19 +222,19 @@ export default function LayoutGeneral({
     return () => window.removeEventListener("logout", handleLogout);
   }, []);
 
-  // Limpieza de cache de logros si cambia o cierra sesión
   useEffect(() => {
     const currentUser = localStorage.getItem("user_id");
     const lastUser = localStorage.getItem("ultimo_user_id");
 
     if (lastUser && lastUser !== currentUser) {
-      // Limpia caché de logros del usuario anterior
       const keys = Object.keys(localStorage);
+
       for (const k of keys) {
         if (k.startsWith("logros_local_")) {
           localStorage.removeItem(k);
         }
       }
+
       console.log("🧹 Limpieza: cache de logros borrada por cambio de usuario");
     }
 
@@ -216,14 +242,15 @@ export default function LayoutGeneral({
       localStorage.setItem("ultimo_user_id", currentUser);
     }
 
-    // Escucha de cierre de sesión explícito
     const handleLogout = () => {
       const keys = Object.keys(localStorage);
+
       for (const k of keys) {
         if (k.startsWith("logros_local_")) {
           localStorage.removeItem(k);
         }
       }
+
       console.log("🧹 Limpieza: cache de logros borrada al cerrar sesión");
     };
 
@@ -235,6 +262,7 @@ export default function LayoutGeneral({
     function logEventos(e: any) {
       console.log("📡 Evento recibido:", e.type, e.detail);
     }
+
     window.addEventListener("nivelSubido", logEventos);
     return () => window.removeEventListener("nivelSubido", logEventos);
   }, []);
@@ -244,21 +272,27 @@ export default function LayoutGeneral({
   const [recompensasCofre, setRecompensasCofre] = useState<any[]>([]);
 
   async function handleNivelSubido(e: any) {
-    const { obtenerRecompensasAleatorias } = await import("@/lib/obtenerRecompensas");
+    const { obtenerRecompensasAleatorias } = await import(
+      "@/lib/obtenerRecompensas"
+    );
+
     const user = localStorage.getItem("user_id") || "";
     const { recompensas } = await obtenerRecompensasAleatorias(user);
+
     setNivelSubido(e.detail);
     setRecompensasCofre(recompensas);
   }
 
-  // Mostrar logros desbloqueados
   useEffect(() => {
     function mostrarLogros(e: any) {
       if (e.detail && Array.isArray(e.detail)) {
         const stamped = e.detail.map((l: any) => ({
           ...l,
-          __key: `${l.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          __key: `${l.id}-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2)}`,
         }));
+
         setLogrosDesbloqueados((prev) => [...prev, ...stamped]);
       }
     }
@@ -274,32 +308,50 @@ export default function LayoutGeneral({
 
   return (
     <>
-      {typeof window !== "undefined" && rol === "estudiante" && <VerificarTutorial />}
+      <style>{`
+        :root {
+          --fcc-sidebar-width: 16rem;
+        }
+
+        .menu-lateral {
+          width: var(--fcc-sidebar-width) !important;
+        }
+
+        .app-main-fcc {
+          left: 0;
+        }
+
+        @media (min-width: 1024px) {
+          .app-main-fcc {
+            left: var(--fcc-sidebar-width);
+          }
+        }
+      `}</style>
+
+      {typeof window !== "undefined" && rol === "estudiante" && (
+        <VerificarTutorial />
+      )}
+
       <div
-        className="flex app-root h-screen overflow-hidden"
+        className="app-root h-screen overflow-hidden"
         style={{
-          backgroundColor: "var(--color-bg)",
+          background: "var(--gradient-soft)",
           color: "var(--color-text)",
         }}
       >
         <MenuLateral rol={rol} />
 
-        <div className="flex flex-col flex-1 min-w-0">
-          <main
-            className="fixed top-0 left-0 lg:left-56 right-0 bottom-0 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden min-w-0"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-            }}
-          >
-            <div className="w-full max-w-full min-w-0">
-              {children}
-            </div>
-          </main>
-        </div>
+        <main
+          className="app-main-fcc fixed top-0 right-0 bottom-0 p-3 sm:p-4 md:p-6 overflow-y-auto overflow-x-hidden min-w-0"
+          style={{
+            background: "var(--gradient-soft)",
+            color: "var(--color-text)",
+          }}
+        >
+          <div className="w-full max-w-full min-w-0">{children}</div>
+        </main>
       </div>
 
-      {/* 🏅 Modales de logros */}
       {logrosDesbloqueados.map((l) => (
         <ModalLogroDesbloqueado
           key={l.__key}
@@ -312,7 +364,6 @@ export default function LayoutGeneral({
         />
       ))}
 
-      {/* 🎁 Cofre de nivel */}
       {nivelSubido !== null && (
         <div
           style={{

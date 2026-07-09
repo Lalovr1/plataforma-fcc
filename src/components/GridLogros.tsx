@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface Logro {
@@ -27,6 +27,38 @@ type TooltipState = {
 
 export default function GridLogros({ logros }: { logros: Logro[] }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const tooltipTimeoutRef = useRef<number | null>(null);
+
+  const hideTooltip = () => {
+    if (tooltipTimeoutRef.current) {
+      window.clearTimeout(tooltipTimeoutRef.current);
+      tooltipTimeoutRef.current = null;
+    }
+
+    setTooltip(null);
+  };
+
+  useEffect(() => {
+    const cerrarTooltip = () => {
+      hideTooltip();
+    };
+
+    window.addEventListener("scroll", cerrarTooltip, true);
+    window.addEventListener("wheel", cerrarTooltip, { passive: true });
+    window.addEventListener("touchmove", cerrarTooltip, { passive: true });
+    window.addEventListener("resize", cerrarTooltip);
+
+    return () => {
+      window.removeEventListener("scroll", cerrarTooltip, true);
+      window.removeEventListener("wheel", cerrarTooltip);
+      window.removeEventListener("touchmove", cerrarTooltip);
+      window.removeEventListener("resize", cerrarTooltip);
+
+      if (tooltipTimeoutRef.current) {
+        window.clearTimeout(tooltipTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (!logros || logros.length === 0) {
     return (
@@ -37,6 +69,11 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
   }
 
   const showTooltip = (logro: Logro, element: HTMLElement) => {
+    if (tooltipTimeoutRef.current) {
+      window.clearTimeout(tooltipTimeoutRef.current);
+      tooltipTimeoutRef.current = null;
+    }
+
     const rect = element.getBoundingClientRect();
 
     const tooltipWidth = 220;
@@ -59,6 +96,15 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
     });
   };
 
+  const showTooltipOnTouch = (logro: Logro, element: HTMLElement) => {
+    showTooltip(logro, element);
+
+    tooltipTimeoutRef.current = window.setTimeout(() => {
+      setTooltip(null);
+      tooltipTimeoutRef.current = null;
+    }, 2600);
+  };
+
   return (
     <>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible min-w-0">
@@ -67,8 +113,10 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
             key={`${l.id}-${l.desbloqueado ? "on" : "off"}`}
             className="p-2 rounded-lg text-center shadow relative transition hover:scale-105"
             onMouseEnter={(e) => showTooltip(l, e.currentTarget)}
-            onMouseLeave={() => setTooltip(null)}
-            onTouchStart={(e) => showTooltip(l, e.currentTarget)}
+            onMouseLeave={hideTooltip}
+            onFocus={(e) => showTooltip(l, e.currentTarget)}
+            onBlur={hideTooltip}
+            onTouchStart={(e) => showTooltipOnTouch(l, e.currentTarget)}
             style={{
               backgroundColor: "var(--color-card)",
               opacity: l.desbloqueado ? 1 : 0.6,
@@ -80,6 +128,7 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
               height: "clamp(76px, 24vw, 90px)",
               margin: "auto",
             }}
+            tabIndex={0}
           >
             {/* Imagen */}
             <div className="flex items-center justify-center w-full h-full">
