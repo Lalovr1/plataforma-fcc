@@ -1488,8 +1488,9 @@ export default function TarjetaUsuario({
           }
 
           .fcc-quick-modal.is-schedule {
-            align-self: flex-start;
+            align-self: center;
             height: auto;
+            margin-block: auto;
           }
 
           .fcc-quick-modal.is-schedule .fcc-quick-modal-content,

@@ -2127,7 +2127,9 @@ function EstilosMapa() {
           }
 
           .curriculum-tool.is-preview .curriculum-map-shell {
-            max-height: min(560px, calc(100dvh - 300px));
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
             overflow: auto;
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
@@ -2140,7 +2142,7 @@ function EstilosMapa() {
           }
 
           .curriculum-tool.is-preview .curriculum-map {
-            min-height: 640px;
+            min-height: 720px;
           }
         }
 
