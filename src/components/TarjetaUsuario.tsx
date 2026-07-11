@@ -1487,6 +1487,26 @@ export default function TarjetaUsuario({
             padding: 14px;
           }
 
+          .fcc-quick-modal.is-schedule {
+            align-self: flex-start;
+            height: auto;
+          }
+
+          .fcc-quick-modal.is-schedule .fcc-quick-modal-content,
+          .fcc-quick-modal.is-schedule .fcc-schedule-quick,
+          .fcc-quick-modal.is-schedule .fcc-schedule-scroll {
+            flex: 0 0 auto;
+          }
+
+          .fcc-quick-modal.is-curriculum {
+            align-self: stretch;
+            height: calc(100dvh - 20px);
+          }
+
+          .fcc-quick-modal.is-curriculum .fcc-quick-modal-content {
+            overflow: hidden;
+          }
+
           .fcc-quick-modal-header {
             gap: 10px;
           }

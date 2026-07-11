@@ -2113,6 +2113,37 @@ function EstilosMapa() {
           font-size: 0.42rem;
         }
       }
-    `}</style>
+    
+        @media (max-width: 640px) {
+          .curriculum-tool.is-preview {
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .curriculum-tool.is-preview .curriculum-toolbar {
+            flex: 0 0 auto;
+          }
+
+          .curriculum-tool.is-preview .curriculum-map-shell {
+            max-height: min(560px, calc(100dvh - 300px));
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            touch-action: pan-x pan-y;
+          }
+
+          .curriculum-tool.is-preview .curriculum-periods,
+          .curriculum-tool.is-preview .curriculum-map {
+            min-width: 1030px;
+          }
+
+          .curriculum-tool.is-preview .curriculum-map {
+            min-height: 640px;
+          }
+        }
+
+`}</style>
   );
 }
