@@ -31,6 +31,9 @@ const temasValidos = [
 
 type Tema = (typeof temasValidos)[number];
 
+const HORARIO_STORAGE_KEY = "fcc-academy-mi-horario-v5";
+const DB_HORARIO_TABLE = "horarios_usuario";
+
 function esTemaValido(valor: any): valor is Tema {
   return temasValidos.includes(valor);
 }
@@ -47,6 +50,29 @@ function aplicarTemaAntesDeEntrar(tema: Tema) {
     document.body.classList.remove(...clasesTema);
     document.body.classList.add(`theme-${tema}`);
   }
+}
+
+async function precargarHorarioUsuario(userId: string) {
+  const { data, error } = await supabase
+    .from(DB_HORARIO_TABLE)
+    .select("datos")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("No se pudo precargar Mi horario:", error);
+    return;
+  }
+
+  if (!data?.datos) return;
+
+  localStorage.setItem(HORARIO_STORAGE_KEY, JSON.stringify(data.datos));
+
+  window.dispatchEvent(
+    new CustomEvent("horarioActualizado", {
+      detail: data.datos,
+    })
+  );
 }
 
 export default function LoginPage() {
@@ -156,19 +182,22 @@ export default function LoginPage() {
 
       localStorage.setItem("user_id", data.user.id);
 
-      const [{ data: usuario, error: usuarioError }, { data: preferencias }] =
-        await Promise.all([
-          supabase
-            .from("usuarios")
-            .select("rol")
-            .eq("id", data.user.id)
-            .single(),
-          supabase
-            .from("configuraciones_usuario")
-            .select("tema")
-            .eq("usuario_id", data.user.id)
-            .maybeSingle(),
-        ]);
+      const [
+        { data: usuario, error: usuarioError },
+        { data: preferencias },
+      ] = await Promise.all([
+        supabase
+          .from("usuarios")
+          .select("rol")
+          .eq("id", data.user.id)
+          .single(),
+        supabase
+          .from("configuraciones_usuario")
+          .select("tema")
+          .eq("usuario_id", data.user.id)
+          .maybeSingle(),
+        precargarHorarioUsuario(data.user.id),
+      ]);
 
       if (usuarioError || !usuario) {
         console.error(usuarioError);

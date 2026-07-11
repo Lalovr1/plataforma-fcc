@@ -5,16 +5,17 @@
  * Permite crear un horario visual editable, personalizable y descargable.
  */
 
-import { CSSProperties, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import { supabase } from "@/utils/supabaseClient";
 import { TEMA_PREDETERMINADO, normalizarTema, type Tema } from "@/lib/temas";
 import {
   ArrowLeft,
   Download,
   Eye,
-  Palette,
   Pencil,
   Plus,
   Save,
@@ -52,7 +53,7 @@ type OpcionesVista = {
 type TamanoLetra = "pequena" | "mediana" | "grande";
 type ModoRango = "inteligente" | "compacto" | "personalizado";
 type IntensidadColor = "suave" | "media" | "fuerte";
-type TituloDescargaModo = "ninguno" | "automatico" | "personalizado";
+type TituloDescargaModo = "automatico" | "personalizado";
 
 const DIAS: { id: Dia; label: string }[] = [
   { id: "lunes", label: "Lunes" },
@@ -192,20 +193,8 @@ const PALETAS_MATERIAS: Record<Tema, string[]> = {
   ],
 };
 
-const FUENTES = [
-  { label: "Sistema", value: "system-ui, sans-serif" },
-  { label: "Moderna", value: "Arial, sans-serif" },
-  { label: "Interfaz", value: "Segoe UI, sans-serif" },
-  { label: "Redonda", value: "Trebuchet MS, sans-serif" },
-  { label: "Limpia", value: "Verdana, sans-serif" },
-  { label: "Compacta", value: "Tahoma, sans-serif" },
-  { label: "Clásica", value: "Georgia, serif" },
-  { label: "Editorial", value: "Palatino, serif" },
-  { label: "Formal", value: "Times New Roman, serif" },
-  { label: "Técnica", value: "Courier New, monospace" },
-  { label: "Cartel", value: "Impact, sans-serif" },
-  { label: "Casual", value: "Comic Sans MS, cursive" },
-];
+const FUENTE_HORARIO = "system-ui, sans-serif";
+
 
 const INTENSIDADES_COLOR: Record<
   IntensidadColor,
@@ -213,29 +202,34 @@ const INTENSIDADES_COLOR: Record<
 > = {
   suave: {
     label: "Suave",
-    alpha: 0.58,
+    alpha: 0.3,
   },
   media: {
     label: "Media",
-    alpha: 0.76,
+    alpha: 0.42,
   },
   fuerte: {
     label: "Fuerte",
-    alpha: 1,
+    alpha: 0.54,
   },
 };
 
 const STORAGE_KEY = "fcc-academy-mi-horario-v5";
 
+const DB_HORARIO_TABLE = "horarios_usuario";
+const DIAS_VISIBLES_PREDETERMINADOS: Dia[] = [
+  "lunes",
+  "martes",
+  "miercoles",
+  "jueves",
+  "viernes",
+];
+
+
 const HORA_MINIMA = 7;
 const HORA_MAXIMA = 22;
 const ALTO_FILA = 76;
 
-const ESTILO_HORARIO_VISTA: CSSProperties = {
-  background:
-    "radial-gradient(circle at 8% 4%, color-mix(in srgb, var(--fcc-premium-accent) 10%, transparent), transparent 30%), radial-gradient(circle at 92% 86%, color-mix(in srgb, var(--fcc-premium-cyan) 10%, transparent), transparent 32%), linear-gradient(135deg, var(--fcc-premium-surface), var(--fcc-premium-surface-soft))",
-  border: "1px solid var(--fcc-premium-border)",
-};
 
 const opcionesBase: OpcionesVista = {
   profesor: true,
@@ -257,6 +251,30 @@ const sesionBase: Omit<SesionHorario, "id"> = {
   fin: "08:00",
   salon: "",
 };
+
+function leerHorarioLocalInicial() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const guardado = localStorage.getItem(STORAGE_KEY);
+
+    return guardado ? JSON.parse(guardado) : null;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+
+    return null;
+  }
+}
+
+function normalizarDiasVisibles(dias?: unknown): Dia[] {
+  if (!Array.isArray(dias)) return DIAS_VISIBLES_PREDETERMINADOS;
+
+  const diasValidos = DIAS.filter((dia) => dias.includes(dia.id)).map(
+    (dia) => dia.id
+  );
+
+  return diasValidos.length > 0 ? diasValidos : DIAS_VISIBLES_PREDETERMINADOS;
+}
 
 function crearId() {
   return crypto.randomUUID
@@ -339,6 +357,87 @@ function horaDesdeNumero(hora: number) {
   return `${String(hora).padStart(2, "0")}:00`;
 }
 
+function separarSesionesPorHora(sesiones: SesionHorario[]) {
+  return sesiones.flatMap((sesion) => {
+    const inicio = minutosDesdeHora(sesion.inicio);
+    const fin = minutosDesdeHora(sesion.fin);
+
+    if (fin <= inicio) return [];
+
+    const bloques: SesionHorario[] = [];
+
+    for (let minuto = inicio; minuto < fin; minuto += 60) {
+      const siguiente = Math.min(fin, minuto + 60);
+
+      bloques.push({
+        ...sesion,
+        id:
+          inicio === minuto && siguiente === fin
+            ? sesion.id
+            : `${sesion.id}-${minuto}`,
+        inicio: `${String(Math.floor(minuto / 60)).padStart(2, "0")}:00`,
+        fin: `${String(Math.floor(siguiente / 60)).padStart(2, "0")}:00`,
+      });
+    }
+
+    return bloques;
+  });
+}
+
+function agruparSesionesContinuas(sesiones: SesionHorario[]) {
+  const ordenDia = new Map(DIAS.map((dia, index) => [dia.id, index]));
+
+  const ordenadas = [...sesiones].sort((a, b) => {
+    const diaA = ordenDia.get(a.dia) ?? 0;
+    const diaB = ordenDia.get(b.dia) ?? 0;
+
+    if (diaA !== diaB) return diaA - diaB;
+
+    return minutosDesdeHora(a.inicio) - minutosDesdeHora(b.inicio);
+  });
+
+  return ordenadas.reduce<SesionHorario[]>((agrupadas, sesion) => {
+    const actual = { ...sesion };
+    const anterior = agrupadas[agrupadas.length - 1];
+
+    if (!anterior || anterior.dia !== actual.dia) {
+      agrupadas.push(actual);
+      return agrupadas;
+    }
+
+    const finAnterior = minutosDesdeHora(anterior.fin);
+    const inicioActual = minutosDesdeHora(actual.inicio);
+    const finActual = minutosDesdeHora(actual.fin);
+
+    if (finAnterior >= inicioActual) {
+      anterior.fin = `${String(
+        Math.floor(Math.max(finAnterior, finActual) / 60)
+      ).padStart(2, "0")}:00`;
+
+      if (!anterior.salon.trim() && actual.salon.trim()) {
+        anterior.salon = actual.salon;
+      }
+
+      return agrupadas;
+    }
+
+    agrupadas.push(actual);
+    return agrupadas;
+  }, []);
+}
+
+function aplicarModoAgrupacionMaterias(
+  materias: MateriaHorario[],
+  agrupar: boolean
+) {
+  return materias.map((materia) => ({
+    ...materia,
+    sesiones: agrupar
+      ? agruparSesionesContinuas(materia.sesiones)
+      : separarSesionesPorHora(materia.sesiones),
+  }));
+}
+
 function etiquetaHora(hora: number) {
   return `${String(hora).padStart(2, "0")}:00`;
 }
@@ -360,6 +459,43 @@ function hexConAlpha(hex: string, alpha: number) {
   const b = parseInt(limpio.slice(4, 6), 16);
 
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function ajustarHex(hex: string, porcentaje: number) {
+  const limpio = hex.replace("#", "");
+  const r = parseInt(limpio.slice(0, 2), 16);
+  const g = parseInt(limpio.slice(2, 4), 16);
+  const b = parseInt(limpio.slice(4, 6), 16);
+
+  const ajustar = (valor: number) => {
+    const destino = porcentaje >= 0 ? 255 : 0;
+    const cantidad = Math.abs(porcentaje) / 100;
+
+    return Math.round(valor + (destino - valor) * cantidad);
+  };
+
+  return `#${[ajustar(r), ajustar(g), ajustar(b)]
+    .map((valor) => valor.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function suavidadBloque(alpha: number) {
+  if (alpha <= 0.32) return { arriba: 62, centro: 52, abajo: 46 };
+  if (alpha <= 0.44) return { arriba: 54, centro: 44, abajo: 36 };
+
+  return { arriba: 46, centro: 34, abajo: 26 };
+}
+
+function fondoBloqueHorario(hex: string, alpha: number) {
+  const suavidad = suavidadBloque(alpha);
+
+  return `linear-gradient(180deg, ${ajustarHex(
+    hex,
+    suavidad.arriba
+  )} 0%, ${ajustarHex(hex, suavidad.centro)} 58%, ${ajustarHex(
+    hex,
+    suavidad.abajo
+  )} 100%)`;
 }
 
 function colorTextoBloque(hex: string, alpha: number, temaOscuro: boolean) {
@@ -467,6 +603,8 @@ function dibujarTextoBloqueCanvas({
   colorTexto,
   fuente,
   tamano,
+  lineasReferencia,
+  altoReferencia,
 }: {
   ctx: CanvasRenderingContext2D;
   lineas: string[];
@@ -477,18 +615,25 @@ function dibujarTextoBloqueCanvas({
   colorTexto: string;
   fuente: string;
   tamano: TamanoLetra;
+  lineasReferencia?: number;
+  altoReferencia?: number;
 }) {
-  const baseTitulo = tamano === "pequena" ? 17 : tamano === "grande" ? 23 : 20;
-  const baseSalon = tamano === "pequena" ? 13 : tamano === "grande" ? 17 : 15;
-  const baseExtra = tamano === "pequena" ? 10 : tamano === "grande" ? 13 : 11;
+  const baseTitulo = tamano === "pequena" ? 19 : tamano === "grande" ? 26 : 22;
+  const baseSalon = tamano === "pequena" ? 14 : tamano === "grande" ? 19 : 16;
+  const baseExtra = tamano === "pequena" ? 11 : tamano === "grande" ? 14 : 12;
   const baseLineHeight =
-    tamano === "pequena" ? 17 : tamano === "grande" ? 24 : 20;
+    tamano === "pequena" ? 18 : tamano === "grande" ? 26 : 22;
 
   const paddingVertical = 14;
-  const altoDisponible = Math.max(24, h - paddingVertical * 2);
+  const altoParaCalculo = altoReferencia ?? h;
+  const altoDisponible = Math.max(24, altoParaCalculo - paddingVertical * 2);
+  const totalLineasReferencia = Math.max(
+    lineas.length,
+    lineasReferencia ?? lineas.length
+  );
   const lineHeight = Math.max(
     12,
-    Math.min(baseLineHeight, Math.floor(altoDisponible / lineas.length))
+    Math.min(baseLineHeight, Math.floor(altoDisponible / totalLineasReferencia))
   );
 
   const fontTitulo = Math.max(
@@ -509,6 +654,13 @@ function dibujarTextoBloqueCanvas({
   const altoTotal = lineas.length * lineHeight;
   let lineaY = y + (h - altoTotal) / 2 + lineHeight * 0.75;
 
+  ctx.shadowColor =
+    colorTexto === "#ffffff"
+      ? "rgba(0, 0, 0, 0.26)"
+      : "rgba(255, 255, 255, 0.42)";
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetY = 1;
+
   ctx.fillStyle = colorTexto;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
@@ -525,10 +677,29 @@ function dibujarTextoBloqueCanvas({
     ctx.fillText(textoCortado(ctx, linea, w - 24), x + w / 2, lineaY);
     lineaY += lineHeight;
   });
+
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
 }
 
 export default function MiHorarioPage() {
-  const [materias, setMaterias] = useState<MateriaHorario[]>([]);
+  const searchParams = useSearchParams();
+  const volverAlModalHorario = searchParams.get("volver") === "modal-horario";
+  const hrefVolver = volverAlModalHorario
+    ? "/dashboard/estudiante?modal=horario"
+    : "/dashboard/estudiante";
+
+  const datosInicialesHorario = useMemo(() => leerHorarioLocalInicial(), []);
+  const agruparInicial =
+    datosInicialesHorario?.agruparBloquesContinuos ?? true;
+
+  const [materias, setMaterias] = useState<MateriaHorario[]>(() =>
+    aplicarModoAgrupacionMaterias(
+      datosInicialesHorario?.materias ?? [],
+      agruparInicial
+    )
+  );
   const [formulario, setFormulario] =
     useState<FormularioMateria>(formularioBase);
   const [sesionActual, setSesionActual] =
@@ -536,28 +707,60 @@ export default function MiHorarioPage() {
   const [sesionEditandoId, setSesionEditandoId] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [modalMateriaAbierto, setModalMateriaAbierto] = useState(false);
-  const [modalPersonalizacionAbierto, setModalPersonalizacionAbierto] =
-    useState(false);
-  const [opcionesVista, setOpcionesVista] =
-    useState<OpcionesVista>(opcionesBase);
+  const [materiaSeleccionadaId, setMateriaSeleccionadaId] = useState<
+    string | null
+  >(null);
+  const [bloqueEditando, setBloqueEditando] = useState<{
+    materiaId: string;
+    sesionId: string;
+  } | null>(null);
+  const [salonBloque, setSalonBloque] = useState("");
+  const [opcionesVista, setOpcionesVista] = useState<OpcionesVista>(
+    datosInicialesHorario?.opcionesVista ?? opcionesBase
+  );
   const [temaActual, setTemaActual] = useState<Tema>(TEMA_PREDETERMINADO);
-  const [fuenteHorario, setFuenteHorario] = useState(FUENTES[0].value);
-  const [tamanoLetra, setTamanoLetra] = useState<TamanoLetra>("mediana");
-  const [intensidadColor, setIntensidadColor] =
-    useState<IntensidadColor>("media");
-  const [modoRango, setModoRango] = useState<ModoRango>("inteligente");
-  const [rangoPersonalizadoInicio, setRangoPersonalizadoInicio] = useState(7);
-  const [rangoPersonalizadoFin, setRangoPersonalizadoFin] = useState(14);
+  const [tamanoLetra, setTamanoLetra] = useState<TamanoLetra>("grande");
+  const [intensidadColor, setIntensidadColor] = useState<IntensidadColor>(
+    datosInicialesHorario?.intensidadColor ?? "media"
+  );
+  const [modoRango, setModoRango] = useState<ModoRango>(
+    datosInicialesHorario?.modoRango ?? "inteligente"
+  );
+  const [rangoPersonalizadoInicio, setRangoPersonalizadoInicio] = useState(
+    datosInicialesHorario?.rangoPersonalizadoInicio ?? 7
+  );
+  const [rangoPersonalizadoFin, setRangoPersonalizadoFin] = useState(
+    datosInicialesHorario?.rangoPersonalizadoFin ?? 14
+  );
   const [tituloDescargaModo, setTituloDescargaModo] =
-    useState<TituloDescargaModo>("automatico");
-  const [tituloDescarga, setTituloDescarga] = useState("");
+    useState<TituloDescargaModo>(
+      datosInicialesHorario?.tituloDescargaModo ?? "automatico"
+    );
+  const [tituloDescarga, setTituloDescarga] = useState(
+    datosInicialesHorario?.tituloDescarga ?? ""
+  );
+  const [diasVisibles, setDiasVisibles] = useState<Dia[]>(() =>
+    normalizarDiasVisibles(datosInicialesHorario?.diasVisibles)
+  );
+  const [agruparBloquesContinuos, setAgruparBloquesContinuos] =
+    useState(agruparInicial);
+  const [userIdHorario, setUserIdHorario] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [datosCargados, setDatosCargados] = useState(false);
   const [mensaje, setMensaje] = useState("");
+  const [toastHorario, setToastHorario] = useState("");
 
   const coloresTema = PALETAS_MATERIAS[temaActual];
   const intensidad = INTENSIDADES_COLOR[intensidadColor];
   const temaOscuro = temaActual === "oscuro";
+
+  const diasMostrados = useMemo(
+    () =>
+      DIAS.filter((dia) => diasVisibles.includes(dia.id)).length > 0
+        ? DIAS.filter((dia) => diasVisibles.includes(dia.id))
+        : DIAS.filter((dia) => DIAS_VISIBLES_PREDETERMINADOS.includes(dia.id)),
+    [diasVisibles]
+  );
 
   const horasInicio = useMemo(
     () =>
@@ -659,23 +862,35 @@ export default function MiHorarioPage() {
   const clasesTextoBloque = useMemo(() => {
     if (tamanoLetra === "pequena") {
       return {
-        titulo: "text-[11px]",
+        titulo: "text-xs",
+        salon: "text-[10px]",
         detalle: "text-[9px]",
+        extra: "text-[9px]",
       };
     }
 
     if (tamanoLetra === "grande") {
       return {
-        titulo: "text-sm",
-        detalle: "text-[11px]",
+        titulo: "text-[15px]",
+        salon: "text-[13px]",
+        detalle: "text-xs",
+        extra: "text-[11px]",
       };
     }
 
     return {
-      titulo: "text-xs",
-      detalle: "text-[10px]",
+      titulo: "text-sm",
+      salon: "text-xs",
+      detalle: "text-[11px]",
+      extra: "text-[10px]",
     };
   }, [tamanoLetra]);
+
+  const materiaSeleccionada = useMemo(
+    () =>
+      materias.find((materia) => materia.id === materiaSeleccionadaId) ?? null,
+    [materias, materiaSeleccionadaId]
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -693,63 +908,120 @@ export default function MiHorarioPage() {
     };
   }, []);
 
+  function aplicarDatosHorario(parsed: any) {
+    const agruparGuardado = parsed.agruparBloquesContinuos ?? true;
+
+    setMaterias(
+      aplicarModoAgrupacionMaterias(parsed.materias ?? [], agruparGuardado)
+    );
+    setOpcionesVista(parsed.opcionesVista ?? opcionesBase);
+    setTamanoLetra("grande");
+    setIntensidadColor(parsed.intensidadColor ?? "media");
+    setModoRango(parsed.modoRango ?? "inteligente");
+    setRangoPersonalizadoInicio(parsed.rangoPersonalizadoInicio ?? 7);
+    setRangoPersonalizadoFin(parsed.rangoPersonalizadoFin ?? 14);
+    setTituloDescargaModo(parsed.tituloDescargaModo ?? "automatico");
+    setTituloDescarga(parsed.tituloDescarga ?? "");
+
+    setDiasVisibles(normalizarDiasVisibles(parsed.diasVisibles));
+
+    setAgruparBloquesContinuos(agruparGuardado);
+  }
+
   useEffect(() => {
-    const guardado = localStorage.getItem(STORAGE_KEY);
+    let activo = true;
 
-    if (!guardado) {
-      setDatosCargados(true);
-      return;
+    async function cargarHorario() {
+      try {
+        const guardado = localStorage.getItem(STORAGE_KEY);
+
+        if (guardado) {
+          aplicarDatosHorario(JSON.parse(guardado));
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!activo) return;
+
+        setUserIdHorario(user?.id ?? null);
+
+        if (user?.id) {
+          const { data, error } = await supabase
+            .from(DB_HORARIO_TABLE)
+            .select("datos")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (!activo) return;
+
+          if (!error && data?.datos) {
+            aplicarDatosHorario(data.datos);
+          } else if (error) {
+            console.warn("No se pudo cargar horario desde Supabase:", error);
+          }
+        }
+      } catch (error) {
+        console.warn("No se pudo consultar el usuario para Mi horario:", error);
+      } finally {
+        if (activo) setDatosCargados(true);
+      }
     }
 
-    try {
-      const parsed = JSON.parse(guardado);
+    cargarHorario();
 
-      setMaterias(parsed.materias ?? []);
-      setOpcionesVista(parsed.opcionesVista ?? opcionesBase);
-      setFuenteHorario(parsed.fuenteHorario ?? FUENTES[0].value);
-      setTamanoLetra(
-        parsed.tamanoLetra === "compacta"
-          ? "pequena"
-          : parsed.tamanoLetra === "normal"
-          ? "mediana"
-          : parsed.tamanoLetra ?? "mediana"
-      );
-      setIntensidadColor(parsed.intensidadColor ?? "media");
-      setModoRango(parsed.modoRango ?? "inteligente");
-      setRangoPersonalizadoInicio(parsed.rangoPersonalizadoInicio ?? 7);
-      setRangoPersonalizadoFin(parsed.rangoPersonalizadoFin ?? 14);
-      setTituloDescargaModo(parsed.tituloDescargaModo ?? "automatico");
-      setTituloDescarga(parsed.tituloDescarga ?? "");
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setDatosCargados(true);
-    }
+    return () => {
+      activo = false;
+    };
   }, []);
 
   useEffect(() => {
     if (!datosCargados) return;
 
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        materias,
-        opcionesVista,
-        fuenteHorario,
-        tamanoLetra,
-        intensidadColor,
-        modoRango,
-        rangoPersonalizadoInicio,
-        rangoPersonalizadoFin,
-        tituloDescargaModo,
-        tituloDescarga,
-      })
-    );
+    const datosHorario = {
+      materias,
+      opcionesVista,
+      tamanoLetra,
+      intensidadColor,
+      modoRango,
+      rangoPersonalizadoInicio,
+      rangoPersonalizadoFin,
+      tituloDescargaModo,
+      tituloDescarga,
+      diasVisibles,
+      agruparBloquesContinuos,
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(datosHorario));
+
+    if (!userIdHorario) return;
+
+    const timeout = window.setTimeout(async () => {
+      const { error } = await supabase.from(DB_HORARIO_TABLE).upsert(
+        {
+          user_id: userIdHorario,
+          datos: datosHorario,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (error) {
+        console.warn("No se pudo guardar horario en Supabase:", error);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
   }, [
     datosCargados,
+    userIdHorario,
     materias,
     opcionesVista,
-    fuenteHorario,
     tamanoLetra,
     intensidadColor,
     modoRango,
@@ -757,7 +1029,19 @@ export default function MiHorarioPage() {
     rangoPersonalizadoFin,
     tituloDescargaModo,
     tituloDescarga,
+    diasVisibles,
+    agruparBloquesContinuos,
   ]);
+
+  useEffect(() => {
+    if (!toastHorario) return;
+
+    const timeout = window.setTimeout(() => {
+      setToastHorario("");
+    }, 2600);
+
+    return () => window.clearTimeout(timeout);
+  }, [toastHorario]);
 
   function cambiarCampo(campo: keyof FormularioMateria, valor: string) {
     setFormulario((actual) => ({
@@ -916,49 +1200,13 @@ export default function MiHorarioPage() {
       return;
     }
 
-    let sesionesFinales = formulario.sesiones;
-
-    if (sesionesFinales.length === 0) {
-      if (
-        minutosDesdeHora(sesionActual.inicio) >=
-        minutosDesdeHora(sesionActual.fin)
-      ) {
-        setMensaje("La hora de inicio debe ser menor que la hora de fin.");
-        return;
-      }
-
-      const bloqueInicial: SesionHorario = {
-        ...sesionActual,
-        id: crearId(),
-        salon: sesionActual.salon.trim(),
-      };
-
-      const choque = buscarChoqueSesion(bloqueInicial, bloqueInicial.id);
-
-      if (choque) {
-        setMensaje(choque);
-        return;
-      }
-
-      sesionesFinales = [bloqueInicial];
-    }
-
-    for (const sesion of sesionesFinales) {
-      const choque = buscarChoqueSesion(sesion, sesion.id);
-
-      if (choque) {
-        setMensaje(choque);
-        return;
-      }
-    }
-
     const materiaFinal: MateriaHorario = {
       ...formulario,
       id: editandoId ?? crearId(),
       nombre,
       profesor: formulario.profesor.trim(),
       nrc: formulario.nrc.trim(),
-      sesiones: sesionesFinales,
+      sesiones: editandoId ? formulario.sesiones : [],
     };
 
     setMaterias((actuales) => {
@@ -971,6 +1219,7 @@ export default function MiHorarioPage() {
       return [...actuales, materiaFinal];
     });
 
+    setMateriaSeleccionadaId(materiaFinal.id);
     cerrarModalMateria();
   }
 
@@ -990,11 +1239,53 @@ export default function MiHorarioPage() {
   }
 
   function eliminarMateria(id: string) {
-    setMaterias((actuales) => actuales.filter((materia) => materia.id !== id));
+    setMaterias((actuales) => {
+      const siguientes = actuales.filter((materia) => materia.id !== id);
+
+      if (materiaSeleccionadaId === id) {
+        setMateriaSeleccionadaId(siguientes[0]?.id ?? null);
+      }
+
+      return siguientes;
+    });
 
     if (editandoId === id) {
       reiniciarFormulario();
     }
+
+    if (bloqueEditando?.materiaId === id) {
+      setBloqueEditando(null);
+      setSalonBloque("");
+    }
+  }
+
+  function alternarDiaVisible(dia: Dia) {
+    setDiasVisibles((actuales) => {
+      const estaActivo = actuales.includes(dia);
+
+      if (estaActivo && actuales.length <= 1) {
+        return actuales;
+      }
+
+      const siguientes = estaActivo
+        ? actuales.filter((diaActual) => diaActual !== dia)
+        : [...actuales, dia];
+
+      return DIAS.filter((diaBase) => siguientes.includes(diaBase.id)).map(
+        (diaBase) => diaBase.id
+      );
+    });
+  }
+
+  function cambiarAgrupacionBloques(agrupar: boolean) {
+    setAgruparBloquesContinuos(agrupar);
+    setMaterias((actuales) => aplicarModoAgrupacionMaterias(actuales, agrupar));
+    setBloqueEditando(null);
+    setSalonBloque("");
+  }
+
+  function mostrarToastHorario(mensajeToast: string) {
+    setToastHorario(mensajeToast);
   }
 
   function detallesMateria(materia: MateriaHorario, sesion: SesionHorario) {
@@ -1035,6 +1326,167 @@ export default function MiHorarioPage() {
     };
   }
 
+  function buscarBloqueEnCelda(dia: Dia, hora: number) {
+    const inicioCelda = hora * 60;
+    const finCelda = (hora + 1) * 60;
+
+    for (const materia of materias) {
+      const sesion = materia.sesiones.find((bloque) => {
+        if (bloque.dia !== dia) return false;
+
+        const inicioBloque = minutosDesdeHora(bloque.inicio);
+        const finBloque = minutosDesdeHora(bloque.fin);
+
+        return inicioBloque < finCelda && finBloque > inicioCelda;
+      });
+
+      if (sesion) {
+        return { materia, sesion };
+      }
+    }
+
+    return null;
+  }
+
+  function abrirEditarBloqueHorario(
+    materia: MateriaHorario,
+    sesion: SesionHorario
+  ) {
+    setBloqueEditando({ materiaId: materia.id, sesionId: sesion.id });
+    setSalonBloque(sesion.salon);
+    setMensaje("");
+  }
+
+  function pintarCelda(dia: Dia, hora: number) {
+    const bloqueExistente = buscarBloqueEnCelda(dia, hora);
+
+    if (bloqueExistente) {
+      abrirEditarBloqueHorario(
+        bloqueExistente.materia,
+        bloqueExistente.sesion
+      );
+      return;
+    }
+
+    if (!materiaSeleccionadaId) {
+      mostrarToastHorario("Selecciona una materia antes de pintar el horario.");
+      return;
+    }
+
+    const inicioNuevo = horaDesdeNumero(hora);
+    const finNuevo = horaDesdeNumero(Math.min(HORA_MAXIMA, hora + 1));
+
+    setMaterias((actuales) =>
+      actuales.map((materia) => {
+        if (materia.id !== materiaSeleccionadaId) return materia;
+
+        const nuevoBloque: SesionHorario = {
+          id: crearId(),
+          dia,
+          inicio: inicioNuevo,
+          fin: finNuevo,
+          salon: "",
+        };
+
+        if (!agruparBloquesContinuos) {
+          return {
+            ...materia,
+            sesiones: [...materia.sesiones, nuevoBloque],
+          };
+        }
+
+        const bloquesContiguos = materia.sesiones.filter(
+          (sesion) =>
+            sesion.dia === dia &&
+            (sesion.fin === inicioNuevo || sesion.inicio === finNuevo)
+        );
+
+        if (bloquesContiguos.length === 0) {
+          return {
+            ...materia,
+            sesiones: [...materia.sesiones, nuevoBloque],
+          };
+        }
+
+        const inicioFusion = Math.min(
+          minutosDesdeHora(inicioNuevo),
+          ...bloquesContiguos.map((sesion) => minutosDesdeHora(sesion.inicio))
+        );
+
+        const finFusion = Math.max(
+          minutosDesdeHora(finNuevo),
+          ...bloquesContiguos.map((sesion) => minutosDesdeHora(sesion.fin))
+        );
+
+        const bloqueFusionado: SesionHorario = {
+          id: bloquesContiguos[0].id,
+          dia,
+          inicio: `${String(Math.floor(inicioFusion / 60)).padStart(2, "0")}:00`,
+          fin: `${String(Math.floor(finFusion / 60)).padStart(2, "0")}:00`,
+          salon:
+            bloquesContiguos.find((sesion) => sesion.salon.trim())?.salon ?? "",
+        };
+
+        return {
+          ...materia,
+          sesiones: [
+            ...materia.sesiones.filter(
+              (sesion) =>
+                !bloquesContiguos.some(
+                  (bloqueContiguo) => bloqueContiguo.id === sesion.id
+                )
+            ),
+            bloqueFusionado,
+          ],
+        };
+      })
+    );
+
+    setMensaje("");
+  }
+
+  function guardarDatosBloque() {
+    if (!bloqueEditando) return;
+
+    setMaterias((actuales) =>
+      actuales.map((materia) =>
+        materia.id === bloqueEditando.materiaId
+          ? {
+              ...materia,
+              sesiones: materia.sesiones.map((sesion) =>
+                sesion.id === bloqueEditando.sesionId
+                  ? { ...sesion, salon: salonBloque.trim() }
+                  : sesion
+              ),
+            }
+          : materia
+      )
+    );
+
+    setBloqueEditando(null);
+    setSalonBloque("");
+  }
+
+  function eliminarBloqueHorario() {
+    if (!bloqueEditando) return;
+
+    setMaterias((actuales) =>
+      actuales.map((materia) =>
+        materia.id === bloqueEditando.materiaId
+          ? {
+              ...materia,
+              sesiones: materia.sesiones.filter(
+                (sesion) => sesion.id !== bloqueEditando.sesionId
+              ),
+            }
+          : materia
+      )
+    );
+
+    setBloqueEditando(null);
+    setSalonBloque("");
+  }
+
   async function descargarHorario() {
     if (materias.length === 0) return;
 
@@ -1045,13 +1497,9 @@ export default function MiHorarioPage() {
     const margen = 54;
 
     const tituloFinal =
-      tituloDescargaModo === "ninguno"
-        ? ""
-        : tituloDescargaModo === "personalizado"
-        ? tituloDescarga.trim()
-        : "Horario";
+      tituloDescargaModo === "personalizado" ? tituloDescarga.trim() : "Horario";
 
-    const header = tituloFinal ? 78 : 52;
+    const header = 96;
     const altoHeaderTabla = 58;
     const altoSlot = 88;
     const totalSlots = horasVisibles.length;
@@ -1075,32 +1523,38 @@ export default function MiHorarioPage() {
     ctx.fillStyle = gradiente;
     ctx.fillRect(0, 0, width, height);
 
-    if (tituloFinal) {
-      ctx.fillStyle = temaCanvas.texto;
-      ctx.font = `bold 32px ${fuenteHorario}`;
-      ctx.textAlign = "center";
-      ctx.fillText(textoCortado(ctx, tituloFinal, width - 420), width / 2, 46);
-    }
-
     const logo = await cargarImagen(obtenerLogoActual());
 
     if (logo) {
-      const maxLogoW = 76;
-      const maxLogoH = 58;
+      const maxLogoW = 126;
+      const maxLogoH = 82;
       const ratio = Math.min(maxLogoW / logo.width, maxLogoH / logo.height);
       const logoW = logo.width * ratio;
       const logoH = logo.height * ratio;
-      const logoY = tituloFinal ? 10 : 4;
-      const logoX = width - logoW - 30;
+      const logoY = 7;
+      const logoX = 34;
 
+      ctx.globalAlpha = 1;
       ctx.drawImage(logo, logoX, logoY, logoW, logoH);
+    }
+
+    if (tituloFinal) {
+      ctx.fillStyle = temaCanvas.texto;
+      ctx.font = `bold 36px ${FUENTE_HORARIO}`;
+      ctx.textAlign = "center";
+      ctx.fillText(
+        textoCortado(ctx, tituloFinal.toUpperCase(), width - 430),
+        width / 2,
+        58
+      );
     }
 
     const tablaX = margen;
     const tablaY = header;
     const tablaW = width - margen * 2;
     const columnaHora = 120;
-    const columnaDia = (tablaW - columnaHora) / DIAS.length;
+    const columnaDia = (tablaW - columnaHora) / diasMostrados.length;
+    const radioTabla = 28;
 
     ctx.shadowColor = temaCanvas.esOscuro
       ? "rgba(0, 0, 0, 0.42)"
@@ -1108,35 +1562,39 @@ export default function MiHorarioPage() {
     ctx.shadowBlur = 24;
     ctx.shadowOffsetY = 12;
     ctx.fillStyle = temaCanvas.celda;
-    rectRedondeado(ctx, tablaX, tablaY, tablaW, altoTabla, 28);
+    rectRedondeado(ctx, tablaX, tablaY, tablaW, altoTabla, radioTabla);
     ctx.fill();
 
     ctx.shadowColor = "transparent";
-    ctx.strokeStyle = temaCanvas.borde;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+
+    ctx.save();
+    rectRedondeado(ctx, tablaX, tablaY, tablaW, altoTabla, radioTabla);
+    ctx.clip();
 
     ctx.fillStyle = temaCanvas.celdaHeader;
-    rectRedondeado(ctx, tablaX, tablaY, tablaW, altoHeaderTabla, 28);
-    ctx.fill();
+    ctx.fillRect(tablaX, tablaY, tablaW, altoHeaderTabla);
 
     ctx.fillStyle = temaCanvas.textoSuave;
-    ctx.font = `bold 18px ${fuenteHorario}`;
+    ctx.font = `bold 24px ${FUENTE_HORARIO}`;
     ctx.textAlign = "center";
     ctx.fillText("Hora", tablaX + columnaHora / 2, tablaY + 36);
 
-    DIAS.forEach((dia, index) => {
+    diasMostrados.forEach((dia, index) => {
       const x = tablaX + columnaHora + index * columnaDia;
 
       ctx.fillStyle = temaCanvas.texto;
-      ctx.font = `bold 20px ${fuenteHorario}`;
-      ctx.fillText(dia.label, x + columnaDia / 2, tablaY + 36);
+      ctx.font = `bold 24px ${FUENTE_HORARIO}`;
+      ctx.fillText(dia.label, x + columnaDia / 2, tablaY + 37);
     });
 
-    ctx.strokeStyle = temaCanvas.borde;
+    const lineaTabla = temaCanvas.esOscuro
+      ? "rgba(148, 163, 184, 0.2)"
+      : "rgba(37, 99, 235, 0.16)";
+
+    ctx.strokeStyle = lineaTabla;
     ctx.lineWidth = 1;
 
-    for (let i = 0; i <= totalSlots; i++) {
+    for (let i = 0; i < totalSlots; i++) {
       const y = tablaY + altoHeaderTabla + i * altoSlot;
 
       ctx.beginPath();
@@ -1144,19 +1602,17 @@ export default function MiHorarioPage() {
       ctx.lineTo(tablaX + tablaW, y);
       ctx.stroke();
 
-      if (i < totalSlots) {
-        ctx.fillStyle = temaCanvas.textoSuave;
-        ctx.font = `bold 17px ${fuenteHorario}`;
-        ctx.textAlign = "center";
-        ctx.fillText(
-          etiquetaHora(horasVisibles[i]),
-          tablaX + columnaHora / 2,
-          y + altoSlot / 2 + 6
-        );
-      }
+      ctx.fillStyle = temaCanvas.textoSuave;
+      ctx.font = `bold 20px ${FUENTE_HORARIO}`;
+      ctx.textAlign = "center";
+      ctx.fillText(
+        etiquetaHora(horasVisibles[i]),
+        tablaX + columnaHora / 2,
+        y + altoSlot / 2 + 6
+      );
     }
 
-    for (let i = 0; i <= DIAS.length; i++) {
+    for (let i = 0; i < diasMostrados.length; i++) {
       const x = tablaX + columnaHora + i * columnaDia;
 
       ctx.beginPath();
@@ -1165,9 +1621,35 @@ export default function MiHorarioPage() {
       ctx.stroke();
     }
 
+    const bloqueMargen = 8;
+
+    const alturasReferenciaBloque = materias.flatMap((materia) =>
+      materia.sesiones
+        .filter((sesion) => diasMostrados.some((dia) => dia.id === sesion.dia))
+        .map((sesion) => {
+          const posicion = posicionSesion(sesion);
+          return posicion ? posicion.span * altoSlot - bloqueMargen * 2 : null;
+        })
+        .filter((alto): alto is number => typeof alto === "number")
+    );
+
+    const altoReferenciaBloque =
+      alturasReferenciaBloque.length > 0
+        ? Math.max(20, Math.min(...alturasReferenciaBloque))
+        : altoSlot - bloqueMargen * 2;
+
+    const lineasReferenciaBloque = Math.max(
+      1,
+      ...materias.flatMap((materia) =>
+        materia.sesiones
+          .filter((sesion) => diasMostrados.some((dia) => dia.id === sesion.dia))
+          .map((sesion) => 1 + detallesMateria(materia, sesion).length)
+      )
+    );
+
     materias.forEach((materia) => {
       materia.sesiones.forEach((sesion) => {
-        const diaIndex = DIAS.findIndex((d) => d.id === sesion.dia);
+        const diaIndex = diasMostrados.findIndex((d) => d.id === sesion.dia);
         const posicion = posicionSesion(sesion);
 
         if (diaIndex === -1 || !posicion) return;
@@ -1177,12 +1659,39 @@ export default function MiHorarioPage() {
         const w = columnaDia;
         const h = posicion.span * altoSlot;
 
-        ctx.fillStyle = hexConAlpha(materia.color, intensidad.alpha);
-        ctx.fillRect(x, y, w, h);
+        const bloqueX = x + bloqueMargen;
+        const bloqueY = y + bloqueMargen;
+        const bloqueW = Math.max(20, w - bloqueMargen * 2);
+        const bloqueH = Math.max(20, h - bloqueMargen * 2);
+        const suavidad = suavidadBloque(intensidad.alpha);
+        const gradienteBloque = ctx.createLinearGradient(
+          bloqueX,
+          bloqueY,
+          bloqueX,
+          bloqueY + bloqueH
+        );
 
-        ctx.strokeStyle = "rgba(255,255,255,0.28)";
+        gradienteBloque.addColorStop(
+          0,
+          ajustarHex(materia.color, suavidad.arriba)
+        );
+        gradienteBloque.addColorStop(
+          0.58,
+          ajustarHex(materia.color, suavidad.centro)
+        );
+        gradienteBloque.addColorStop(
+          1,
+          ajustarHex(materia.color, suavidad.abajo)
+        );
+
+        ctx.fillStyle = gradienteBloque;
+        rectRedondeado(ctx, bloqueX, bloqueY, bloqueW, bloqueH, 18);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.26)";
         ctx.lineWidth = 2;
-        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        rectRedondeado(ctx, bloqueX + 1, bloqueY + 1, bloqueW - 2, bloqueH - 2, 17);
+        ctx.stroke();
 
         const colorTexto = colorTextoBloque(
           materia.color,
@@ -1196,16 +1705,25 @@ export default function MiHorarioPage() {
         dibujarTextoBloqueCanvas({
           ctx,
           lineas,
-          x,
-          y,
-          w,
-          h,
+          x: bloqueX,
+          y: bloqueY,
+          w: bloqueW,
+          h: bloqueH,
           colorTexto,
-          fuente: fuenteHorario,
+          fuente: FUENTE_HORARIO,
           tamano: tamanoLetra,
+          lineasReferencia: lineasReferenciaBloque,
+          altoReferencia: altoReferenciaBloque,
         });
       });
     });
+
+    ctx.restore();
+
+    ctx.strokeStyle = temaCanvas.borde;
+    ctx.lineWidth = 2;
+    rectRedondeado(ctx, tablaX, tablaY, tablaW, altoTabla, radioTabla);
+    ctx.stroke();
 
     const link = document.createElement("a");
     link.download = "horario-fcc-academy.png";
@@ -1214,973 +1732,1780 @@ export default function MiHorarioPage() {
   }
 
   const modalMateria = (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-5">
+    <div className="schedule-modal-overlay">
       <button
         type="button"
         onClick={cerrarModalMateria}
-        className="absolute inset-0 bg-black/50"
+        className="schedule-modal-backdrop"
         aria-label="Cerrar modal"
       />
 
-      <div
-        className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl shadow-2xl"
-        style={{
-          backgroundColor: "var(--color-card)",
-          border: "1px solid var(--color-border)",
-          color: "var(--color-text)",
-        }}
-      >
-        <div
-          className="sticky top-0 z-10 flex items-center justify-between gap-3 p-4 border-b"
-          style={{
-            backgroundColor: "var(--color-card)",
-            borderColor: "var(--color-border)",
-          }}
-        >
-          <h2 className="text-lg font-black">
-            {editandoId ? "Editar materia" : "Agregar materia"}
-          </h2>
+      <div className="schedule-subject-modal simple" role="dialog" aria-modal="true">
+        <div className="schedule-modal-content">
+          <div className="schedule-modal-header">
+            <div>
+              <p className="schedule-modal-eyebrow">
+                {editandoId ? "Editar materia" : "Nueva materia"}
+              </p>
+              <h2 className="schedule-modal-title">
+                {editandoId ? "Editar materia" : "Agregar materia"}
+              </h2>
+            </div>
 
-          <button
-            type="button"
-            onClick={cerrarModalMateria}
-            className="rounded-lg p-2 hover:opacity-80"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-            }}
-            aria-label="Cerrar"
-          >
-            <X size={20} />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={cerrarModalMateria}
+              className="schedule-modal-close"
+              aria-label="Cerrar"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 p-4">
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="block md:col-span-3">
-                <span className="text-sm font-semibold">Materia</span>
-                <input
-                  value={formulario.nombre}
-                  onChange={(e) => cambiarCampo("nombre", e.target.value)}
-                  placeholder="Ej. Cálculo Diferencial"
-                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                  style={{
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                />
-              </label>
+          <div className="schedule-simple-subject-body">
+            <label className="schedule-modal-field">
+              <span className="schedule-modal-label">Materia</span>
+              <input
+                value={formulario.nombre}
+                onChange={(e) => cambiarCampo("nombre", e.target.value)}
+                placeholder="Ej. Cálculo Diferencial"
+                className="schedule-modal-control"
+              />
+            </label>
 
-              <label className="block md:col-span-2">
-                <span className="text-sm font-semibold">Profesor</span>
+            <div className="schedule-preferences-grid">
+              <label className="schedule-modal-field">
+                <span className="schedule-modal-label">Profesor</span>
                 <input
                   value={formulario.profesor}
                   onChange={(e) => cambiarCampo("profesor", e.target.value)}
                   placeholder="Opcional"
-                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                  style={{
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="schedule-modal-control"
                 />
               </label>
 
-              <label className="block">
-                <span className="text-sm font-semibold">NRC</span>
+              <label className="schedule-modal-field">
+                <span className="schedule-modal-label">NRC</span>
                 <input
                   value={formulario.nrc}
                   onChange={(e) => cambiarCampo("nrc", e.target.value)}
                   placeholder="Opcional"
-                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                  style={{
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
+                  className="schedule-modal-control"
                 />
               </label>
             </div>
 
-            <div>
-              <span className="text-sm font-semibold">Color</span>
-              <div className="mt-2 flex flex-wrap gap-2">
+            <div className="schedule-color-section">
+              <span className="schedule-modal-label">Color de la materia</span>
+              <div className="schedule-color-grid">
                 {coloresTema.map((color) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => cambiarCampo("color", color)}
-                    className="w-9 h-9 rounded-full"
-                    style={{
-                      backgroundColor: color,
-                      border:
-                        formulario.color === color
-                          ? "3px solid var(--color-text)"
-                          : "1px solid var(--color-border)",
-                    }}
+                    className={`schedule-color-dot ${
+                      formulario.color === color ? "is-active" : ""
+                    }`}
+                    style={{ backgroundColor: color }}
                     aria-label={`Usar color ${color}`}
                   />
                 ))}
               </div>
             </div>
 
-            <div
-              className="rounded-2xl p-3 space-y-3"
-              style={{
-                backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <h3 className="text-sm font-black">
-                {sesionEditandoId ? "Editar bloque" : "Bloque de horario"}
-              </h3>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <label className="block">
-                  <span className="text-xs font-semibold">Día</span>
-                  <select
-                    value={sesionActual.dia}
-                    onChange={(e) => cambiarSesion("dia", e.target.value)}
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {DIAS.map((dia) => (
-                      <option key={dia.id} value={dia.id}>
-                        {dia.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold">Inicio</span>
-                  <select
-                    value={sesionActual.inicio}
-                    onChange={(e) => cambiarSesion("inicio", e.target.value)}
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {horasInicio.map((hora) => (
-                      <option key={hora} value={hora}>
-                        {hora}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold">Fin</span>
-                  <select
-                    value={sesionActual.fin}
-                    onChange={(e) => cambiarSesion("fin", e.target.value)}
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {horasFin.map((hora) => (
-                      <option key={hora} value={hora}>
-                        {hora}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold">Salón</span>
-                  <input
-                    value={sesionActual.salon}
-                    onChange={(e) => cambiarSesion("salon", e.target.value)}
-                    placeholder="Ej. 204"
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  />
-                </label>
-              </div>
-
-              <button
-                type="button"
-                onClick={guardarBloque}
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 font-semibold"
-                style={{
-                  backgroundColor:
-                    "color-mix(in srgb, var(--color-primary) 16%, transparent)",
-                  color: "var(--color-primary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                <Plus size={16} />
-                {sesionEditandoId ? "Guardar bloque" : "Agregar bloque"}
-              </button>
-            </div>
-
-            {mensaje && (
-              <p className="text-sm font-semibold text-red-400">{mensaje}</p>
-            )}
-          </div>
-
-          <aside
-            className="rounded-2xl p-3 space-y-3"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-            }}
-          >
-            <div
-              className="rounded-2xl p-4 text-center shadow"
-              style={{
-                backgroundColor: hexConAlpha(formulario.color, intensidad.alpha),
-                color: colorTextoBloque(
-                  formulario.color,
-                  intensidad.alpha,
-                  temaOscuro
-                ),
-                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.28)",
-              }}
-            >
-              <p className="font-black leading-tight">
-                {formulario.nombre.trim() || "Nombre de materia"}
-              </p>
-
-              <div className="mt-1 text-xs leading-tight opacity-95 space-y-0.5">
-                {opcionesVista.salon &&
-                  (formulario.sesiones[0]?.salon || sesionActual.salon) && (
-                    <p>
-                      Salón {formulario.sesiones[0]?.salon || sesionActual.salon}
-                    </p>
-                  )}
-
-                {opcionesVista.profesor && formulario.profesor.trim() && (
-                  <p>{formulario.profesor}</p>
-                )}
-
-                {opcionesVista.nrc && formulario.nrc.trim() && (
-                  <p>NRC {formulario.nrc}</p>
-                )}
-              </div>
-            </div>
-
-            <h3 className="text-sm font-black">Bloques de esta materia</h3>
-
-            {formulario.sesiones.length === 0 ? (
-              <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-                Agrega al menos un bloque. Si guardas la materia sin agregarlo,
-                se usará el bloque que tienes seleccionado.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {formulario.sesiones.map((sesion) => (
-                  <div
-                    key={sesion.id}
-                    className="rounded-xl px-3 py-2 text-sm"
-                    style={{
-                      backgroundColor: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <strong>
-                          {DIAS.find((dia) => dia.id === sesion.dia)?.label}
-                        </strong>
-                        <br />
-                        {sesion.inicio} - {sesion.fin}
-                        {sesion.salon ? ` · Salón ${sesion.salon}` : ""}
-                      </span>
-
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => editarBloque(sesion)}
-                          className="p-1.5 rounded-lg hover:opacity-80"
-                          style={{ color: "var(--color-text)" }}
-                          aria-label="Editar bloque"
-                        >
-                          <Pencil size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => eliminarBloque(sesion.id)}
-                          className="p-1.5 rounded-lg hover:opacity-80"
-                          style={{ color: "#f87171" }}
-                          aria-label="Eliminar bloque"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {mensaje && <p className="schedule-modal-message">{mensaje}</p>}
 
             <button
               type="button"
               onClick={guardarMateria}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold"
-              style={{
-                backgroundColor: "var(--color-primary)",
-                color: "white",
-              }}
+              className="schedule-modal-save"
             >
               {editandoId ? <Save size={18} /> : <Plus size={18} />}
-              {editandoId ? "Guardar cambios" : "Guardar materia"}
+              {editandoId ? "Guardar cambios" : "Crear materia"}
             </button>
-          </aside>
+          </div>
         </div>
       </div>
     </div>
   );
 
-  const modalPersonalizacion = (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-5">
+  const datosBloqueEditando = bloqueEditando
+    ? materias
+        .flatMap((materia) =>
+          materia.sesiones.map((sesion) => ({ materia, sesion }))
+        )
+        .find(
+          ({ materia, sesion }) =>
+            materia.id === bloqueEditando.materiaId &&
+            sesion.id === bloqueEditando.sesionId
+        )
+    : null;
+
+  const modalBloque = datosBloqueEditando ? (
+    <div className="schedule-modal-overlay">
       <button
         type="button"
-        onClick={() => setModalPersonalizacionAbierto(false)}
-        className="absolute inset-0 bg-black/50"
-        aria-label="Cerrar personalización"
+        onClick={() => {
+          setBloqueEditando(null);
+          setSalonBloque("");
+        }}
+        className="schedule-modal-backdrop"
+        aria-label="Cerrar datos del bloque"
       />
 
-      <div
-        className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl p-4"
-        style={{
-          backgroundColor: "var(--color-card)",
-          border: "1px solid var(--color-border)",
-          color: "var(--color-text)",
-        }}
-      >
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-black">Personalizar horario</h2>
-
-          <button
-            type="button"
-            onClick={() => setModalPersonalizacionAbierto(false)}
-            className="rounded-lg p-2 hover:opacity-80"
-            style={{
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text)",
-            }}
-            aria-label="Cerrar"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="space-y-5">
-          <div>
-            <h3 className="text-sm font-bold mb-2">Intensidad del color</h3>
-
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(INTENSIDADES_COLOR) as IntensidadColor[]).map(
-                (key) => {
-                  const activo = intensidadColor === key;
-
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setIntensidadColor(key)}
-                      className="rounded-xl px-3 py-2 text-sm font-semibold"
-                      style={{
-                        backgroundColor: activo
-                          ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                          : "var(--color-bg)",
-                        border: "1px solid var(--color-border)",
-                        color: activo
-                          ? "var(--color-primary)"
-                          : "var(--color-muted)",
-                      }}
-                    >
-                      {INTENSIDADES_COLOR[key].label}
-                    </button>
-                  );
-                }
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-sm font-bold">Tipo de letra</span>
-              <select
-                value={fuenteHorario}
-                onChange={(e) => setFuenteHorario(e.target.value)}
-                className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-              >
-                {FUENTES.map((fuente) => (
-                  <option key={fuente.value} value={fuente.value}>
-                    {fuente.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-bold">Tamaño de letra</span>
-              <select
-                value={tamanoLetra}
-                onChange={(e) => setTamanoLetra(e.target.value as TamanoLetra)}
-                className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
-              >
-                <option value="pequena">Pequeña</option>
-                <option value="mediana">Mediana</option>
-                <option value="grande">Grande</option>
-              </select>
-            </label>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-bold mb-2">Horas visibles</h3>
-
-            <div className="flex flex-wrap gap-2 mb-3">
-              {[
-                { key: "inteligente", label: "Inteligente" },
-                { key: "compacto", label: "Solo horas con clase" },
-                { key: "personalizado", label: "Personalizado" },
-              ].map((opcion) => {
-                const activo = modoRango === opcion.key;
-
-                return (
-                  <button
-                    key={opcion.key}
-                    type="button"
-                    onClick={() => setModoRango(opcion.key as ModoRango)}
-                    className="rounded-xl px-3 py-2 text-sm font-semibold"
-                    style={{
-                      backgroundColor: activo
-                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                        : "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: activo ? "var(--color-primary)" : "var(--color-muted)",
-                    }}
-                  >
-                    {opcion.label}
-                  </button>
-                );
-              })}
+      <div className="schedule-block-modal" role="dialog" aria-modal="true">
+        <div className="schedule-modal-content">
+          <div className="schedule-modal-header">
+            <div>
+              <p className="schedule-modal-eyebrow">Bloque del horario</p>
+              <h2 className="schedule-modal-title">
+                {datosBloqueEditando.materia.nombre}
+              </h2>
             </div>
 
-            {modoRango === "personalizado" && (
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-sm font-bold">Desde</span>
-                  <select
-                    value={rangoPersonalizadoInicio}
-                    onChange={(e) =>
-                      setRangoPersonalizadoInicio(Number(e.target.value))
-                    }
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {Array.from(
-                      { length: HORA_MAXIMA - HORA_MINIMA },
-                      (_, index) => HORA_MINIMA + index
-                    ).map((hora) => (
-                      <option key={hora} value={hora}>
-                        {etiquetaHora(hora)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-bold">Hasta</span>
-                  <select
-                    value={rangoPersonalizadoFin}
-                    onChange={(e) =>
-                      setRangoPersonalizadoFin(Number(e.target.value))
-                    }
-                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
-                    style={{
-                      backgroundColor: "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text)",
-                    }}
-                  >
-                    {Array.from(
-                      { length: HORA_MAXIMA - HORA_MINIMA },
-                      (_, index) => HORA_MINIMA + index + 1
-                    ).map((hora) => (
-                      <option key={hora} value={hora}>
-                        {etiquetaHora(hora)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setBloqueEditando(null);
+                setSalonBloque("");
+              }}
+              className="schedule-modal-close"
+              aria-label="Cerrar"
+            >
+              <X size={20} />
+            </button>
           </div>
 
-          <div>
-            <h3 className="text-sm font-bold mb-2">Título de descarga</h3>
-
-            <div className="flex flex-wrap gap-2 mb-3">
-              {[
-                { key: "automatico", label: "Horario" },
-                { key: "personalizado", label: "Personalizado" },
-                { key: "ninguno", label: "Sin título" },
-              ].map((opcion) => {
-                const activo = tituloDescargaModo === opcion.key;
-
-                return (
-                  <button
-                    key={opcion.key}
-                    type="button"
-                    onClick={() =>
-                      setTituloDescargaModo(opcion.key as TituloDescargaModo)
-                    }
-                    className="rounded-xl px-3 py-2 text-sm font-semibold"
-                    style={{
-                      backgroundColor: activo
-                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                        : "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: activo ? "var(--color-primary)" : "var(--color-muted)",
-                    }}
-                  >
-                    {opcion.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {tituloDescargaModo === "personalizado" && (
-              <input
-                value={tituloDescarga}
-                onChange={(e) => setTituloDescarga(e.target.value)}
-                placeholder="Ej. Horario Primavera 2027"
-                className="w-full rounded-xl px-3 py-2 outline-none"
-                style={{
-                  backgroundColor: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
-                }}
+          <div className="schedule-simple-subject-body">
+            <div className="schedule-block-summary">
+              <span
+                className="schedule-subject-dot"
+                style={{ backgroundColor: datosBloqueEditando.materia.color }}
               />
-            )}
-          </div>
 
-          <div>
-            <h3 className="text-sm font-bold mb-2">Información visible</h3>
+              <div>
+                <p>
+                  {
+                    DIAS.find((dia) => dia.id === datosBloqueEditando.sesion.dia)
+                      ?.label
+                  }{" "}
+                  · {datosBloqueEditando.sesion.inicio} -{" "}
+                  {datosBloqueEditando.sesion.fin}
+                </p>
 
-            <div className="flex flex-wrap gap-2">
-              {[
-                { key: "salon", label: "Salón" },
-                { key: "profesor", label: "Profesor" },
-                { key: "nrc", label: "NRC" },
-              ].map((opcion) => {
-                const key = opcion.key as keyof OpcionesVista;
-                const activo = opcionesVista[key];
+                {(datosBloqueEditando.materia.profesor ||
+                  datosBloqueEditando.materia.nrc) && (
+                  <small>
+                    {datosBloqueEditando.materia.profesor}
+                    {datosBloqueEditando.materia.profesor &&
+                    datosBloqueEditando.materia.nrc
+                      ? " · "
+                      : ""}
+                    {datosBloqueEditando.materia.nrc
+                      ? `NRC ${datosBloqueEditando.materia.nrc}`
+                      : ""}
+                  </small>
+                )}
+              </div>
+            </div>
 
-                return (
-                  <button
-                    key={opcion.key}
-                    type="button"
-                    onClick={() =>
-                      setOpcionesVista((actual) => ({
-                        ...actual,
-                        [key]: !actual[key],
-                      }))
-                    }
-                    className="rounded-xl px-3 py-2 text-sm font-semibold"
-                    style={{
-                      backgroundColor: activo
-                        ? "color-mix(in srgb, var(--color-primary) 18%, transparent)"
-                        : "var(--color-bg)",
-                      border: "1px solid var(--color-border)",
-                      color: activo ? "var(--color-primary)" : "var(--color-muted)",
-                    }}
-                  >
-                    {activo ? "Mostrar" : "Ocultar"} {opcion.label}
-                  </button>
-                );
-              })}
+            <label className="schedule-modal-field">
+              <span className="schedule-modal-label">Salón de este bloque</span>
+              <input
+                value={salonBloque}
+                onChange={(e) => setSalonBloque(e.target.value)}
+                placeholder="Ej. 204, CC02, Lab 1..."
+                className="schedule-modal-control"
+              />
+            </label>
+
+            <div className="schedule-block-modal-actions">
+              <button
+                type="button"
+                onClick={eliminarBloqueHorario}
+                className="schedule-action-secondary danger"
+              >
+                <Trash2 size={16} />
+                Quitar bloque
+              </button>
+
+              <button
+                type="button"
+                onClick={guardarDatosBloque}
+                className="schedule-modal-save"
+              >
+                <Save size={18} />
+                Guardar salón
+              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
-  );
+  ) : null;
 
   return (
     <LayoutGeneral rol="estudiante">
-      <div className="space-y-4 min-w-0">
-        <section
-          className="rounded-2xl p-3 sm:p-4 shadow flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"
+      <style>{`
+        .schedule-editor-shell {
+          color: var(--fcc-premium-text);
+        }
+
+        html,
+        body {
+          scrollbar-gutter: stable;
+        }
+
+        body {
+          overflow-y: scroll;
+        }
+
+        .schedule-editor-shell {
+          padding-right: 6px;
+        }
+
+        .schedule-editor-panel {
+          position: relative;
+          overflow: hidden;
+          border-radius: 28px;
+          background:
+            radial-gradient(
+              circle at 6% 0%,
+              color-mix(in srgb, var(--fcc-premium-cyan) 4%, transparent),
+              transparent 28%
+            ),
+            linear-gradient(
+              135deg,
+              var(--fcc-premium-surface-strong),
+              var(--fcc-premium-surface-soft)
+            );
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow:
+            0 22px 50px rgba(15, 23, 42, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.78);
+        }
+
+        .theme-oscuro .theme-oscuro .schedule-editor-panel {
+          box-shadow:
+            var(--fcc-premium-shadow-soft),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .schedule-editor-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(var(--fcc-premium-grid) 1px, transparent 1px),
+            linear-gradient(90deg, var(--fcc-premium-grid) 1px, transparent 1px);
+          background-size: 28px 28px;
+          mask-image: linear-gradient(90deg, transparent, black 42%, transparent 86%);
+          opacity: 0.2;
+        }
+
+        .schedule-editor-content {
+          position: relative;
+          z-index: 2;
+        }
+
+
+
+
+
+        .schedule-section-title::before,
+        .schedule-section-title::after {
+          content: "";
+          display: inline-block;
+          width: 36px;
+          height: 1px;
+          background: color-mix(in srgb, var(--fcc-premium-accent) 42%, transparent);
+        }
+
+
+
+        .schedule-action-primary,
+        .schedule-action-secondary {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 40px;
+          border-radius: 14px;
+          padding: 0 15px;
+          font-size: 0.86rem;
+          font-weight: 850;
+          transition:
+            transform 170ms ease,
+            opacity 170ms ease,
+            border-color 170ms ease;
+        }
+
+        .schedule-action-primary {
+          color: white;
+          background: var(--fcc-premium-button);
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 54%, white);
+          box-shadow:
+            0 12px 24px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent),
+            inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        }
+
+        .theme-oscuro .schedule-action-primary {
+          color: #050505;
+        }
+
+        .schedule-action-secondary {
+          color: var(--fcc-premium-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 90%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+        }
+
+        .schedule-action-secondary.danger {
+          color: var(--color-danger, #ef4444);
+          border-color: color-mix(in srgb, var(--color-danger, #ef4444) 20%, var(--fcc-premium-border));
+        }
+
+        .schedule-action-primary:hover,
+        .schedule-action-secondary:hover {
+          transform: translateY(-1px);
+        }
+
+        .schedule-action-secondary:disabled {
+          cursor: not-allowed;
+          opacity: 0.48;
+          transform: none;
+        }
+
+        .schedule-builder-grid {
+          display: grid;
+          grid-template-columns: 320px minmax(0, 1fr);
+          gap: 16px;
+          align-items: start;
+        }
+
+
+
+        .schedule-sidebar-section {
+          margin-top: 14px;
+          border-radius: 18px;
+          padding: 12px;
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 78%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+        }
+
+        .schedule-sidebar-section-title {
+          margin: 0 0 10px;
+          color: var(--fcc-premium-text);
+          font-size: 0.84rem;
+          font-weight: 950;
+          letter-spacing: -0.01em;
+        }
+
+        .schedule-sidebar-control {
+          margin-top: 8px;
+        }
+
+        .schedule-sidebar-control .schedule-modal-label {
+          font-size: 0.68rem;
+        }
+
+        .schedule-sidebar-select {
+          width: 100%;
+          min-height: 38px;
+          border-radius: 12px;
+          padding: 0 10px;
+          color: var(--fcc-premium-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 88%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          outline: none;
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .schedule-sidebar-input {
+          width: 100%;
+          min-height: 38px;
+          border-radius: 12px;
+          padding: 0 10px;
+          color: var(--fcc-premium-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 88%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          outline: none;
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .schedule-sidebar-note {
+          margin: 0 0 10px;
+          color: var(--fcc-premium-muted);
+          font-size: 0.76rem;
+          font-weight: 780;
+          line-height: 1.38;
+        }
+
+        .schedule-palette-panel {
+          position: sticky;
+          top: 12px;
+        }
+
+        .schedule-palette-header,
+        .schedule-panel-heading-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+
+        .schedule-palette-title,
+        .schedule-panel-title {
+          color: var(--fcc-premium-text);
+          font-size: 1.06rem;
+          font-weight: 950;
+          letter-spacing: -0.03em;
+        }
+
+        .schedule-palette-subtitle,
+        .schedule-panel-subtitle {
+          margin-top: 4px;
+          color: var(--fcc-premium-muted);
+          font-size: 0.78rem;
+          font-weight: 750;
+          line-height: 1.35;
+        }
+
+        .schedule-selected-helper {
+          margin-bottom: 12px;
+          border-radius: 18px;
+          padding: 12px;
+          color: var(--fcc-premium-muted);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 6%, transparent);
+          border: 1px dashed color-mix(in srgb, var(--fcc-premium-accent) 22%, transparent);
+          font-size: 0.82rem;
+          font-weight: 800;
+          line-height: 1.4;
+        }
+
+        .schedule-selected-helper strong {
+          color: var(--fcc-premium-text);
+        }
+
+        .schedule-palette-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .schedule-palette-card {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 10px;
+          align-items: center;
+          border-radius: 18px;
+          padding: 10px;
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 84%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
+        }
+
+        .schedule-palette-card.is-selected {
+          background:
+            radial-gradient(
+              circle at 0% 50%,
+              color-mix(in srgb, var(--subject-color) 14%, transparent),
+              transparent 38%
+            ),
+            color-mix(in srgb, var(--fcc-premium-surface-strong) 92%, transparent);
+          border-color: color-mix(in srgb, var(--subject-color) 46%, var(--fcc-premium-border));
+        }
+
+        .schedule-palette-select {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          text-align: left;
+        }
+
+        .schedule-palette-color {
+          width: 34px;
+          height: 34px;
+          border-radius: 14px;
+          flex: 0 0 auto;
+          border: 1px solid rgba(255, 255, 255, 0.55);
+          box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+        }
+
+        .schedule-palette-name {
+          color: var(--fcc-premium-text);
+          font-size: 0.92rem;
+          font-weight: 950;
+          line-height: 1.1;
+        }
+
+        .schedule-palette-meta {
+          margin-top: 3px;
+          color: var(--fcc-premium-muted);
+          font-size: 0.74rem;
+          font-weight: 780;
+          line-height: 1.25;
+        }
+
+        .schedule-palette-actions {
+          display: inline-flex;
+          gap: 6px;
+        }
+
+        .schedule-panel-heading {
+          display: grid;
+          gap: 12px;
+          justify-items: center;
+          margin-bottom: 16px;
+          text-align: center;
+        }
+
+        .schedule-section-title {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          color: var(--fcc-premium-text);
+          font-size: 1.15rem;
+          font-weight: 950;
+          letter-spacing: -0.035em;
+          line-height: 1;
+        }
+
+        .schedule-range-chip {
+          border-radius: 999px;
+          padding: 7px 12px;
+          color: var(--fcc-premium-accent);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent);
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+          font-size: 0.76rem;
+          font-weight: 900;
+        }
+
+        .schedule-table-shell {
+          overflow-x: auto;
+          border-radius: 24px;
+          padding: 12px;
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 82%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+        }
+
+        .theme-oscuro .schedule-table-shell {
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .schedule-grid {
+          overflow: hidden;
+          border-radius: 18px;
+          border: 1px solid var(--fcc-premium-border);
+          background: var(--color-card);
+          box-shadow: var(--fcc-premium-shadow-soft);
+        }
+
+        .schedule-grid-head,
+        .schedule-grid-hour,
+        .schedule-grid-cell {
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 13%, transparent);
+        }
+
+        .schedule-grid-head {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--color-heading);
+          background: color-mix(in srgb, var(--color-card-soft) 74%, var(--color-card));
+          font-size: 0.88rem;
+          font-weight: 950;
+        }
+
+        .schedule-grid-hour {
+          position: sticky;
+          left: 0;
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--color-muted);
+          background: color-mix(in srgb, var(--color-card) 96%, var(--color-card-soft));
+          font-size: 0.84rem;
+          font-weight: 900;
+        }
+
+        .schedule-grid-cell {
+          background: color-mix(in srgb, var(--color-card) 98%, var(--color-card-soft));
+        }
+
+        .schedule-clickable-cell {
+          cursor: crosshair;
+          transition:
+            background 150ms ease,
+            box-shadow 150ms ease;
+        }
+
+        .schedule-clickable-cell:hover {
+          background:
+            color-mix(in srgb, var(--selected-subject-color, var(--fcc-premium-accent)) 10%, var(--color-card));
+          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--selected-subject-color, var(--fcc-premium-accent)) 26%, transparent);
+        }
+
+        .schedule-class-block {
+          z-index: 30;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          margin: 6px;
+          padding: 8px;
+          text-align: center;
+          border-radius: 16px;
+          line-height: 1.12;
+          box-shadow:
+            0 10px 18px rgba(15, 23, 42, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.24),
+            inset 0 -1px 0 rgba(15, 23, 42, 0.06);
+        }
+
+        .schedule-empty-state {
+          z-index: 30;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          border-radius: 18px;
+          padding: 20px;
+          text-align: center;
+          color: var(--fcc-premium-muted);
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 72%, transparent);
+          border: 1px dashed color-mix(in srgb, var(--fcc-premium-accent) 22%, transparent);
+        }
+
+        .schedule-modal-overlay {
+          --schedule-modal-accent: var(--fcc-premium-accent);
+          --schedule-modal-cyan: var(--fcc-premium-cyan);
+          --schedule-modal-surface: var(--fcc-premium-surface);
+          --schedule-modal-surface-soft: var(--fcc-premium-surface-soft);
+          --schedule-modal-surface-strong: var(--fcc-premium-surface-strong);
+          --schedule-modal-text: var(--fcc-premium-text);
+          --schedule-modal-muted: var(--fcc-premium-muted);
+          --schedule-modal-border: var(--fcc-premium-border);
+          --schedule-modal-shadow: var(--fcc-premium-shadow);
+          --schedule-modal-danger: var(--color-danger, #ef4444);
+
+          position: fixed;
+          inset: 0;
+          z-index: 90;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 14px;
+        }
+
+        .schedule-modal-backdrop {
+          position: absolute;
+          inset: 0;
+          background: rgba(2, 8, 23, 0.58);
+          backdrop-filter: blur(8px);
+        }
+
+        .schedule-subject-modal,
+        .schedule-block-modal {
+          position: relative;
+          width: min(94vw, 1040px);
+          max-height: 92dvh;
+          overflow-y: auto;
+          border-radius: 28px;
+          color: var(--schedule-modal-text);
+          background:
+            radial-gradient(
+              circle at 12% 0%,
+              color-mix(in srgb, var(--schedule-modal-cyan) 5%, transparent),
+              transparent 32%
+            ),
+            linear-gradient(
+              135deg,
+              var(--schedule-modal-surface),
+              var(--schedule-modal-surface-soft)
+            );
+          border: 1px solid color-mix(in srgb, var(--schedule-modal-accent) 14%, var(--schedule-modal-border));
+          box-shadow: var(--schedule-modal-shadow);
+        }
+
+        .schedule-subject-modal.simple,
+        .schedule-block-modal {
+          width: min(94vw, 620px);
+        }
+
+                .schedule-subject-modal::before,
+        .schedule-block-modal::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(var(--fcc-premium-grid) 1px, transparent 1px),
+            linear-gradient(90deg, var(--fcc-premium-grid) 1px, transparent 1px);
+          background-size: 28px 28px;
+          mask-image: radial-gradient(circle at 12% 0%, black, transparent 72%);
+          opacity: 0.16;
+        }
+
+        .schedule-modal-content {
+          position: relative;
+          z-index: 2;
+          min-width: 0;
+        }
+
+        .schedule-modal-header {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 18px 20px;
+          background:
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--schedule-modal-surface) 96%, transparent),
+              color-mix(in srgb, var(--schedule-modal-surface-soft) 96%, transparent)
+            );
+          border-bottom: 1px solid var(--schedule-modal-border);
+          backdrop-filter: blur(10px);
+        }
+
+        .schedule-modal-eyebrow {
+          margin: 0 0 4px;
+          color: var(--schedule-modal-accent);
+          font-size: 0.68rem;
+          font-weight: 950;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+        }
+
+        .schedule-modal-title {
+          margin: 0;
+          color: var(--schedule-modal-text);
+          font-size: clamp(1.35rem, 3vw, 1.75rem);
+          font-weight: 950;
+          letter-spacing: -0.052em;
+          line-height: 1;
+        }
+
+        .schedule-modal-close {
+          width: 40px;
+          height: 40px;
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+          border-radius: 999px;
+          color: var(--schedule-modal-text);
+          background: color-mix(in srgb, var(--schedule-modal-surface-strong) 82%, transparent);
+          border: 1px solid var(--schedule-modal-border);
+        }
+
+        .schedule-simple-subject-body,
+        .schedule-preferences-body {
+          display: grid;
+          gap: 16px;
+          padding: 18px;
+          align-content: start;
+          min-width: 0;
+        }
+
+        .schedule-preference-card {
+          border-radius: 22px;
+          padding: 14px;
+          background: color-mix(in srgb, var(--schedule-modal-surface-strong) 78%, transparent);
+          border: 1px solid var(--schedule-modal-border);
+          box-shadow: inset 0 1px 0 color-mix(in srgb, var(--schedule-modal-surface-strong) 70%, transparent);
+        }
+
+        .schedule-preferences-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .schedule-modal-field {
+          display: block;
+          min-width: 0;
+        }
+
+        .schedule-modal-label {
+          display: block;
+          margin-bottom: 6px;
+          color: var(--schedule-modal-muted);
+          font-size: 0.76rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .schedule-modal-control {
+          width: 100%;
+          min-height: 44px;
+          border-radius: 14px;
+          padding: 0 12px;
+          color: var(--schedule-modal-text);
+          background: color-mix(in srgb, var(--schedule-modal-surface-strong) 78%, transparent);
+          border: 1px solid var(--schedule-modal-border);
+          outline: none;
+          font-size: 0.9rem;
+          font-weight: 760;
+        }
+
+        .schedule-modal-control:focus {
+          border-color: color-mix(in srgb, var(--schedule-modal-accent) 52%, var(--schedule-modal-border));
+          background: color-mix(in srgb, var(--schedule-modal-surface-strong) 92%, transparent);
+        }
+
+        .schedule-color-section {
+          display: grid;
+          gap: 8px;
+        }
+
+        .schedule-color-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .schedule-color-dot {
+          width: 36px;
+          height: 36px;
+          border-radius: 999px;
+          border: 1px solid var(--schedule-modal-border);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.36),
+            0 6px 14px rgba(15, 23, 42, 0.1);
+        }
+
+        .schedule-color-dot.is-active {
+          box-shadow:
+            0 0 0 3px var(--schedule-modal-surface),
+            0 0 0 5px var(--schedule-modal-accent),
+            0 8px 18px rgba(15, 23, 42, 0.12);
+        }
+
+        .schedule-preference-title {
+          margin: 0 0 10px;
+          color: var(--schedule-modal-text);
+          font-size: 0.92rem;
+          font-weight: 950;
+          letter-spacing: -0.01em;
+        }
+
+        .schedule-option-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .schedule-option-pill {
+          min-height: 32px;
+          border-radius: 999px;
+          padding: 0 10px;
+          color: var(--fcc-premium-muted);
+          background: color-mix(in srgb, var(--fcc-premium-surface-soft) 82%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          font-size: 0.76rem;
+          font-weight: 850;
+        }
+
+        .schedule-option-pill.is-active {
+          color: var(--fcc-premium-accent);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 12%, transparent);
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 26%, transparent);
+        }
+
+        .schedule-icon-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          color: var(--fcc-premium-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 90%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+        }
+
+        .schedule-icon-button.danger {
+          color: var(--color-danger, #ef4444);
+        }
+
+        .schedule-modal-message {
+          margin: 0;
+          border-radius: 16px;
+          padding: 11px 12px;
+          color: var(--schedule-modal-danger);
+          background: color-mix(in srgb, var(--schedule-modal-danger) 8%, var(--schedule-modal-surface));
+          border: 1px solid color-mix(in srgb, var(--schedule-modal-danger) 26%, var(--schedule-modal-border));
+          font-size: 0.88rem;
+          font-weight: 850;
+          text-align: center;
+        }
+
+        .schedule-floating-toast {
+          position: fixed;
+          right: 22px;
+          bottom: 22px;
+          z-index: 120;
+          max-width: min(360px, calc(100vw - 32px));
+          border-radius: 18px;
+          padding: 12px 14px;
+          color: var(--fcc-premium-text);
+          background:
+            radial-gradient(
+              circle at 0% 0%,
+              color-mix(in srgb, var(--fcc-premium-accent) 9%, transparent),
+              transparent 70%
+            ),
+            color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, transparent);
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 20%, var(--fcc-premium-border));
+          box-shadow:
+            0 18px 38px rgba(15, 23, 42, 0.14),
+            inset 0 1px 0 rgba(255, 255, 255, 0.62);
+          font-size: 0.86rem;
+          font-weight: 900;
+          line-height: 1.35;
+          animation: schedule-toast-in 180ms ease-out;
+        }
+
+        @keyframes schedule-toast-in {
+          from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.98);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .schedule-modal-save {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 46px;
+          width: 100%;
+          border-radius: 14px;
+          color: #ffffff;
+          background: var(--fcc-premium-button);
+          border: 1px solid color-mix(in srgb, var(--schedule-modal-accent) 64%, white);
+          box-shadow: 0 14px 24px color-mix(in srgb, var(--schedule-modal-accent) 18%, transparent);
+          font-size: 0.9rem;
+          font-weight: 950;
+        }
+
+        .theme-oscuro .schedule-modal-save {
+          color: #050505;
+        }
+
+        .schedule-block-summary {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          border-radius: 18px;
+          padding: 12px;
+          background: color-mix(in srgb, var(--schedule-modal-surface-strong) 78%, transparent);
+          border: 1px solid var(--schedule-modal-border);
+        }
+
+        .schedule-block-summary p {
+          margin: 0;
+          color: var(--schedule-modal-text);
+          font-size: 0.9rem;
+          font-weight: 950;
+        }
+
+        .schedule-block-summary small {
+          color: var(--schedule-modal-muted);
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .schedule-block-modal-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        @media (max-width: 1100px) {
+          .schedule-builder-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .schedule-palette-panel {
+            position: relative;
+            top: auto;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .schedule-preferences-grid,
+          .schedule-block-modal-actions {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+            .schedule-editor-panel,
+          .schedule-subject-modal,
+          .schedule-block-modal {
+            border-radius: 24px;
+          }
+
+          .schedule-section-title::before,
+          .schedule-section-title::after {
+            width: 24px;
+          }
+
+          .schedule-panel-heading-row,
+          .schedule-palette-header {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .schedule-range-chip {
+            width: fit-content;
+          }
+
+          .schedule-modal-header {
+            padding: 16px;
+          }
+
+          .schedule-simple-subject-body {
+            padding: 14px;
+          }
+        }
+
+
+        .schedule-left-stack {
+          position: sticky;
+          top: 12px;
+          display: grid;
+          gap: 12px;
+          align-self: start;
+          min-width: 0;
+        }
+
+        .schedule-standalone-back {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          min-height: 38px;
+          border-radius: 16px;
+          color: var(--fcc-premium-accent);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 7%, var(--fcc-premium-surface-strong));
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 20%, var(--fcc-premium-border));
+          box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+          font-size: 0.84rem;
+          font-weight: 950;
+        }
+
+        .schedule-standalone-back:hover {
+          transform: translateY(-1px);
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 34%, var(--fcc-premium-border));
+        }
+
+        .schedule-side-panel {
+          align-self: start;
+        }
+
+        .schedule-preview-panel {
+          position: relative;
+        }
+
+        .schedule-preview-tools {
+          position: absolute;
+          top: 16px;
+          left: 16px;
+          right: 16px;
+          z-index: 3;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          pointer-events: none;
+        }
+
+        .schedule-preview-tools > * {
+          pointer-events: auto;
+        }
+
+        .schedule-download-button {
+          min-height: 36px;
+          border-radius: 14px;
+          padding: 0 13px;
+          font-size: 0.82rem;
+        }
+
+        .schedule-panel-heading.compact {
+          margin-bottom: 14px;
+          padding-top: 2px;
+        }
+
+        .schedule-palette-header.compact {
+          margin-bottom: 12px;
+        }
+
+        .schedule-settings-panel {
+          padding: 14px;
+        }
+
+        .schedule-settings-title {
+          margin: 0 0 10px;
+          color: var(--fcc-premium-text);
+          font-size: 1rem;
+          font-weight: 950;
+          letter-spacing: -0.025em;
+        }
+
+        .schedule-settings-details {
+          border-radius: 16px;
+          background: color-mix(in srgb, var(--fcc-premium-surface-strong) 82%, transparent);
+          border: 1px solid var(--fcc-premium-border);
+          overflow: hidden;
+        }
+
+        .schedule-settings-details + .schedule-settings-details {
+          margin-top: 8px;
+        }
+
+        .schedule-settings-details summary {
+          min-height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 0 12px;
+          cursor: pointer;
+          color: var(--fcc-premium-text);
+          font-size: 0.82rem;
+          font-weight: 950;
+          list-style: none;
+        }
+
+        .schedule-settings-details summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .schedule-settings-details summary::after {
+          content: "⌄";
+          color: var(--fcc-premium-muted);
+          font-size: 0.9rem;
+          transition: transform 170ms ease;
+        }
+
+        .schedule-settings-details[open] summary::after {
+          transform: rotate(180deg);
+        }
+
+        .schedule-settings-details[open] {
+          background:
+            radial-gradient(
+              circle at 0% 0%,
+              color-mix(in srgb, var(--fcc-premium-accent) 9%, transparent),
+              transparent 58%
+            ),
+            color-mix(in srgb, var(--fcc-premium-accent) 5%, var(--fcc-premium-surface-strong));
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 28%, var(--fcc-premium-border));
+          box-shadow:
+            0 10px 22px color-mix(in srgb, var(--fcc-premium-accent) 7%, transparent),
+            inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        }
+
+        .schedule-settings-details[open] summary {
+          color: var(--fcc-premium-accent);
+          border-bottom: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 14%, transparent);
+        }
+
+        .schedule-settings-details[open] .schedule-settings-body {
+          background: color-mix(in srgb, var(--fcc-premium-accent) 4%, transparent);
+        }
+
+        .schedule-settings-body {
+          display: grid;
+          gap: 10px;
+          padding: 0 12px 12px;
+        }
+
+        .schedule-settings-help {
+          margin: 0;
+          color: var(--fcc-premium-muted);
+          font-size: 0.74rem;
+          font-weight: 760;
+          line-height: 1.35;
+        }
+
+        .schedule-option-pill {
+          min-height: 32px;
+          padding: 0 10px;
+          font-size: 0.75rem;
+        }
+
+        .schedule-option-pill.is-active {
+          color: var(--fcc-premium-accent);
+          background: color-mix(in srgb, var(--fcc-premium-accent) 13%, transparent);
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 30%, transparent);
+        }
+
+        .schedule-inline-two {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        @media (max-width: 1100px) {
+          .schedule-left-stack {
+            position: relative;
+            top: auto;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .schedule-preview-tools {
+            position: static;
+            margin-bottom: 10px;
+          }
+
+          .schedule-panel-heading.compact {
+            padding-top: 0;
+          }
+
+          .schedule-download-button {
+            width: fit-content;
+          }
+        }
+
+      `}</style>
+
+      <div className="schedule-editor-shell min-w-0">
+        <div
+          className="schedule-builder-grid"
           style={{
-            backgroundColor: "var(--color-card)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
+            ["--selected-subject-color" as string]:
+              materiaSeleccionada?.color ?? "var(--fcc-premium-accent)",
           }}
         >
-          <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/dashboard/estudiante/herramientas"
-              className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 shrink-0"
-              style={{ color: "var(--color-primary)" }}
-            >
+          <div className="schedule-left-stack">
+            <Link href={hrefVolver} className="schedule-standalone-back">
               <ArrowLeft size={16} />
               Volver
             </Link>
 
-            <span
-              className="hidden sm:block h-6 w-px"
-              style={{ backgroundColor: "var(--color-border)" }}
-            />
-
-            <h1 className="text-lg sm:text-xl font-black truncate">Mi horario</h1>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setModalPersonalizacionAbierto(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold"
-              style={{
-                backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
-            >
-              <Palette size={18} />
-              Personalizar
-            </button>
-
-            <button
-              type="button"
-              onClick={abrirNuevaMateria}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold"
-              style={{
-                backgroundColor: "var(--color-primary)",
-                color: "white",
-              }}
-            >
-              <Plus size={18} />
-              Agregar materia
-            </button>
-
-            <button
-              type="button"
-              onClick={descargarHorario}
-              disabled={materias.length === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text)",
-              }}
-            >
-              <Download size={18} />
-              Descargar
-            </button>
-          </div>
-        </section>
-
-        <section
-          className="rounded-2xl p-4 shadow"
-          style={{
-            backgroundColor: "var(--color-card)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
-          }}
-        >
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <Eye size={20} style={{ color: "var(--color-primary)" }} />
-              <h2 className="text-lg font-bold">Vista previa</h2>
-            </div>
-
-            <p className="text-xs sm:text-sm" style={{ color: "var(--color-muted)" }}>
-              {modoRango === "compacto"
-                ? "Horas con clase"
-                : `${etiquetaHora(horasVisibles[0])} - ${etiquetaHora(
-                    horasVisibles[horasVisibles.length - 1] + 1
-                  )}`}
-            </p>
-          </div>
-
-          <div
-            className="rounded-3xl p-3 sm:p-4 overflow-x-auto shadow-inner"
-            style={ESTILO_HORARIO_VISTA}
-          >
-            <div
-              className="grid relative min-w-[900px] rounded-2xl overflow-hidden shadow"
-              style={{
-                gridTemplateColumns: `74px repeat(${DIAS.length}, minmax(126px, 1fr))`,
-                gridTemplateRows: `44px repeat(${horasVisibles.length}, ${ALTO_FILA}px)`,
-                fontFamily: fuenteHorario,
-              }}
-            >
-              <div
-                className="sticky left-0 z-20 flex items-center justify-center text-xs font-bold border"
-                style={{
-                  gridColumn: 1,
-                  gridRow: 1,
-                  backgroundColor: "var(--color-card-soft)",
-                  borderColor: "var(--color-border)",
-                  color: "var(--color-muted)",
-                }}
-              >
-                Hora
-              </div>
-
-              {DIAS.map((dia, index) => (
-                <div
-                  key={dia.id}
-                  className="flex items-center justify-center text-sm font-black border"
-                  style={{
-                    gridColumn: index + 2,
-                    gridRow: 1,
-                    backgroundColor: "var(--color-card-soft)",
-                    borderColor: "var(--color-border)",
-                    color: "var(--color-heading)",
-                  }}
-                >
-                  {dia.label}
-                </div>
-              ))}
-
-              {horasVisibles.map((hora, rowIndex) => (
-                <div
-                  key={`hora-${hora}`}
-                  className="sticky left-0 z-10 flex items-center justify-center text-[11px] font-bold border"
-                  style={{
-                    gridColumn: 1,
-                    gridRow: rowIndex + 2,
-                    backgroundColor: "var(--color-card)",
-                    borderColor: "var(--color-border)",
-                    color: "var(--color-muted)",
-                  }}
-                >
-                  {etiquetaHora(hora)}
-                </div>
-              ))}
-
-              {horasVisibles.map((hora, rowIndex) =>
-                DIAS.map((dia, dayIndex) => (
-                  <div
-                    key={`${dia.id}-${hora}`}
-                    className="border"
-                    style={{
-                      gridColumn: dayIndex + 2,
-                      gridRow: rowIndex + 2,
-                      backgroundColor: "var(--color-card)",
-                      borderColor: "var(--color-border)",
-                    }}
-                  />
-                ))
-              )}
-
-              {materias.flatMap((materia) =>
-                materia.sesiones.map((sesion) => {
-                  const diaIndex = DIAS.findIndex((d) => d.id === sesion.dia);
-                  const posicion = posicionSesion(sesion);
-
-                  if (diaIndex === -1 || !posicion) return null;
-
-                  const detalles = detallesMateria(materia, sesion);
-
-                  return (
-                    <button
-                      key={`${materia.id}-${sesion.id}`}
-                      type="button"
-                      onClick={() => editarMateria(materia)}
-                      className="z-30 p-2 overflow-hidden shadow flex flex-col items-center justify-center text-center hover:brightness-105 transition"
-                      style={{
-                        gridColumn: diaIndex + 2,
-                        gridRow: `${posicion.rowStart} / span ${posicion.span}`,
-                        backgroundColor: hexConAlpha(materia.color, intensidad.alpha),
-                        color: colorTextoBloque(
-                          materia.color,
-                          intensidad.alpha,
-                          temaOscuro
-                        ),
-                        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.28)",
-                      }}
-                    >
-                      <p className={`font-black leading-tight ${clasesTextoBloque.titulo}`}>
-                        {materia.nombre}
-                      </p>
-
-                      {detalles.length > 0 && (
-                        <div className="mt-1 flex flex-col items-center justify-center leading-tight opacity-95">
-                          {detalles.map((detalle, index) => {
-                            const esSalon = detalle
-                              .toLowerCase()
-                              .startsWith("salón");
-
-                            return (
-                              <span
-                                key={detalle}
-                                className={
-                                  esSalon
-                                    ? "text-[11px] font-bold"
-                                    : index > 0
-                                    ? "text-[9px] opacity-90"
-                                    : clasesTextoBloque.detalle
-                                }
-                              >
-                                {detalle}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })
-              )}
-
-              {materias.length === 0 && (
-                <div
-                  className="z-30 rounded-2xl p-4 text-center flex flex-col items-center justify-center"
-                  style={{
-                    gridColumn: "2 / -1",
-                    gridRow: "2 / span 2",
-                    color: "var(--color-muted)",
-                  }}
-                >
-                  <p className="font-bold">Todavía no hay materias</p>
-                  <p className="text-sm mt-1">
-                    Agrega una materia para empezar a construir tu horario.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section
-          className="rounded-2xl p-4 shadow"
-          style={{
-            backgroundColor: "var(--color-card)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
-          }}
-        >
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-lg font-bold">Materias</h2>
-
-            <button
-              type="button"
-              onClick={abrirNuevaMateria}
-              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold"
-              style={{
-                backgroundColor:
-                  "color-mix(in srgb, var(--color-primary) 14%, transparent)",
-                color: "var(--color-primary)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <Plus size={16} />
-              Agregar
-            </button>
-          </div>
-
-          {materias.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-              Cuando agregues materias aparecerán aquí para editarlas o
-              eliminarlas.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {materias.map((materia) => (
-                <div
-                  key={materia.id}
-                  className="rounded-xl p-3 flex flex-col gap-3"
-                  style={{
-                    backgroundColor: "var(--color-bg)",
-                    border: "1px solid var(--color-border)",
-                  }}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: materia.color }}
-                      />
-                      <p className="font-bold truncate">{materia.nombre}</p>
-                    </div>
-
-                    <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>
-                      {materia.sesiones.length} bloque
-                      {materia.sesiones.length === 1 ? "" : "s"}
-                      {materia.profesor ? ` · ${materia.profesor}` : ""}
+            <aside className="schedule-editor-panel schedule-side-panel p-4 min-w-0">
+              <div className="schedule-editor-content">
+                <div className="schedule-palette-header compact">
+                  <div>
+                    <h2 className="schedule-palette-title">Materias</h2>
+                    <p className="schedule-palette-subtitle">
+                      Selecciona una materia.
                     </p>
                   </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => editarMateria(materia)}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:opacity-80"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text)",
-                      }}
-                    >
-                      <Pencil size={16} />
-                      Editar
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => eliminarMateria(materia.id)}
-                      className="rounded-lg px-3 py-2 hover:opacity-80"
-                      style={{
-                        backgroundColor: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        color: "#f87171",
-                      }}
-                      aria-label="Eliminar materia"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={abrirNuevaMateria}
+                    className="schedule-action-secondary"
+                  >
+                    <Plus size={16} />
+                    Nueva
+                  </button>
                 </div>
-              ))}
+
+                <div className="schedule-selected-helper">
+                  {materiaSeleccionada ? (
+                    <>
+                      Pintando con <strong>{materiaSeleccionada.nombre}</strong>.
+                    </>
+                  ) : (
+                    "Crea o selecciona una materia para empezar."
+                  )}
+                </div>
+
+                {materias.length === 0 ? (
+                  <div className="schedule-empty-state min-h-[128px]">
+                    <p className="font-black">No hay materias</p>
+                    <p className="text-sm mt-1">
+                      Crea una materia y luego colócala en el horario.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="schedule-palette-list">
+                    {materias.map((materia) => {
+                      const seleccionada = materia.id === materiaSeleccionadaId;
+
+                      return (
+                        <div
+                          key={materia.id}
+                          className={`schedule-palette-card ${
+                            seleccionada ? "is-selected" : ""
+                          }`}
+                          style={{ ["--subject-color" as string]: materia.color }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setMateriaSeleccionadaId(materia.id)}
+                            className="schedule-palette-select"
+                          >
+                            <span
+                              className="schedule-palette-color"
+                              style={{ backgroundColor: materia.color }}
+                            />
+
+                            <span className="min-w-0">
+                              <span className="schedule-palette-name block truncate">
+                                {materia.nombre}
+                              </span>
+
+                              <span className="schedule-palette-meta block truncate">
+                                {materia.profesor || "Sin profesor"}
+                                {materia.nrc ? ` · NRC ${materia.nrc}` : ""}
+                              </span>
+                            </span>
+                          </button>
+
+                          <div className="schedule-palette-actions">
+                            <button
+                              type="button"
+                              onClick={() => editarMateria(materia)}
+                              className="schedule-icon-button"
+                              aria-label="Editar materia"
+                            >
+                              <Pencil size={15} />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => eliminarMateria(materia.id)}
+                              className="schedule-icon-button danger"
+                              aria-label="Eliminar materia"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
+
+            <aside className="schedule-editor-panel schedule-settings-panel min-w-0">
+              <div className="schedule-editor-content">
+                <h2 className="schedule-settings-title">Ajustes visuales</h2>
+
+                <details className="schedule-settings-details">
+                  <summary>Color de bloques</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {(Object.keys(INTENSIDADES_COLOR) as IntensidadColor[]).map(
+                        (key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setIntensidadColor(key)}
+                            className={`schedule-option-pill ${
+                              intensidadColor === key ? "is-active" : ""
+                            }`}
+                          >
+                            {INTENSIDADES_COLOR[key].label}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="schedule-settings-details">
+                  <summary>Horas visibles</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {[
+                        { key: "inteligente", label: "Automático" },
+                        { key: "compacto", label: "Solo clases" },
+                        { key: "personalizado", label: "Manual" },
+                      ].map((opcion) => (
+                        <button
+                          key={opcion.key}
+                          type="button"
+                          onClick={() => setModoRango(opcion.key as ModoRango)}
+                          className={`schedule-option-pill ${
+                            modoRango === opcion.key ? "is-active" : ""
+                          }`}
+                        >
+                          {opcion.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {modoRango === "personalizado" && (
+                      <div className="schedule-inline-two">
+                        <label className="block">
+                          <span className="schedule-modal-label">Desde</span>
+                          <select
+                            value={rangoPersonalizadoInicio}
+                            onChange={(e) =>
+                              setRangoPersonalizadoInicio(Number(e.target.value))
+                            }
+                            className="schedule-sidebar-select"
+                          >
+                            {Array.from(
+                              { length: HORA_MAXIMA - HORA_MINIMA },
+                              (_, index) => HORA_MINIMA + index
+                            ).map((hora) => (
+                              <option key={hora} value={hora}>
+                                {etiquetaHora(hora)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="block">
+                          <span className="schedule-modal-label">Hasta</span>
+                          <select
+                            value={rangoPersonalizadoFin}
+                            onChange={(e) =>
+                              setRangoPersonalizadoFin(Number(e.target.value))
+                            }
+                            className="schedule-sidebar-select"
+                          >
+                            {Array.from(
+                              { length: HORA_MAXIMA - HORA_MINIMA },
+                              (_, index) => HORA_MINIMA + index + 1
+                            ).map((hora) => (
+                              <option key={hora} value={hora}>
+                                {etiquetaHora(hora)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <details className="schedule-settings-details">
+                  <summary>Bloques continuos</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {[
+                        { value: true, label: "Agrupar" },
+                        { value: false, label: "Separar" },
+                      ].map((opcion) => (
+                        <button
+                          key={opcion.label}
+                          type="button"
+                          onClick={() =>
+                            cambiarAgrupacionBloques(opcion.value)
+                          }
+                          className={`schedule-option-pill ${
+                            agruparBloquesContinuos === opcion.value
+                              ? "is-active"
+                              : ""
+                          }`}
+                        >
+                          {opcion.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="schedule-settings-details">
+                  <summary>Días visibles</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {DIAS.map((dia) => {
+                        const activo = diasVisibles.includes(dia.id);
+
+                        return (
+                          <button
+                            key={dia.id}
+                            type="button"
+                            onClick={() => alternarDiaVisible(dia.id)}
+                            className={`schedule-option-pill ${
+                              activo ? "is-active" : ""
+                            }`}
+                          >
+                            {dia.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="schedule-settings-details">
+                  <summary>Datos visibles</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {[
+                        { key: "salon", label: "Salón" },
+                        { key: "profesor", label: "Profesor" },
+                        { key: "nrc", label: "NRC" },
+                      ].map((opcion) => {
+                        const key = opcion.key as keyof OpcionesVista;
+                        const activo = opcionesVista[key];
+
+                        return (
+                          <button
+                            key={opcion.key}
+                            type="button"
+                            onClick={() =>
+                              setOpcionesVista((actual) => ({
+                                ...actual,
+                                [key]: !actual[key],
+                              }))
+                            }
+                            className={`schedule-option-pill ${
+                              activo ? "is-active" : ""
+                            }`}
+                          >
+                            {opcion.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="schedule-settings-details">
+                  <summary>Título al descargar</summary>
+                  <div className="schedule-settings-body">
+                    <div className="schedule-option-group">
+                      {[
+                        { key: "automatico", label: "Horario" },
+                        { key: "personalizado", label: "Personalizado" },
+                      ].map((opcion) => (
+                        <button
+                          key={opcion.key}
+                          type="button"
+                          onClick={() =>
+                            setTituloDescargaModo(
+                              opcion.key as TituloDescargaModo
+                            )
+                          }
+                          className={`schedule-option-pill ${
+                            tituloDescargaModo === opcion.key ? "is-active" : ""
+                          }`}
+                        >
+                          {opcion.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {tituloDescargaModo === "personalizado" && (
+                      <input
+                        value={tituloDescarga}
+                        onChange={(e) => setTituloDescarga(e.target.value)}
+                        placeholder="Ej. Horario Primavera 2027"
+                        className="schedule-sidebar-input"
+                      />
+                    )}
+                  </div>
+                </details>
+              </div>
+            </aside>
+          </div>
+
+          <section className="schedule-editor-panel schedule-preview-panel p-3 sm:p-4 min-w-0">
+            <div className="schedule-editor-content">
+              <div className="schedule-preview-tools">
+                <p className="schedule-range-chip">
+                  {modoRango === "compacto"
+                    ? "Horas con clase"
+                    : `${etiquetaHora(horasVisibles[0])} - ${etiquetaHora(
+                        horasVisibles[horasVisibles.length - 1] + 1
+                      )}`}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={descargarHorario}
+                  disabled={materias.length === 0}
+                  className="schedule-action-secondary schedule-download-button"
+                >
+                  <Download size={17} />
+                  Descargar
+                </button>
+              </div>
+
+              <div className="schedule-panel-heading compact">
+                <div>
+                  <h2 className="schedule-section-title">Vista previa</h2>
+                  <p className="schedule-panel-subtitle">
+                    Da clic en una celda vacía para pintar. Da clic en un bloque
+                    para editar el salón o quitarlo.
+                  </p>
+                </div>
+              </div>
+
+              <div className="schedule-table-shell">
+                <div
+                  className="schedule-grid grid relative min-w-[900px]"
+                  style={{
+                    gridTemplateColumns: `74px repeat(${diasMostrados.length}, minmax(132px, 1fr))`,
+                    gridTemplateRows: `44px repeat(${horasVisibles.length}, ${ALTO_FILA}px)`,
+                    fontFamily: FUENTE_HORARIO,
+                  }}
+                >
+                  <div
+                    className="schedule-grid-head sticky left-0 z-20"
+                    style={{ gridColumn: 1, gridRow: 1 }}
+                  >
+                    Hora
+                  </div>
+
+                  {diasMostrados.map((dia, index) => (
+                    <div
+                      key={dia.id}
+                      className="schedule-grid-head"
+                      style={{ gridColumn: index + 2, gridRow: 1 }}
+                    >
+                      {dia.label}
+                    </div>
+                  ))}
+
+                  {horasVisibles.map((hora, rowIndex) => (
+                    <div
+                      key={`hora-${hora}`}
+                      className="schedule-grid-hour"
+                      style={{ gridColumn: 1, gridRow: rowIndex + 2 }}
+                    >
+                      {etiquetaHora(hora)}
+                    </div>
+                  ))}
+
+                  {horasVisibles.map((hora, rowIndex) =>
+                    diasMostrados.map((dia, dayIndex) => (
+                      <button
+                        key={`${dia.id}-${hora}`}
+                        type="button"
+                        onClick={() => pintarCelda(dia.id, hora)}
+                        className="schedule-grid-cell schedule-clickable-cell"
+                        style={{
+                          gridColumn: dayIndex + 2,
+                          gridRow: rowIndex + 2,
+                        }}
+                        aria-label={`Colocar materia en ${dia.label} a las ${etiquetaHora(
+                          hora
+                        )}`}
+                      />
+                    ))
+                  )}
+
+                  {materias.flatMap((materia) =>
+                    materia.sesiones.map((sesion) => {
+                      const diaIndex = diasMostrados.findIndex((d) => d.id === sesion.dia);
+                      const posicion = posicionSesion(sesion);
+
+                      if (diaIndex === -1 || !posicion) return null;
+
+                      const detalles = detallesMateria(materia, sesion);
+                      const colorTexto = colorTextoBloque(
+                        materia.color,
+                        intensidad.alpha,
+                        temaOscuro
+                      );
+
+                      return (
+                        <button
+                          key={`${materia.id}-${sesion.id}`}
+                          type="button"
+                          onClick={() => abrirEditarBloqueHorario(materia, sesion)}
+                          className="schedule-class-block hover:brightness-105 transition"
+                          style={{
+                            gridColumn: diaIndex + 2,
+                            gridRow: `${posicion.rowStart} / span ${posicion.span}`,
+                            background: fondoBloqueHorario(
+                              materia.color,
+                              intensidad.alpha
+                            ),
+                            color: colorTexto,
+                            textShadow:
+                              colorTexto === "#ffffff"
+                                ? "0 1px 2px rgba(0, 0, 0, 0.16)"
+                                : "0 1px 0 rgba(255, 255, 255, 0.42)",
+                          }}
+                        >
+                          <p
+                            className={`font-black leading-tight ${clasesTextoBloque.titulo}`}
+                          >
+                            {materia.nombre}
+                          </p>
+
+                          {detalles.length > 0 && (
+                            <div className="mt-1 flex flex-col items-center justify-center leading-tight opacity-95">
+                              {detalles.map((detalle, index) => {
+                                const esSalon = detalle
+                                  .toLowerCase()
+                                  .startsWith("salón");
+
+                                return (
+                                  <span
+                                    key={detalle}
+                                    className={
+                                      esSalon
+                                        ? `${clasesTextoBloque.salon} font-bold`
+                                        : index > 0
+                                        ? `${clasesTextoBloque.extra} opacity-90`
+                                        : clasesTextoBloque.detalle
+                                    }
+                                  >
+                                    {detalle}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+
+                  {materias.length === 0 && (
+                    <div
+                      className="schedule-empty-state"
+                      style={{ gridColumn: "2 / -1", gridRow: "2 / span 2" }}
+                    >
+                      <p className="font-black">Todavía no hay materias</p>
+                      <p className="text-sm mt-1">
+                        Crea una materia en la columna izquierda para empezar.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-        </section>
+          </section>
+        </div>
 
         {mounted &&
           modalMateriaAbierto &&
           createPortal(modalMateria, document.body)}
 
-        {mounted &&
-          modalPersonalizacionAbierto &&
-          createPortal(modalPersonalizacion, document.body)}
+        {mounted && modalBloque && createPortal(modalBloque, document.body)}
+
+        {toastHorario && (
+          <div className="schedule-floating-toast" role="status">
+            {toastHorario}
+          </div>
+        )}
       </div>
     </LayoutGeneral>
   );

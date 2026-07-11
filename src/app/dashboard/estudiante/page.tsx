@@ -1,7 +1,7 @@
 /**
  * Dashboard principal del estudiante.
  * Muestra información del usuario, sus cursos con progreso,
- * ranking global y barra de experiencia.
+ * ranking global, barra de experiencia y precarga Mi horario.
  */
 
 import LayoutGeneral from "@/components/LayoutGeneral";
@@ -34,6 +34,7 @@ export default async function EstudianteDashboard() {
     { data: cursos },
     { data: quizzesMateria },
     { data: intentosUsuario },
+    { data: horarioUsuario },
   ] = await Promise.all([
     supabase
       .from("usuarios")
@@ -61,6 +62,12 @@ export default async function EstudianteDashboard() {
       .select("quiz_id, usuario_id")
       .eq("usuario_id", user.id)
       .eq("completado", true),
+
+    supabase
+      .from("horarios_usuario")
+      .select("datos")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   const quizzesPorMateria = new Map<string, string[]>();
@@ -178,6 +185,7 @@ export default async function EstudianteDashboard() {
               level={level}
               avatarConfig={usuario?.avatar_config}
               rol="estudiante"
+              initialHorarioDatos={horarioUsuario?.datos ?? null}
             />
           </div>
 

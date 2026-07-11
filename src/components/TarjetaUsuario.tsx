@@ -6,8 +6,13 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { CalendarDays, ChevronRight, Clock3, Map, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import HorarioVistaRapida from "@/components/HorarioVistaRapida";
+import CalendarioEscolar2026 from "@/components/CalendarioEscolar2026";
+import MapaCurricularICC from "@/components/MapaCurricularICC";
+import { CalendarDays, ChevronRight, Clock3, Download, Map as MapIcon, Settings, X } from "lucide-react";
 import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
@@ -17,15 +22,24 @@ interface TarjetaUsuarioProps {
   level?: number;
   avatarConfig?: AvatarConfig | null;
   rol?: "estudiante" | "profesor";
+  initialHorarioDatos?: unknown | null;
 }
 
 type AccionRapida = "horario" | "calendario" | "mapa";
+const HORARIO_PERSONALIZACION_URL =
+  "/dashboard/estudiante/herramientas/horario?volver=modal-horario";
+const HORARIO_MODAL_QUERY = "modal";
+const HORARIO_MODAL_VALUE = "horario";
+const MAPA_MODAL_VALUE = "mapa";
+const MAPA_PERSONALIZACION_URL =
+  "/dashboard/estudiante/herramientas/mapa-curricular?volver=modal-mapa";
 
 export default function TarjetaUsuario({
   name = "Usuario",
   level = 0,
   avatarConfig,
   rol = "estudiante",
+  initialHorarioDatos = null,
 }: TarjetaUsuarioProps) {
   const defaultConfig: AvatarConfig = {
     gender: "masculino",
@@ -48,6 +62,76 @@ export default function TarjetaUsuario({
   );
 
   const [accionAbierta, setAccionAbierta] = useState<AccionRapida | null>(null);
+  const [salidaHerramienta, setSalidaHerramienta] =
+    useState<AccionRapida | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function cerrarModalRapido() {
+    if (salidaHerramienta) return;
+
+    setSalidaHerramienta(null);
+    setAccionAbierta(null);
+
+    const modalQuery = searchParams.get(HORARIO_MODAL_QUERY);
+
+    if (
+      modalQuery === HORARIO_MODAL_VALUE ||
+      modalQuery === MAPA_MODAL_VALUE
+    ) {
+      router.replace(pathname, { scroll: false });
+    }
+  }
+
+  function prepararSalidaPersonalizarHorario() {
+    setSalidaHerramienta("horario");
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        "/dashboard/estudiante?modal=horario",
+      );
+    }
+  }
+
+  function prepararSalidaPersonalizarMapa() {
+    setSalidaHerramienta("mapa");
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        "/dashboard/estudiante?modal=mapa",
+      );
+    }
+  }
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    router.prefetch(HORARIO_PERSONALIZACION_URL);
+    router.prefetch(MAPA_PERSONALIZACION_URL);
+  }, [router]);
+
+  useEffect(() => {
+    const modalQuery = searchParams.get(HORARIO_MODAL_QUERY);
+
+    if (modalQuery === HORARIO_MODAL_VALUE) {
+      setSalidaHerramienta(null);
+      setAccionAbierta("horario");
+      return;
+    }
+
+    if (modalQuery === MAPA_MODAL_VALUE) {
+      setSalidaHerramienta(null);
+      setAccionAbierta("mapa");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const handler = () => {
@@ -64,6 +148,17 @@ export default function TarjetaUsuario({
   useEffect(() => {
     if (avatarConfig) setAvatar(avatarConfig);
   }, [avatarConfig]);
+
+  useEffect(() => {
+    if (!accionAbierta) return;
+
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+    };
+  }, [accionAbierta]);
 
   const perfilUrl =
     rol === "profesor"
@@ -90,21 +185,18 @@ export default function TarjetaUsuario({
   const contenidoModal = {
     horario: {
       titulo: "Mi horario",
-      descripcion:
-        "Aquí se mostrará el horario del estudiante en una vista rápida para consultar clases sin salir del inicio.",
+      descripcion: "",
       icono: Clock3,
     },
     calendario: {
-      titulo: "Calendario",
-      descripcion:
-        "Aquí se mostrarán eventos, entregas y fechas importantes guardadas por el estudiante.",
+      titulo: "Calendario escolar",
+      descripcion: "",
       icono: CalendarDays,
     },
     mapa: {
       titulo: "Mapa curricular",
-      descripcion:
-        "Aquí se mostrará el avance visual dentro del plan de estudios y materias relacionadas.",
-      icono: Map,
+      descripcion: "",
+      icono: MapIcon,
     },
   } satisfies Record<
     AccionRapida,
@@ -117,6 +209,176 @@ export default function TarjetaUsuario({
 
   const modalActual = accionAbierta ? contenidoModal[accionAbierta] : null;
   const IconoModal = modalActual?.icono;
+
+  const modalRapido =
+    modalActual && IconoModal ? (
+      <div
+        className="fcc-quick-modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label={modalActual.titulo}
+      >
+        <button
+          type="button"
+          className="fcc-quick-modal-backdrop"
+          onClick={cerrarModalRapido}
+          aria-label="Cerrar"
+          disabled={!!salidaHerramienta}
+        />
+
+        <div
+          className={`fcc-quick-modal ${
+            accionAbierta === "horario"
+              ? "is-schedule"
+              : accionAbierta === "mapa"
+              ? "is-curriculum"
+              : accionAbierta === "calendario"
+              ? "is-calendar"
+              : ""
+          }`}
+        >
+          <div className="fcc-quick-modal-content">
+            <div className="fcc-quick-modal-header">
+              <div className="fcc-quick-modal-title-wrap">
+                <span className="fcc-quick-modal-icon">
+                  <IconoModal size={22} strokeWidth={2.3} />
+                </span>
+
+                <div>
+                  <h3>{modalActual.titulo}</h3>
+                  {modalActual.descripcion && <p>{modalActual.descripcion}</p>}
+                </div>
+              </div>
+
+              {accionAbierta ? (
+                <div className="fcc-schedule-modal-actions">
+                  <button
+                    type="button"
+                    className="fcc-schedule-header-button"
+                    disabled={!!salidaHerramienta}
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new Event(
+                          accionAbierta === "horario"
+                            ? "solicitarDescargaHorario"
+                            : accionAbierta === "mapa"
+                            ? "solicitarDescargaMapaCurricular"
+                            : "solicitarDescargaCalendarioEscolar"
+                        )
+                      )
+                    }
+                    aria-label={
+                      accionAbierta === "horario"
+                        ? "Descargar horario"
+                        : accionAbierta === "mapa"
+                        ? "Descargar mapa curricular"
+                        : "Descargar calendario escolar"
+                    }
+                    title={
+                      accionAbierta === "horario"
+                        ? "Descargar horario"
+                        : accionAbierta === "mapa"
+                        ? "Descargar mapa curricular"
+                        : "Descargar calendario escolar"
+                    }
+                  >
+                    <Download size={18} strokeWidth={2.35} />
+                  </button>
+
+                  {accionAbierta === "calendario" ? (
+                    <button
+                      type="button"
+                      className="fcc-schedule-customize"
+                      disabled={!!salidaHerramienta}
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new Event("abrirAjustesCalendarioEscolar")
+                        )
+                      }
+                      aria-label="Ajustes del calendario"
+                      title="Ajustes del calendario"
+                    >
+                      <Settings size={18} strokeWidth={2.35} />
+                    </button>
+                  ) : (
+                    <Link
+                      href={
+                        accionAbierta === "horario"
+                          ? HORARIO_PERSONALIZACION_URL
+                          : MAPA_PERSONALIZACION_URL
+                      }
+                      className="fcc-schedule-customize"
+                      aria-disabled={!!salidaHerramienta}
+                      onClick={
+                        accionAbierta === "horario"
+                          ? prepararSalidaPersonalizarHorario
+                          : prepararSalidaPersonalizarMapa
+                      }
+                      aria-label={
+                        accionAbierta === "horario"
+                          ? "Personalizar horario"
+                          : "Personalizar mapa curricular"
+                      }
+                      title={
+                        accionAbierta === "horario"
+                          ? "Personalizar horario"
+                          : "Personalizar mapa curricular"
+                      }
+                    >
+                      <Settings size={18} strokeWidth={2.35} />
+                    </Link>
+                  )}
+
+                  <button
+                    type="button"
+                    className="fcc-quick-modal-close"
+                    disabled={!!salidaHerramienta}
+                    onClick={cerrarModalRapido}
+                    aria-label="Cerrar"
+                    title="Cerrar"
+                  >
+                    <X size={18} strokeWidth={2.4} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="fcc-quick-modal-close"
+                  disabled={!!salidaHerramienta}
+                  onClick={cerrarModalRapido}
+                  aria-label="Cerrar"
+                >
+                  <X size={20} strokeWidth={2.4} />
+                </button>
+              )}
+            </div>
+
+            {accionAbierta === "horario" ? (
+              <HorarioVistaRapida initialHorarioDatos={initialHorarioDatos} />
+            ) : accionAbierta === "mapa" ? (
+              <MapaCurricularICC modo="vista" />
+            ) : accionAbierta === "calendario" ? (
+              <CalendarioEscolar2026 />
+            ) : (
+              <div className="fcc-quick-modal-placeholder">
+                <span>Vista rápida preparada</span>
+              </div>
+            )}
+
+            {salidaHerramienta && (
+              <div className="fcc-quick-modal-loading" role="status">
+                <span className="fcc-quick-modal-spinner" />
+                <strong>
+                  {salidaHerramienta === "horario"
+                    ? "Abriendo ajustes del horario..."
+                    : "Abriendo ajustes del mapa..."}
+                </strong>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <>
@@ -517,6 +779,41 @@ export default function TarjetaUsuario({
         }
 
         .fcc-quick-modal-overlay {
+          --fcc-user-card-border: var(--fcc-premium-border);
+          --fcc-user-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+
+          --fcc-user-text: var(--fcc-premium-text);
+          --fcc-user-muted: var(--fcc-premium-muted);
+          --fcc-user-soft-text: var(--fcc-premium-text-soft);
+          --fcc-user-accent: var(--fcc-premium-accent);
+          --fcc-user-accent-hover: var(--fcc-premium-accent-hover);
+          --fcc-user-cyan: var(--fcc-premium-cyan);
+
+          --fcc-user-level-bg: color-mix(in srgb, var(--fcc-premium-accent) 9%, transparent);
+          --fcc-user-level-border: color-mix(in srgb, var(--fcc-premium-accent) 16%, transparent);
+
+          --fcc-user-modal-bg:
+            radial-gradient(
+              circle at 12% 10%,
+              color-mix(in srgb, var(--fcc-premium-cyan) 12%, transparent),
+              transparent 30%
+            ),
+            linear-gradient(
+              135deg,
+              var(--fcc-premium-surface),
+              var(--fcc-premium-surface-soft)
+            );
+          --fcc-user-modal-border: var(--fcc-premium-border-strong);
+          --fcc-user-modal-grid-a: var(--fcc-premium-grid);
+          --fcc-user-modal-grid-b: color-mix(in srgb, var(--fcc-premium-grid) 72%, transparent);
+          --fcc-user-modal-placeholder-bg:
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--fcc-premium-surface) 76%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 80%, transparent)
+            );
+          --fcc-user-modal-placeholder-border: color-mix(in srgb, var(--fcc-premium-accent) 28%, transparent);
+
           position: fixed;
           inset: 0;
           z-index: 24000;
@@ -524,12 +821,27 @@ export default function TarjetaUsuario({
           align-items: center;
           justify-content: center;
           padding: 18px;
+        }
+
+        .fcc-quick-modal-backdrop {
+          position: absolute;
+          inset: 0;
+          border: 0;
           background: rgba(15, 23, 42, 0.38);
           backdrop-filter: blur(8px);
         }
 
+        .theme-oscuro .fcc-quick-modal-overlay {
+          --fcc-user-card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .theme-oscuro .fcc-quick-modal-backdrop {
+          background: rgba(0, 0, 0, 0.62);
+        }
+
         .fcc-quick-modal {
           position: relative;
+          z-index: 1;
           width: min(760px, 100%);
           overflow: hidden;
           border-radius: 28px;
@@ -540,6 +852,30 @@ export default function TarjetaUsuario({
             0 28px 80px rgba(15, 23, 42, 0.22),
             var(--fcc-user-card-inset);
           color: var(--fcc-user-text);
+        }
+
+        .theme-oscuro .fcc-quick-modal {
+          box-shadow:
+            0 30px 90px rgba(0, 0, 0, 0.52),
+            var(--fcc-user-card-inset);
+        }
+
+        .fcc-quick-modal.is-schedule,
+        .fcc-quick-modal.is-curriculum,
+        .fcc-quick-modal.is-calendar {
+          width: min(1160px, 100%);
+          max-height: calc(100dvh - 36px);
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .fcc-quick-modal.is-curriculum {
+          width: min(1280px, 100%);
+        }
+
+        .fcc-quick-modal.is-calendar {
+          width: min(1180px, 100%);
         }
 
         .fcc-quick-modal::before {
@@ -558,6 +894,15 @@ export default function TarjetaUsuario({
         .fcc-quick-modal-content {
           position: relative;
           z-index: 2;
+          min-height: 0;
+        }
+
+        .fcc-quick-modal.is-schedule .fcc-quick-modal-content,
+        .fcc-quick-modal.is-curriculum .fcc-quick-modal-content,
+        .fcc-quick-modal.is-calendar .fcc-quick-modal-content {
+          display: flex;
+          flex: 1;
+          flex-direction: column;
         }
 
         .fcc-quick-modal-header {
@@ -566,6 +911,13 @@ export default function TarjetaUsuario({
           justify-content: space-between;
           gap: 16px;
           margin-bottom: 22px;
+        }
+
+        .fcc-quick-modal.is-schedule .fcc-quick-modal-header,
+        .fcc-quick-modal.is-curriculum .fcc-quick-modal-header,
+        .fcc-quick-modal.is-calendar .fcc-quick-modal-header {
+          align-items: center;
+          margin-bottom: 14px;
         }
 
         .fcc-quick-modal-title-wrap {
@@ -604,22 +956,204 @@ export default function TarjetaUsuario({
           line-height: 1.5;
         }
 
+        .fcc-schedule-modal-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 12px;
+          flex: 0 0 auto;
+        }
+
+        .fcc-schedule-header-button,
+        .fcc-schedule-customize,
         .fcc-quick-modal-close {
           flex: 0 0 auto;
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 999px;
+          font-size: 0.9rem;
+          font-weight: 900;
+          transition:
+            transform 180ms ease,
+            color 180ms ease,
+            border-color 180ms ease,
+            background 180ms ease;
+        }
+
+        .fcc-schedule-header-button,
+        .fcc-schedule-customize {
           width: 40px;
           height: 40px;
-          display: grid;
-          place-items: center;
-          border-radius: 999px;
+          color: #ffffff;
+          background: var(--fcc-premium-button);
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 22%, transparent);
+          box-shadow: 0 14px 28px color-mix(in srgb, var(--fcc-premium-accent) 16%, transparent);
+        }
+
+        .fcc-schedule-header-button {
           color: var(--fcc-user-soft-text);
           background: color-mix(in srgb, var(--fcc-premium-surface) 86%, transparent);
           border: 1px solid var(--fcc-user-card-border);
           box-shadow: 0 12px 24px color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent);
         }
 
-        .fcc-quick-modal-close:hover {
+        .theme-oscuro .fcc-schedule-customize {
+          color: #050505;
+        }
+
+        .fcc-quick-modal-close {
+          width: 40px;
+          height: 40px;
+          color: var(--fcc-user-soft-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface) 86%, transparent);
+          border: 1px solid var(--fcc-user-card-border);
+          box-shadow: 0 12px 24px color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent);
+        }
+
+        .fcc-quick-modal-close.with-label {
+          width: auto;
+          padding: 0 14px;
+        }
+
+        .fcc-quick-modal-close:hover,
+        .fcc-schedule-header-button:hover,
+        .fcc-schedule-customize:hover {
           color: var(--fcc-user-text);
           transform: translateY(-1px);
+        }
+
+        .fcc-schedule-customize:hover {
+          color: #ffffff;
+          filter: saturate(1.08);
+        }
+
+        .theme-oscuro .fcc-schedule-customize:hover {
+          color: #050505;
+        }
+
+        .fcc-schedule-header-button:disabled,
+        .fcc-quick-modal-close:disabled,
+        .fcc-quick-modal-backdrop:disabled,
+        .fcc-schedule-customize[aria-disabled="true"] {
+          cursor: wait;
+          pointer-events: none;
+          opacity: 0.72;
+        }
+
+        .fcc-quick-modal-loading {
+          position: absolute;
+          inset: 0;
+          z-index: 18;
+          display: grid;
+          place-items: center;
+          gap: 10px;
+          text-align: center;
+          border-radius: inherit;
+          color: var(--fcc-user-text);
+          background:
+            radial-gradient(
+              circle at 50% 42%,
+              color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent),
+              transparent 34%
+            ),
+            color-mix(in srgb, var(--fcc-premium-surface-strong) 72%, transparent);
+          backdrop-filter: blur(8px);
+        }
+
+        .fcc-quick-modal-loading strong {
+          color: var(--fcc-user-text);
+          font-size: 0.92rem;
+          font-weight: 950;
+        }
+
+        .fcc-quick-modal-spinner {
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 3px solid color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+          border-top-color: var(--fcc-premium-accent);
+          animation: fcc-quick-modal-spin 780ms linear infinite;
+        }
+
+        @keyframes fcc-quick-modal-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .fcc-schedule-confirm {
+          position: fixed;
+          inset: 0;
+          z-index: 140;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          background: rgba(2, 8, 23, 0.28);
+          backdrop-filter: blur(4px);
+        }
+
+        .fcc-schedule-confirm-card {
+          width: min(360px, calc(100vw - 32px));
+          display: grid;
+          gap: 10px;
+          border-radius: 22px;
+          padding: 16px;
+          color: var(--fcc-user-text);
+          background:
+            radial-gradient(
+              circle at 0% 0%,
+              color-mix(in srgb, var(--fcc-premium-accent) 10%, transparent),
+              transparent 66%
+            ),
+            var(--fcc-premium-surface-strong);
+          border: 1px solid var(--fcc-user-card-border);
+          box-shadow: 0 24px 54px rgba(15, 23, 42, 0.18);
+          text-align: center;
+        }
+
+        .fcc-schedule-confirm-card strong {
+          font-size: 1rem;
+          font-weight: 950;
+        }
+
+        .fcc-schedule-confirm-card span {
+          color: var(--fcc-user-muted);
+          font-size: 0.84rem;
+          font-weight: 760;
+          line-height: 1.35;
+        }
+
+        .fcc-schedule-confirm-card div {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 2px;
+        }
+
+        .fcc-schedule-confirm-card button {
+          min-height: 38px;
+          border-radius: 14px;
+          border: 1px solid var(--fcc-user-card-border);
+          font-size: 0.84rem;
+          font-weight: 900;
+        }
+
+        .fcc-schedule-confirm-card button:first-child {
+          color: var(--fcc-user-soft-text);
+          background: color-mix(in srgb, var(--fcc-premium-surface) 90%, transparent);
+        }
+
+        .fcc-schedule-confirm-card button:last-child {
+          color: #ffffff;
+          background: var(--fcc-premium-button);
+          border-color: color-mix(in srgb, var(--fcc-premium-accent) 28%, transparent);
+        }
+
+        .theme-oscuro .fcc-schedule-confirm-card button:last-child {
+          color: #050505;
         }
 
         .fcc-quick-modal-placeholder {
@@ -637,6 +1171,214 @@ export default function TarjetaUsuario({
         .fcc-quick-modal-placeholder span {
           color: var(--fcc-user-accent);
           font-weight: 900;
+        }
+
+        .fcc-schedule-quick {
+          position: relative;
+          min-height: 0;
+          display: flex;
+          flex: 1;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .fcc-schedule-scroll {
+          min-height: 0;
+          overflow: hidden;
+          overscroll-behavior: contain;
+          border-radius: 22px;
+          background:
+            radial-gradient(
+              circle at 8% 8%,
+              color-mix(in srgb, var(--fcc-premium-accent) 9%, transparent),
+              transparent 28%
+            ),
+            radial-gradient(
+              circle at 92% 92%,
+              color-mix(in srgb, var(--fcc-premium-cyan) 9%, transparent),
+              transparent 30%
+            ),
+            linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--fcc-premium-surface) 88%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 92%, transparent)
+            );
+          border: 1px solid var(--fcc-user-card-border);
+          box-shadow:
+            inset 0 1px 0 color-mix(in srgb, var(--fcc-premium-surface-strong) 70%, transparent),
+            inset 0 -24px 48px color-mix(in srgb, var(--fcc-premium-accent) 4%, transparent);
+        }
+
+        .fcc-schedule-grid {
+          --fcc-schedule-row-height: clamp(52px, 7.6vw, 70px);
+
+          position: relative;
+          display: grid;
+          width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          border-radius: 21px;
+          font-family: system-ui, sans-serif;
+        }
+
+        .fcc-schedule-cell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-right: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 13%, transparent);
+          border-bottom: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 13%, transparent);
+        }
+
+        .fcc-schedule-head {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          color: var(--fcc-user-text);
+          background:
+            linear-gradient(
+              180deg,
+              color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, transparent),
+              color-mix(in srgb, var(--fcc-premium-surface-soft) 88%, transparent)
+            );
+          font-size: clamp(0.62rem, 1.25vw, 0.9rem);
+          font-weight: 950;
+          box-shadow: 0 10px 22px color-mix(in srgb, var(--fcc-premium-accent) 5%, transparent);
+        }
+
+        .fcc-schedule-hour-head,
+        .fcc-schedule-hour-cell {
+          position: sticky;
+          left: 0;
+          z-index: 11;
+        }
+
+        .fcc-schedule-hour-cell {
+          color: var(--fcc-user-muted);
+          background: color-mix(in srgb, var(--fcc-premium-surface) 90%, transparent);
+          font-size: clamp(0.58rem, 1.15vw, 0.84rem);
+          font-weight: 950;
+        }
+
+        .fcc-schedule-hour-head {
+          z-index: 12;
+          color: var(--fcc-user-muted);
+        }
+
+        .fcc-schedule-base-cell {
+          background: color-mix(in srgb, var(--fcc-premium-surface) 86%, transparent);
+        }
+
+        .fcc-schedule-day-short {
+          display: none;
+        }
+
+        .fcc-schedule-subject {
+          z-index: 20;
+          margin: 6px;
+          min-width: 0;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          text-align: center;
+          border-radius: 16px;
+          padding: 8px;
+          line-height: 1.12;
+          box-shadow:
+            0 10px 18px rgba(15, 23, 42, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.24),
+            inset 0 -1px 0 rgba(15, 23, 42, 0.06);
+        }
+
+        .theme-oscuro .fcc-schedule-subject {
+          box-shadow:
+            0 14px 26px rgba(0, 0, 0, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.18),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        }
+
+        .fcc-schedule-subject strong {
+          max-width: 100%;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          font-size: clamp(0.58rem, 1.1vw, 0.92rem);
+          font-weight: 950;
+          line-height: 1.02;
+        }
+
+        .fcc-schedule-subject div {
+          max-width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          opacity: 0.94;
+        }
+
+        .fcc-schedule-subject span {
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: clamp(0.48rem, 0.95vw, 0.72rem);
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .fcc-schedule-scroll.is-loading {
+          min-height: min(520px, 58dvh);
+          display: grid;
+          place-items: center;
+        }
+
+        .fcc-schedule-empty.stable {
+          min-height: min(480px, 52dvh);
+          width: 100%;
+        }
+
+        .fcc-schedule-empty,
+        .fcc-schedule-empty-inside {
+          min-height: 220px;
+          display: grid;
+          place-items: center;
+          text-align: center;
+          border-radius: 22px;
+          color: var(--fcc-user-muted);
+          background: var(--fcc-user-modal-placeholder-bg);
+          border: 1px dashed var(--fcc-user-modal-placeholder-border);
+        }
+
+        .fcc-schedule-empty span {
+          color: var(--fcc-user-accent);
+          font-weight: 900;
+        }
+
+        .fcc-schedule-empty-inside {
+          z-index: 30;
+          grid-column: 2 / -1;
+          grid-row: 2 / span 2;
+          align-self: stretch;
+          justify-self: stretch;
+          margin: 10px;
+          padding: 22px;
+        }
+
+        .fcc-schedule-empty-inside strong {
+          color: var(--fcc-user-text);
+          font-size: 1rem;
+          font-weight: 950;
+        }
+
+        .fcc-schedule-empty-inside span {
+          margin-top: 8px;
+          max-width: 360px;
+          color: var(--fcc-user-muted);
+          font-size: 0.88rem;
+          font-weight: 700;
+          line-height: 1.45;
         }
 
         @media (max-width: 1279px) {
@@ -729,6 +1471,81 @@ export default function TarjetaUsuario({
           }
         }
 
+        @media (max-width: 640px) {
+          .fcc-quick-modal-overlay {
+            align-items: stretch;
+            padding: 10px;
+          }
+
+          .fcc-quick-modal,
+          .fcc-quick-modal.is-schedule,
+          .fcc-quick-modal.is-curriculum,
+          .fcc-quick-modal.is-calendar {
+            width: 100%;
+            max-height: calc(100dvh - 20px);
+            border-radius: 24px;
+            padding: 14px;
+          }
+
+          .fcc-quick-modal-header {
+            gap: 10px;
+          }
+
+          .fcc-quick-modal.is-schedule .fcc-quick-modal-header,
+          .fcc-quick-modal.is-curriculum .fcc-quick-modal-header,
+          .fcc-quick-modal.is-calendar .fcc-quick-modal-header {
+            align-items: flex-start;
+          }
+
+          .fcc-quick-modal-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+          }
+
+          .fcc-schedule-modal-actions {
+            align-items: center;
+            gap: 8px;
+          }
+
+          .fcc-schedule-customize,
+          .fcc-quick-modal-close {
+            width: 36px;
+            height: 36px;
+            min-height: 36px;
+          }
+
+          .fcc-schedule-quick {
+            }
+
+          .fcc-schedule-grid {
+            --fcc-schedule-row-height: clamp(44px, 13vw, 62px);
+            min-width: 0;
+          }
+
+          .fcc-schedule-day-full {
+            display: none;
+          }
+
+          .fcc-schedule-day-short {
+            display: inline;
+          }
+
+          .fcc-schedule-subject {
+            margin: 4px;
+            border-radius: 14px;
+            padding: 6px;
+          }
+
+          .fcc-schedule-subject strong {
+            font-size: 0.74rem;
+          }
+
+          .fcc-schedule-subject span {
+            font-size: 0.6rem;
+          }
+        }
+
         @media (max-width: 380px) {
           .fcc-user-avatar-stage {
             --fcc-user-avatar-render-scale: 0.68;
@@ -803,7 +1620,7 @@ export default function TarjetaUsuario({
                     className="fcc-quick-action"
                     onClick={() => setAccionAbierta("mapa")}
                   >
-                    <Map size={17} strokeWidth={2.3} />
+                    <MapIcon size={17} strokeWidth={2.3} />
                     <span>Mapa curricular</span>
                   </button>
                 </>
@@ -813,44 +1630,7 @@ export default function TarjetaUsuario({
         </div>
       </div>
 
-      {modalActual && IconoModal && (
-        <div
-          className="fcc-quick-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={modalActual.titulo}
-        >
-          <div className="fcc-quick-modal">
-            <div className="fcc-quick-modal-content">
-              <div className="fcc-quick-modal-header">
-                <div className="fcc-quick-modal-title-wrap">
-                  <span className="fcc-quick-modal-icon">
-                    <IconoModal size={22} strokeWidth={2.3} />
-                  </span>
-
-                  <div>
-                    <h3>{modalActual.titulo}</h3>
-                    <p>{modalActual.descripcion}</p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="fcc-quick-modal-close"
-                  onClick={() => setAccionAbierta(null)}
-                  aria-label="Cerrar"
-                >
-                  <X size={20} strokeWidth={2.4} />
-                </button>
-              </div>
-
-              <div className="fcc-quick-modal-placeholder">
-                <span>Vista rápida preparada</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {mounted && modalRapido && createPortal(modalRapido, document.body)}
     </>
   );
 }
