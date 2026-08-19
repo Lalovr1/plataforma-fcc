@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { aplicarXP } from "@/lib/aplicarXP";
 
 interface Props {
   logro: {
@@ -20,13 +19,7 @@ export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
     setVisible(true);
   }, []);
 
-  const cerrarModal = async () => {
-    const userId = localStorage.getItem("user_id");
-
-    if (userId) {
-      await aplicarXP(userId, logro.xp_recompensa);
-    }
-
+  const cerrarModal = () => {
     window.dispatchEvent(new Event("logroCerrado"));
 
     setVisible(false);

@@ -113,36 +113,6 @@ export default function LoginPage() {
     const correoLimpio = correo.trim().toLowerCase();
 
     try {
-      const { data: estadoData, error: estadoError } = await supabase.rpc(
-        "estado_login_usuario",
-        {
-          correo_input: correoLimpio,
-        }
-      );
-
-      if (estadoError) {
-        console.error(estadoError);
-        mostrarMensaje(
-          "No se pudo validar el estado de tu cuenta. Intenta nuevamente."
-        );
-        return;
-      }
-
-      if (estadoData === "no_registrado") {
-        mostrarMensaje(
-          "Este correo no está registrado. Verifica que lo escribiste bien o regístrate para crear una cuenta."
-        );
-        return;
-      }
-
-      if (estadoData === "no_confirmado") {
-        mostrarMensaje(
-          "Tu cuenta existe, pero todavía no has confirmado tu correo. Revisa tu bandeja de entrada o solicita un nuevo correo de confirmación.",
-          "info",
-          { reenviarConfirmacion: true }
-        );
-        return;
-      }
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: correoLimpio,
@@ -150,9 +120,12 @@ export default function LoginPage() {
       });
 
       if (error) {
-        const mensajeError = error.message?.toLowerCase() || "";
+        const codigoError = (error as any).code ?? "";
 
-        if (mensajeError.includes("rate limit")) {
+        if (
+          codigoError === "over_request_rate_limit" ||
+          (error as any).status === 429
+        ) {
           mostrarMensaje(
             "Has intentado iniciar sesión demasiadas veces en poco tiempo. Espera unos minutos antes de volver a intentarlo.",
             "info"
@@ -160,9 +133,18 @@ export default function LoginPage() {
           return;
         }
 
-        if (mensajeError.includes("invalid login credentials")) {
+        if (codigoError === "email_not_confirmed") {
           mostrarMensaje(
-            "La contraseña es incorrecta. Intenta nuevamente o restablécela si no la recuerdas.",
+            "Tu cuenta existe, pero todavía no has confirmado tu correo. Revisa tu bandeja de entrada o solicita un nuevo correo de confirmación.",
+            "info",
+            { reenviarConfirmacion: true }
+          );
+          return;
+        }
+
+        if (codigoError === "invalid_credentials") {
+          mostrarMensaje(
+            "El correo o la contraseña no son correctos. Verifica tus datos o restablece tu contraseña si no la recuerdas.",
             "error",
             { restablecer: true }
           );

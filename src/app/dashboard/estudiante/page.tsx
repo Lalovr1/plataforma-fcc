@@ -118,18 +118,6 @@ export default async function EstudianteDashboard() {
       progresoGuardado: number;
     }[];
 
-  const actualizacionesPendientes = mappedCourses
-    .filter((curso) => curso.progresoGuardado !== curso.progress)
-    .map((curso) =>
-      supabase
-        .from("progreso")
-        .update({ progreso: curso.progress })
-        .eq("id", curso.progresoId)
-    );
-
-  if (actualizacionesPendientes.length > 0) {
-    await Promise.all(actualizacionesPendientes);
-  }
 
   mappedCourses = mappedCourses
     .map(({ progresoGuardado, ...curso }) => curso)

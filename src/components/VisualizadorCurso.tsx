@@ -80,7 +80,7 @@ type VisualizadorCursoCache = {
   contextoRankingCurso: ContextoRankingCurso;
 };
 
-const CURSO_CACHE_KEY_BASE = "fcc_academy_visualizador_curso_v1";
+const CURSO_CACHE_KEY_BASE = "fcc_academy_visualizador_curso_v2";
 
 const getCursoCacheKey = (materiaId: string, userId: string, rol: Rol) =>
   `${CURSO_CACHE_KEY_BASE}_${rol}_${userId}_${materiaId}`;
@@ -460,93 +460,25 @@ export default function VisualizadorCurso({
           });
         }
 
-              let progresoQuery = supabase
-                .from("progreso")
-                .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
-                .eq("materia_id", materiaId);
+              const { data: rankingSeguro, error: rankingError } =
+                await supabase.rpc("obtener_top_ranking_estudiante_curso", {
+                  p_materia_id: materiaId,
+                });
 
-              if (inscripcionActual && !inscripcionActual.es_visitante) {
-                progresoQuery = progresoQuery
-                  .eq("carrera_id", inscripcionActual.carrera_id)
-                  .eq("periodo_id", inscripcionActual.periodo_id)
-                  .eq("seccion_id", inscripcionActual.seccion_id)
-                  .eq("es_visitante", false);
-              }
-
-              const { data: progresoRanking } = await progresoQuery;
-
-              const usuariosRankingIds = Array.from(
-                new Set((progresoRanking || []).map((p: any) => p.usuario_id))
-              );
-
-              if (usuariosRankingIds.length === 0) {
+              if (rankingError) {
+                console.error(
+                  "Error cargando ranking seguro del curso:",
+                  rankingError
+                );
                 setRankingTopCurso([]);
               } else {
-                const { data: usuariosRanking } = await supabase
-                  .from("usuarios")
-                  .select("id, nombre, rol")
-                  .in("id", usuariosRankingIds)
-                  .eq("rol", "estudiante");
-
-                const estudiantesIds = (usuariosRanking || []).map((u: any) => u.id);
-
-                const { data: quizzesRanking } = await supabase
-                  .from("quizzes")
-                  .select("id, xp")
-                  .eq("materia_id", materiaId);
-
-                const quizIds = (quizzesRanking || []).map((q: any) => q.id);
-                const xpPorQuiz = Object.fromEntries(
-                  (quizzesRanking || []).map((q: any) => [q.id, Number(q.xp ?? 0)])
+                setRankingTopCurso(
+                  ((rankingSeguro as any[]) ?? []).map((row) => ({
+                    usuario_id: row.usuario_id,
+                    nombre: row.nombre ?? "Sin nombre",
+                    puntos: Number(row.puntos ?? 0),
+                  }))
                 );
-
-                if (estudiantesIds.length === 0 || quizIds.length === 0) {
-                  setRankingTopCurso(
-                    (usuariosRanking || [])
-                      .map((u: any) => ({
-                        usuario_id: u.id,
-                        nombre: u.nombre ?? "Sin nombre",
-                        puntos: 0,
-                      }))
-                      .slice(0, 3)
-                  );
-                } else {
-                  const { data: intentosRanking } = await supabase
-                    .from("intentos_quiz")
-                    .select("quiz_id, usuario_id, puntaje")
-                    .in("usuario_id", estudiantesIds)
-                    .in("quiz_id", quizIds);
-
-                  const mejoresPorUsuarioQuiz: Record<string, Record<string, number>> = {};
-
-                  (intentosRanking || []).forEach((intento: any) => {
-                    const uid = intento.usuario_id;
-                    const qid = intento.quiz_id;
-                    const puntaje = Number(intento.puntaje ?? 0);
-                    const xpQuiz = xpPorQuiz[qid] ?? 0;
-                    const puntos = Math.round((xpQuiz * puntaje) / 100);
-
-                    if (!mejoresPorUsuarioQuiz[uid]) mejoresPorUsuarioQuiz[uid] = {};
-                    mejoresPorUsuarioQuiz[uid][qid] = Math.max(
-                      mejoresPorUsuarioQuiz[uid][qid] ?? 0,
-                      puntos
-                    );
-                  });
-
-                  const top = (usuariosRanking || [])
-                    .map((u: any) => ({
-                      usuario_id: u.id,
-                      nombre: u.nombre ?? "Sin nombre",
-                      puntos: Object.values(mejoresPorUsuarioQuiz[u.id] || {}).reduce(
-                        (acc, puntos) => acc + puntos,
-                        0
-                      ),
-                    }))
-                    .sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
-                    .slice(0, 3);
-
-                  setRankingTopCurso(top);
-                }
               }
             } else {
               setProgreso(0);

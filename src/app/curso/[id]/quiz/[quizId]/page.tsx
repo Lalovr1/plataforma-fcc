@@ -16,7 +16,11 @@ import LayoutGeneral from "@/components/LayoutGeneral";
 import "katex/dist/katex.min.css";
 
 type Pregunta = { id: string; enunciado: string };
-type Respuesta = { id: string; texto: string; es_correcta: boolean };
+type Respuesta = {
+  id: string;
+  texto: string;
+  es_correcta?: boolean;
+};
 
 type QuizInfo = {
   id: string;
@@ -44,7 +48,17 @@ type QuizUserCache = {
   esPreview: boolean;
 };
 
-const STATIC_CACHE_KEY_BASE = "fcc_academy_quiz_static_v1";
+type RetroalimentacionIntento = {
+  pregunta_id: string | null;
+  respuesta_id: string | null;
+  orden_pregunta: number;
+  es_correcta: boolean;
+  respuesta_seleccionada_texto: string | null;
+  respuesta_correcta_texto: string | null;
+  explicacion: string | null;
+};
+
+const STATIC_CACHE_KEY_BASE = "fcc_academy_quiz_static_v3";
 const USER_CACHE_KEY_BASE = "fcc_academy_quiz_user_v1";
 
 function getStaticCacheKey(quizId: string) {
@@ -173,6 +187,46 @@ export default function ResolverQuizPage() {
 
   const [mejorPuntaje, setMejorPuntaje] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [retroalimentacionIntento, setRetroalimentacionIntento] = useState<
+    Record<string, RetroalimentacionIntento>
+  >({});
+  const [ultimoIntentoId, setUltimoIntentoId] = useState<string | null>(null);
+  const [resultadoHistorico, setResultadoHistorico] = useState(false);
+  const [cargandoResultadoAnterior, setCargandoResultadoAnterior] = useState(false);
+
+  const cargarRetroalimentacionIntento = async (intentoId: string) => {
+    const { data, error } = await supabase.rpc(
+      "obtener_retroalimentacion_intento",
+      {
+        p_intento_id: intentoId,
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return ((data as RetroalimentacionIntento[]) ?? []).map((item) => ({
+      ...item,
+      es_correcta: Boolean(item.es_correcta),
+      orden_pregunta: Number(item.orden_pregunta ?? 0),
+    }));
+  };
+
+  const aplicarRetroalimentacionIntento = (
+    items: RetroalimentacionIntento[]
+  ) => {
+    const mapa: Record<string, RetroalimentacionIntento> = {};
+
+    items.forEach((item) => {
+      if (item.pregunta_id) {
+        mapa[item.pregunta_id] = item;
+      }
+    });
+
+    setRetroalimentacionIntento(mapa);
+    return mapa;
+  };
 
   useLayoutEffect(() => {
     if (!quizId) return;
@@ -230,14 +284,13 @@ export default function ResolverQuizPage() {
         const currentUserId = userData.user.id;
         setUserId(currentUserId);
 
-        const paramsUrl = new URLSearchParams(window.location.search);
-        const previewPorUrl = paramsUrl.get("preview") === "1";
 
         const [
           { data: perfil },
           { data: qz, error: quizError },
           { count: intentosCount },
           { data: bestIntento },
+          { data: ultimoIntento },
           { data: preg, error: preguntasError },
         ] = await Promise.all([
           supabase
@@ -267,6 +320,14 @@ export default function ResolverQuizPage() {
             .limit(1),
 
           supabase
+            .from("intentos_quiz")
+            .select("id,puntaje,numero_intento")
+            .eq("quiz_id", quizId)
+            .eq("usuario_id", currentUserId)
+            .order("created_at", { ascending: false })
+            .limit(1),
+
+          supabase
             .from("preguntas")
             .select("id,enunciado")
             .eq("quiz_id", quizId)
@@ -282,18 +343,15 @@ export default function ResolverQuizPage() {
         }
 
         const rolUser = perfil?.rol || "estudiante";
-        const preview = rolUser === "profesor" || previewPorUrl;
+        const preview = rolUser === "profesor";
         const preguntasData = (preg as Pregunta[]) ?? [];
         const mapa: Record<string, Respuesta[]> = {};
 
         if (preguntasData.length > 0) {
-          const preguntaIds = preguntasData.map((p) => p.id);
-
-          const { data: respuestasData, error: respuestasError } = await supabase
-            .from("respuestas")
-            .select("id,texto,es_correcta,orden,pregunta_id")
-            .in("pregunta_id", preguntaIds)
-            .order("orden", { ascending: true });
+          const { data: respuestasData, error: respuestasError } =
+            await supabase.rpc("obtener_respuestas_quiz", {
+              p_quiz_id: quizId,
+            });
 
           if (respuestasError) {
             console.error("Error cargando respuestas:", respuestasError);
@@ -311,13 +369,29 @@ export default function ResolverQuizPage() {
             mapa[r.pregunta_id].push({
               id: r.id,
               texto: r.texto,
-              es_correcta: r.es_correcta,
+              ...(rolUser === "profesor"
+                ? { es_correcta: Boolean(r.es_correcta) }
+                : {}),
             });
           });
         }
 
         const intentos = intentosCount || 0;
         const best = bestIntento?.[0]?.puntaje || 0;
+        const ultimo = ultimoIntento?.[0] ?? null;
+        const intentosMaxActual = Number(
+          (qz as QuizInfo | null)?.intentos_max ?? 1
+        );
+
+        const puedeConsultarUltimo =
+          !preview &&
+          Boolean(ultimo?.id) &&
+          (Number(ultimo?.puntaje ?? 0) === 100 ||
+            Number(ultimo?.numero_intento ?? 0) >= intentosMaxActual);
+
+        setUltimoIntentoId(
+          puedeConsultarUltimo ? String(ultimo.id) : null
+        );
 
         setRol(rolUser);
         setEsPreview(preview);
@@ -385,6 +459,8 @@ export default function ResolverQuizPage() {
   const iniciar = () => {
     setEnvioAutomaticoPorTiempo(false);
     setMostrarAvisoTiempo(false);
+    setRetroalimentacionIntento({});
+    setResultadoHistorico(false);
 
     if (verificandoIntentos && !esPreview) {
       alert("Espera un momento. Estamos verificando tus intentos disponibles.");
@@ -451,7 +527,9 @@ export default function ResolverQuizPage() {
       );
 
       if (primeraSinResponder !== -1) {
-        alert(`Responde la pregunta ${primeraSinResponder + 1} antes de enviar el quiz.`);
+        alert(
+          `Responde la pregunta ${primeraSinResponder + 1} antes de enviar el quiz.`
+        );
         return;
       }
     }
@@ -459,170 +537,243 @@ export default function ResolverQuizPage() {
     enviadoRef.current = true;
     setEnvioAutomaticoPorTiempo(auto);
 
-    const total = preguntas.length;
-    let correctas = 0;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
 
-    preguntas.forEach((p) => {
-      const respuesta = respuestas[p.id]?.find(
-        (r) => r.id === (seleccionadasActuales[p.id] || "")
-      );
+    if (esPreview) {
+      const total = preguntas.length;
+      let correctas = 0;
 
-      if (respuesta?.es_correcta) correctas++;
-    });
+      preguntas.forEach((p) => {
+        const respuesta = respuestas[p.id]?.find(
+          (r) => r.id === (seleccionadasActuales[p.id] || "")
+        );
 
-    setResultado({ correctas, total });
-    setEstado("finalizado");
+        if (respuesta?.es_correcta) {
+          correctas++;
+        }
+      });
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
+      setResultado({
+        correctas,
+        total,
+      });
 
-    if (esPreview || !userId || !quizInfo) return;
-
-    if (intentosRealizados >= (quizInfo.intentos_max ?? 1)) {
-      alert("❌ Ya alcanzaste el número máximo de intentos para este quiz.");
+      setEstado("finalizado");
       return;
     }
 
-    const puntaje = total > 0 ? Math.round((correctas / total) * 100) : 0;
-
-    const { data: bestPrev } = await supabase
-      .from("intentos_quiz")
-      .select("puntaje")
-      .eq("quiz_id", quizId)
-      .eq("usuario_id", userId)
-      .order("puntaje", { ascending: false })
-      .limit(1);
-
-    const prevBest = bestPrev?.[0]?.puntaje || 0;
-
-    const intentosDespuesDeEste = intentosRealizados + 1;
-    const quizCompletado =
-      puntaje === 100 || intentosDespuesDeEste >= (quizInfo.intentos_max ?? 1);
-
-    await supabase.from("intentos_quiz").insert({
-      quiz_id: quizId,
-      usuario_id: userId,
-      puntaje,
-      completado: quizCompletado,
-    });
-
-    const nuevoMejor = Math.max(prevBest, puntaje);
-
-    setIntentosRealizados(intentosDespuesDeEste);
-    setMejorPuntaje(nuevoMejor);
-
-    guardarUserCache(userId, quizId, {
-      rol,
-      intentosRealizados: intentosDespuesDeEste,
-      mejorPuntaje: nuevoMejor,
-      esPreview,
-    });
-
-    const xpQuiz = quizInfo.xp ?? 0;
-    const xpNuevo = Math.round((xpQuiz * puntaje) / 100);
-    const xpPrev = Math.round((xpQuiz * prevBest) / 100);
-    const delta = Math.max(xpNuevo - xpPrev, 0);
-
-    if (delta > 0) {
-      const { data, error } = await supabase.rpc("sumar_xp", {
-        user_id: userId,
-        xp_extra: delta,
-      });
-
-      if (error) {
-        console.error("Error al sumar XP:", error);
-      } else if (data?.nuevo_nivel === true) {
-        window.dispatchEvent(
-          new CustomEvent("nivelSubido", { detail: data.nivel_actual })
-        );
-      }
+    if (!userId || !quizInfo) {
+      enviadoRef.current = false;
+      alert("No se pudo identificar al usuario o al quiz.");
+      return;
     }
-
-    setXpGanado(Math.max(xpNuevo, xpPrev));
-
-    const { data: quizzesMateria } = await supabase
-      .from("quizzes")
-      .select("id,intentos_max")
-      .eq("materia_id", materiaId);
-
-    const totalQuizzes = (quizzesMateria || []).length;
-    const quizIdsMateria = (quizzesMateria || []).map((q) => q.id);
-
-    let progreso = 0;
-
-    if (quizIdsMateria.length > 0) {
-      const { data: intentosUsuario } = await supabase
-        .from("intentos_quiz")
-        .select("quiz_id,puntaje")
-        .eq("usuario_id", userId)
-        .in("quiz_id", quizIdsMateria);
-
-      const completadosSet = new Set<string>();
-
-      for (const quizMateria of quizzesMateria || []) {
-        const intentosDelQuiz = (intentosUsuario || []).filter(
-          (i) => i.quiz_id === quizMateria.id
-        );
-
-        const tiene100 = intentosDelQuiz.some((i) => i.puntaje === 100);
-        const agotoIntentos =
-          intentosDelQuiz.length >= (quizMateria.intentos_max ?? 1);
-
-        if (tiene100 || agotoIntentos) {
-          completadosSet.add(quizMateria.id);
-        }
-      }
-
-      progreso =
-        totalQuizzes > 0
-          ? Math.min(100, Math.round((completadosSet.size / totalQuizzes) * 100))
-          : 0;
-    }
-
-    await supabase
-      .from("progreso")
-      .update({ progreso })
-      .eq("usuario_id", userId)
-      .eq("materia_id", materiaId);
-
-    limpiarCachesDerivados();
 
     try {
-      const { verificarLogros } = await import("@/utils/verificarLogros");
-      const porcentaje = puntaje;
+      const { data, error } = await supabase.rpc(
+        "finalizar_intento_quiz",
+        {
+          p_quiz_id: quizId,
+          p_respuestas: seleccionadasActuales,
+          p_envio_automatico: auto,
+        }
+      );
 
-      if (porcentaje === 100) {
-        const { count: completados100 } = await supabase
-          .from("intentos_quiz")
-          .select("*", { count: "exact" })
-          .eq("usuario_id", userId)
-          .eq("completado", true)
-          .eq("puntaje", 100);
-
-        await verificarLogros(userId, "quiz_100", completados100 ?? 0);
+      if (error) {
+        throw error;
       }
 
-      if (porcentaje >= 75) {
-        const { count: completados75 } = await supabase
-          .from("intentos_quiz")
-          .select("*", { count: "exact" })
-          .eq("usuario_id", userId)
-          .eq("completado", true)
-          .gte("puntaje", 75);
-
-        await verificarLogros(userId, "quiz_75", completados75 ?? 0);
+      if (!data) {
+        throw new Error("No se recibió el resultado del intento.");
       }
 
-      if (progreso === 100) {
-        const { count: cursosCompletos } = await supabase
+      const resultadoServidor = data as {
+        intento_id: string;
+        numero_intento: number;
+        intentos_max: number;
+        correctas: number;
+        total: number;
+        puntaje: number;
+        completado: boolean;
+        xp_quiz: number;
+        xp_agregado: number;
+        xp_total: number;
+        nivel_actual: number;
+        nuevo_nivel: boolean;
+      };
+
+      const nuevoMejor = Math.max(
+        mejorPuntaje,
+        resultadoServidor.puntaje
+      );
+
+      setResultado({
+        correctas: resultadoServidor.correctas,
+        total: resultadoServidor.total,
+      });
+
+      setIntentosRealizados(resultadoServidor.numero_intento);
+      setMejorPuntaje(nuevoMejor);
+      setXpGanado(resultadoServidor.xp_quiz);
+      setResultadoHistorico(false);
+
+      const puedeVerExplicaciones =
+        resultadoServidor.puntaje === 100 ||
+        resultadoServidor.numero_intento >= resultadoServidor.intentos_max;
+
+      if (puedeVerExplicaciones) {
+        try {
+          const items = await cargarRetroalimentacionIntento(
+            resultadoServidor.intento_id
+          );
+          aplicarRetroalimentacionIntento(items);
+          setUltimoIntentoId(resultadoServidor.intento_id);
+        } catch (feedbackError) {
+          console.warn(
+            "No se pudieron cargar las explicaciones del intento:",
+            feedbackError
+          );
+          setRetroalimentacionIntento({});
+        }
+      } else {
+        setRetroalimentacionIntento({});
+      }
+
+      guardarUserCache(userId, quizId, {
+        rol,
+        intentosRealizados: resultadoServidor.numero_intento,
+        mejorPuntaje: nuevoMejor,
+        esPreview: false,
+      });
+
+      setEstado("finalizado");
+
+      window.dispatchEvent(new Event("xpActualizada"));
+
+      if (resultadoServidor.nuevo_nivel) {
+        window.dispatchEvent(
+          new CustomEvent("nivelSubido", {
+            detail: resultadoServidor.nivel_actual,
+          })
+        );
+      }
+
+      limpiarCachesDerivados();
+
+      try {
+        const { verificarLogros } = await import(
+          "@/utils/verificarLogros"
+        );
+
+        const porcentaje = resultadoServidor.puntaje;
+
+        if (porcentaje === 100) {
+          const { count: completados100 } = await supabase
+            .from("intentos_quiz")
+            .select("*", { count: "exact", head: true })
+            .eq("usuario_id", userId)
+            .eq("completado", true)
+            .eq("puntaje", 100);
+
+          await verificarLogros(
+            userId,
+            "quiz_100",
+            completados100 ?? 0
+          );
+        }
+
+        if (porcentaje >= 75) {
+          const { count: completados75 } = await supabase
+            .from("intentos_quiz")
+            .select("*", { count: "exact", head: true })
+            .eq("usuario_id", userId)
+            .eq("completado", true)
+            .gte("puntaje", 75);
+
+          await verificarLogros(
+            userId,
+            "quiz_75",
+            completados75 ?? 0
+          );
+        }
+
+        const { data: progresoActual } = await supabase
           .from("progreso")
-          .select("*", { count: "exact" })
+          .select("progreso")
           .eq("usuario_id", userId)
-          .eq("progreso", 100);
+          .eq("materia_id", materiaId)
+          .maybeSingle();
 
-        await verificarLogros(userId, "curso", cursosCompletos ?? 0);
+        const progreso = Number(progresoActual?.progreso ?? 0);
+
+        if (progreso === 100) {
+          const { count: cursosCompletos } = await supabase
+            .from("progreso")
+            .select("*", { count: "exact", head: true })
+            .eq("usuario_id", userId)
+            .eq("progreso", 100);
+
+          await verificarLogros(
+            userId,
+            "curso",
+            cursosCompletos ?? 0
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Error al verificar logros del quiz:",
+          error
+        );
       }
+    } catch (error: any) {
+      console.error("Error finalizando intento:", error);
+
+      enviadoRef.current = false;
+
+      alert(
+        error?.message ||
+          "No se pudo registrar el intento. Intenta nuevamente."
+      );
+    }
+  };
+  const verUltimoResultado = async () => {
+    if (!ultimoIntentoId) return;
+
+    try {
+      setCargandoResultadoAnterior(true);
+
+      const items = await cargarRetroalimentacionIntento(ultimoIntentoId);
+
+      if (items.length === 0) {
+        alert("No se pudo recuperar el último resultado.");
+        return;
+      }
+
+      aplicarRetroalimentacionIntento(items);
+      const seleccionadasAnteriores: Record<string, string> = {};
+
+      items.forEach((item) => {
+        if (item.pregunta_id && item.respuesta_id) {
+          seleccionadasAnteriores[item.pregunta_id] = item.respuesta_id;
+        }
+      });
+
+      seleccionadasRef.current = seleccionadasAnteriores;
+      setSeleccionadas(seleccionadasAnteriores);
+
+      setResultado({
+        correctas: items.filter((item) => item.es_correcta).length,
+        total: items.length,
+      });
+
+      setResultadoHistorico(true);
+      setEstado("finalizado");
     } catch (error) {
-      console.error("Error al verificar logros del quiz o curso:", error);
+      console.warn("No se pudo cargar el último resultado:", error);
+      alert("No se pudo recuperar el último resultado.");
+    } finally {
+      setCargandoResultadoAnterior(false);
     }
   };
 
@@ -635,6 +786,8 @@ export default function ResolverQuizPage() {
     setResultado(null);
     setTimeLeftSec(null);
     setEnvioAutomaticoPorTiempo(false);
+    setRetroalimentacionIntento({});
+    setResultadoHistorico(false);
     setMostrarAvisoTiempo(false);
     enviadoRef.current = false;
   };
@@ -1140,6 +1293,82 @@ export default function ResolverQuizPage() {
         transform: translateY(-1px);
       }
 
+      .quiz-feedback-card {
+        display: grid;
+        gap: 9px;
+        margin-top: 14px;
+        border-radius: 16px;
+        padding: 13px 14px;
+        text-align: left;
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-feedback-card.correct {
+        background: color-mix(in srgb, var(--color-success) 7%, var(--quiz-surface));
+        border-color: color-mix(in srgb, var(--color-success) 24%, var(--quiz-border));
+      }
+
+      .quiz-feedback-card.incorrect {
+        background: color-mix(in srgb, #f59e0b 7%, var(--quiz-surface));
+        border-color: color-mix(in srgb, #f59e0b 24%, var(--quiz-border));
+      }
+
+      .quiz-feedback-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.78rem;
+        font-weight: 950;
+      }
+
+      .quiz-feedback-card.correct .quiz-feedback-head {
+        color: var(--color-success);
+      }
+
+      .quiz-feedback-card.incorrect .quiz-feedback-head {
+        color: #d97706;
+      }
+
+      .quiz-feedback-explanation {
+        display: grid;
+        gap: 5px;
+      }
+
+      .quiz-feedback-explanation-label {
+        color: var(--quiz-muted);
+        font-size: 0.7rem;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .quiz-feedback-text {
+        margin: 0;
+        color: var(--quiz-text-soft);
+        font-size: 0.88rem;
+        font-weight: 720;
+        line-height: 1.5;
+      }
+
+      .quiz-feedback-correct-answer {
+        display: grid;
+        gap: 4px;
+        border-top: 1px solid var(--quiz-border);
+        padding-top: 9px;
+      }
+
+      .quiz-feedback-correct-answer > span {
+        color: var(--quiz-muted);
+        font-size: 0.7rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .quiz-history-button {
+        margin-top: 4px;
+      }
+
       .quiz-actions {
         display: flex;
         justify-content: center;
@@ -1445,6 +1674,19 @@ export default function ResolverQuizPage() {
                   </p>
                 </div>
               )}
+
+              {sinMasIntentos && ultimoIntentoId && (
+                <button
+                  type="button"
+                  onClick={() => void verUltimoResultado()}
+                  disabled={cargandoResultadoAnterior}
+                  className="quiz-secondary-button quiz-history-button"
+                >
+                  {cargandoResultadoAnterior
+                    ? "Cargando resultado..."
+                    : "Ver último resultado y explicaciones"}
+                </button>
+              )}
             </div>
           </section>
         )}
@@ -1467,7 +1709,10 @@ export default function ResolverQuizPage() {
 
         {(estado === "en_curso" || estado === "finalizado") && (
           <div className="quiz-questions">
-            {preguntas.map((p, idx) => (
+            {preguntas.map((p, idx) => {
+              const feedback = retroalimentacionIntento[p.id];
+
+              return (
               <section
                 key={p.id}
                 className="quiz-card quiz-question-card no-diagonal"
@@ -1521,9 +1766,59 @@ export default function ResolverQuizPage() {
                       );
                     })}
                   </div>
+
+                  {estado === "finalizado" &&
+                    !esPreview &&
+                    feedback && (
+                      <div
+                        className={`quiz-feedback-card ${
+                          feedback.es_correcta ? "correct" : "incorrect"
+                        }`}
+                      >
+                        <div className="quiz-feedback-head">
+                          <span>{feedback.es_correcta ? "✓" : "!"}</span>
+                          <span>
+                            {feedback.es_correcta
+                              ? "Respuesta correcta"
+                              : "Respuesta incorrecta"}
+                          </span>
+                        </div>
+
+                        {feedback.explicacion && (
+                          <div className="quiz-feedback-explanation">
+                            <span className="quiz-feedback-explanation-label">
+                              {feedback.es_correcta
+                                ? "Por qué está bien"
+                                : "Qué debes revisar"}
+                            </span>
+
+                            <p className="quiz-feedback-text">
+                              {feedback.explicacion}
+                            </p>
+                          </div>
+                        )}
+
+                        {!feedback.es_correcta &&
+                          feedback.respuesta_correcta_texto && (
+                            <div className="quiz-feedback-correct-answer">
+                              <span>Respuesta correcta</span>
+
+                              <div
+                                className="quiz-render"
+                                dangerouslySetInnerHTML={{
+                                  __html: renderQuizHTML(
+                                    feedback.respuesta_correcta_texto
+                                  ),
+                                }}
+                              />
+                            </div>
+                          )}
+                      </div>
+                    )}
                 </div>
               </section>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1563,7 +1858,11 @@ export default function ResolverQuizPage() {
 
                 {!esPreview && (
                   <>
-                    {sinMasIntentos || resultado.correctas === resultado.total ? (
+                    {resultadoHistorico ? (
+                      <p className="quiz-info-text">
+                        Este es tu último resultado registrado.
+                      </p>
+                    ) : sinMasIntentos || resultado.correctas === resultado.total ? (
                       <p className="quiz-result-main">
                         XP ganado: <strong>{xpGanado}</strong>
                       </p>

@@ -4,8 +4,6 @@ import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { rarezaConfig, Rareza } from "@/lib/rarezaConfig";
-import { registrarRecompensas } from "@/lib/registrarRecompensas";
-
 interface Recompensa {
   nombre: string;
   imagen: string;
@@ -20,7 +18,7 @@ interface Props {
   onFinish?: () => void;
 }
 
-export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFinish }: Props) {
+export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [indiceActual, setIndiceActual] = useState(0);
   const [mostrarListaFinal, setMostrarListaFinal] = useState(false);
@@ -127,8 +125,6 @@ export default function AnimacionCofre({ userId, recompensas, nivel, tipo, onFin
     if (contador === 0 && contadorVisible) {
       setContadorVisible(false);
       setMostrarRecompensaActual(false);
-      await registrarRecompensas(userId, recompensasOrdenadas);
-
       if (fastSkip) {
         setSkipRapido(true);
         setMostrarMensajeFinal(true);

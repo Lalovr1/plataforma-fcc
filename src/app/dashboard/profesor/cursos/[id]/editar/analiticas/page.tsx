@@ -14,7 +14,7 @@ import { ArrowLeft, BarChart3 } from "lucide-react";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
-import RankingCurso from "@/components/RankingCurso";
+import AnaliticasCurso from "@/components/AnaliticasCurso";
 
 type CursoRanking = {
   id: string;
@@ -54,7 +54,7 @@ function leerCache(usuarioId: string, cursoId: string): CursoRanking | null {
   }
 }
 
-export default function RankingCursoPage() {
+export default function AnaliticasCursoPage() {
   const params = useParams();
   const router = useRouter();
 
@@ -127,8 +127,8 @@ export default function RankingCursoPage() {
         setCurso(cursoData);
         guardarCache(user.id, id, cursoData);
       } catch (e) {
-        console.error("Error cargando ranking del curso:", e);
-        toast.error("No se pudo cargar el ranking del curso");
+        console.error("Error cargando analí­ticas del curso:", e);
+        toast.error("No se pudo cargar el analí­ticas del curso");
         router.push("/dashboard/profesor");
       } finally {
         setCargando(false);
@@ -543,7 +543,7 @@ export default function RankingCursoPage() {
               <BarChart3 size={34} strokeWidth={2.35} />
             </div>
 
-            <p className="ranking-curso-eyebrow">Ranking del curso</p>
+            <p className="ranking-curso-eyebrow">Analí­ticas del curso</p>
 
             <h1 className="ranking-curso-title">{curso.nombre}</h1>
 
@@ -601,7 +601,7 @@ export default function RankingCursoPage() {
         </section>
 
         <div className="ranking-curso-content">
-          <RankingCurso materiaId={curso.id} filtroMatricula={filtroMatricula} />
+          <AnaliticasCurso materiaId={curso.id} filtroMatricula={filtroMatricula} />
         </div>
       </div>
     </LayoutGeneral>

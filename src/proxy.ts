@@ -7,7 +7,7 @@ function getProjectRef(): string | null {
   return m?.[1] || null;
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const res = NextResponse.next();
 
   const pathname = req.nextUrl.pathname;

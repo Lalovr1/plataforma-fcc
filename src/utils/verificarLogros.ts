@@ -1,153 +1,122 @@
 "use client";
+
 import { supabase } from "@/utils/supabaseClient";
 
-const ejecucionesActivas = new Set<string>();
+type LogroDesbloqueado = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  xp_recompensa: number;
+  icono_url?: string | null;
+};
 
-//  Cache local por sesión
-function getLogrosLocales(usuarioId: string): Set<string> {
-  try {
-    const data = localStorage.getItem(`logros_local_${usuarioId}`);
-    return new Set(data ? JSON.parse(data) : []);
-  } catch {
-    return new Set();
-  }
-}
-function saveLogrosLocales(usuarioId: string, set: Set<string>) {
-  try {
-    localStorage.setItem(`logros_local_${usuarioId}`, JSON.stringify([...set]));
-  } catch {}
+type ResultadoLogros = {
+  logros?: LogroDesbloqueado[];
+  xp_agregado?: number;
+  xp_total?: number;
+  nivel_anterior?: number;
+  nivel_actual?: number;
+  nuevo_nivel?: boolean;
+};
+
+let nivelesPendientes: number[] = [];
+let esperaNivelActiva = false;
+
+function programarNivelSubido(nivel: number) {
+  nivelesPendientes.push(nivel);
+
+  if (esperaNivelActiva) return;
+
+  esperaNivelActiva = true;
+
+  const esperar = () => {
+    const modalesAbiertos = document.querySelectorAll(
+      "[data-logro-modal]"
+    ).length;
+
+    if (modalesAbiertos === 0) {
+      const nivelFinal = Math.max(...nivelesPendientes);
+
+      nivelesPendientes = [];
+      esperaNivelActiva = false;
+
+      window.dispatchEvent(
+        new CustomEvent("nivelSubido", {
+          detail: nivelFinal,
+        })
+      );
+
+      return;
+    }
+
+    setTimeout(esperar, 500);
+  };
+
+  setTimeout(esperar, 1200);
 }
 
 export async function verificarLogros(
   usuarioId: string,
   tipo: string,
-  valorActual: number
+  _valorActual: number
 ) {
   if (!usuarioId) return [];
-  const key = `${usuarioId}-${tipo}`;
-
-  if (tipo === "tutorial") {
-    const { data: yaTieneTutorial } = await supabase
-      .from("logros_usuarios")
-      .select("logro_id")
-      .eq("usuario_id", usuarioId)
-      .eq("logro_id", "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610")
-      .maybeSingle();
-
-    if (yaTieneTutorial) {
-      console.log("🧩 Logro de tutorial ya otorgado, cancelando duplicado");
-      return [];
-    }
-  }
-
-  if (ejecucionesActivas.has(key)) {
-    console.log(`⏳ Saltando verificación duplicada (${tipo})`);
-    return [];
-  }
-  ejecucionesActivas.add(key);
 
   try {
-    const logrosLocales = getLogrosLocales(usuarioId);
+    const { data: sesion, error: errorSesion } =
+      await supabase.auth.getUser();
 
-    const { data: posibles, error } = await supabase
-      .from("logros")
-      .select("*")
-      .eq("tipo", tipo)
-      .lte("valor_objetivo", valorActual)
-      .eq("visible", true);
-
-    if (error) {
-      console.error("❌ Error al buscar logros:", error);
+    if (
+      errorSesion ||
+      !sesion.user ||
+      sesion.user.id !== usuarioId
+    ) {
       return [];
     }
 
-    const { data: desbloqueados } = await supabase
-      .from("logros_usuarios")
-      .select("logro_id")
-      .eq("usuario_id", usuarioId);
-
-    const idsDesbloqueados = new Set(desbloqueados?.map((l) => l.logro_id));
-
-    const nuevos = posibles.filter(
-      (l) => !idsDesbloqueados.has(l.id) && !logrosLocales.has(l.id)
+    const { data, error } = await supabase.rpc(
+      "verificar_y_otorgar_logros",
+      {
+        p_tipo: tipo,
+      }
     );
 
-    if (nuevos.length === 0) return [];
-
-    const nuevosInsertados: any[] = [];
-
-    for (const logro of nuevos) {
-      try {
-        // Verificar de nuevo en Supabase si el logro ya fue insertado
-        const { data: existe } = await supabase
-          .from("logros_usuarios")
-          .select("logro_id")
-          .eq("usuario_id", usuarioId)
-          .eq("logro_id", logro.id)
-          .maybeSingle();
-
-        if (existe) {
-          console.log(`⏩ Logro ${logro.nombre} ya registrado, omitiendo...`);
-          continue;
-        }
-
-        const { error: insertErr } = await supabase
-          .from("logros_usuarios")
-          .insert({
-            usuario_id: usuarioId,
-            logro_id: logro.id,
-            fecha_desbloqueo: new Date().toISOString(),
-            notificado: false,
-          });
-
-        if (!insertErr) {
-          logrosLocales.add(logro.id);
-          nuevosInsertados.push({
-            id: logro.id,
-            nombre: logro.nombre,
-            descripcion: logro.descripcion,
-            xp_recompensa: logro.xp_recompensa,
-            icono_url: logro.icono_url,
-          });
-        } else {
-          console.warn("⚠️ Logro duplicado o error al insertar:", insertErr);
-        }
-      } catch (e) {
-        console.error("Error al insertar logro:", e);
-      }
+    if (error) {
+      console.error("Error al verificar logros:", error);
+      return [];
     }
 
-    saveLogrosLocales(usuarioId, logrosLocales);
+    const resultado = (data ?? {}) as ResultadoLogros;
 
-    if (nuevosInsertados.length > 0) {
-      const emitidos = new Set<string>();
-      const unicos = nuevosInsertados.filter((l) => {
-        if (emitidos.has(l.id)) return false;
-        emitidos.add(l.id);
-        return true;
-      });
+    const nuevos = Array.isArray(resultado.logros)
+      ? resultado.logros
+      : [];
 
-      if (tipo !== "tutorial" && unicos.length > 0) {
-        const { data: userSession } = await supabase.auth.getUser();
-        if (userSession?.user?.id === usuarioId) {
-          window.dispatchEvent(
-            new CustomEvent("logrosDesbloqueados", { detail: unicos })
-          );
-        }
-      }
+    if (
+      typeof resultado.xp_agregado === "number" &&
+      resultado.xp_agregado > 0
+    ) {
+      window.dispatchEvent(new Event("xpActualizada"));
+    }
 
-      console.table(
-        unicos.map((l) => ({
-          Logro: l.nombre,
-          XP: l.xp_recompensa,
-          Tipo: tipo,
-        }))
+    if (
+      resultado.nuevo_nivel === true &&
+      typeof resultado.nivel_actual === "number"
+    ) {
+      programarNivelSubido(resultado.nivel_actual);
+    }
+
+    if (tipo !== "tutorial" && nuevos.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent("logrosDesbloqueados", {
+          detail: nuevos,
+        })
       );
     }
 
-    return nuevosInsertados;
-  } finally {
-    ejecucionesActivas.delete(key);
+    return nuevos;
+  } catch (error) {
+    console.error("Error al verificar logros:", error);
+    return [];
   }
 }
-

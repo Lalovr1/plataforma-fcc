@@ -897,9 +897,9 @@ export default function EditarCursoPage() {
           </Link>
 
           <Link
-            href={`/dashboard/profesor/cursos/${id}/editar/ranking`}
+            href={`/dashboard/profesor/cursos/${id}/editar/analiticas`}
             className="editar-curso-option-card tone-ranking"
-            aria-label="Abrir ranking del curso"
+            aria-label="Abrir analíticas del curso"
           >
             <span className="editar-curso-option-visual">
               <span className="editar-curso-visual-icon">
@@ -907,7 +907,7 @@ export default function EditarCursoPage() {
               </span>
             </span>
             <span className="editar-curso-option-body">
-              <span className="editar-curso-option-title">Ranking</span>
+              <span className="editar-curso-option-title">Analí­ticas</span>
               <span className="editar-curso-option-action">Abrir</span>
             </span>
           </Link>

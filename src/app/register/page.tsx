@@ -47,6 +47,15 @@ export default function RegisterPage() {
       const { data, error } = await supabase.auth.signUp({
         email: correo,
         password: contrasena,
+        options: {
+          data: {
+            nombre: nombre.trim(),
+            carrera_id: rolDetectado === "estudiante" ? carreraId : null,
+            semestre_id: rolDetectado === "estudiante" ? semestreId : null,
+            matricula:
+              rolDetectado === "estudiante" ? matricula.trim() : null,
+          },
+        },
       });
 
       if (error) {
@@ -59,33 +68,6 @@ export default function RegisterPage() {
         return;
       }
 
-      if (data.user) {
-        const { error: insertError } = await supabase.from("usuarios").insert({
-          id: data.user.id,
-          email: data.user.email,
-          nombre: nombre.trim(),
-          rol: rolDetectado,
-          carrera_id: rolDetectado === "estudiante" ? carreraId : null,
-          semestre_id: rolDetectado === "estudiante" ? semestreId : null,
-          matricula: rolDetectado === "estudiante" ? matricula.trim() : null,
-          nivel: rolDetectado === "estudiante" ? 0 : null,
-          puntos: rolDetectado === "estudiante" ? 0 : null,
-          avatar_config: null,
-        });
-
-        if (insertError) {
-          setMensaje(`❌ Error guardando en usuarios: ${insertError.message}`);
-          return;
-        }
-
-        if (rolDetectado === "estudiante") {
-          await fetch("/api/insertRecompensas", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: data.user.id }),
-          });
-        }
-      }
 
       setMensaje("✅ Registro exitoso. Revisa tu correo para confirmar tu cuenta.");
     } catch (err) {
