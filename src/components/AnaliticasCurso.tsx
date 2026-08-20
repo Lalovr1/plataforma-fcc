@@ -715,6 +715,121 @@ export default function AnaliticasCurso({
     };
   }, [quizSel]);
 
+  useEffect(() => {
+    if (!quizSel) return;
+
+    let cancelado = false;
+    let actualizando = false;
+
+    const refrescarSilenciosamente = async () => {
+      if (actualizando) return;
+      actualizando = true;
+
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.access_token) return;
+
+        const [rankingData, grupoResponse] = await Promise.all([
+          cargarDatosRanking(),
+          fetch(
+            `/api/analiticas/quiz?quizId=${encodeURIComponent(quizSel)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              cache: "no-store",
+            }
+          ),
+        ]);
+
+        const grupoData = await grupoResponse.json();
+
+        if (cancelado) return;
+
+        aplicarDatos(rankingData);
+        guardarCache(materiaId, rankingData);
+
+        if (grupoResponse.ok && grupoData?.ok) {
+          setGrupoAnaliticas(grupoData.datos as GrupoAnaliticas);
+          setErrorGrupo("");
+        }
+
+        if (estudianteAbiertoId) {
+          const detalleResponse = await fetch(
+            `/api/analiticas/quiz?quizId=${encodeURIComponent(
+              quizSel
+            )}&usuarioId=${encodeURIComponent(estudianteAbiertoId)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              cache: "no-store",
+            }
+          );
+
+          const detalleData = await detalleResponse.json();
+
+          if (
+            !cancelado &&
+            detalleResponse.ok &&
+            detalleData?.ok
+          ) {
+            setDetalleEstudiante(
+              detalleData.datos as DetalleEstudiante
+            );
+            setErrorDetalle("");
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "No se pudieron refrescar automáticamente las analíticas:",
+          error
+        );
+      } finally {
+        actualizando = false;
+      }
+    };
+
+    const channel = supabase
+      .channel(`analiticas-quiz-${materiaId}-${quizSel}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "intentos_quiz",
+          filter: `quiz_id=eq.${quizSel}`,
+        },
+        () => {
+          void refrescarSilenciosamente();
+        }
+      )
+      .subscribe();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refrescarSilenciosamente();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      cancelado = true;
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+      void supabase.removeChannel(channel);
+    };
+  }, [materiaId, quizSel, estudianteAbiertoId]);
+
   const periodosFiltrados = useMemo(() => {
     if (!carreraSel) return [];
     return periodos.filter((p) => p.carrera_id === carreraSel);

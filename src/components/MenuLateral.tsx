@@ -103,6 +103,28 @@ export default function MenuLateral({ rol }: Props) {
     setMenuAbierto(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const handleSalidaConfirmada = (event: Event) => {
+      const detail = (event as CustomEvent).detail ?? {};
+
+      if (detail.accion === "logout") {
+        void ejecutarCerrarSesion();
+      }
+    };
+
+    window.addEventListener(
+      "fcc:quiz-salida-confirmada",
+      handleSalidaConfirmada
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fcc:quiz-salida-confirmada",
+        handleSalidaConfirmada
+      );
+    };
+  }, []);
+
   const linksPrincipales = rol === "profesor" ? profesorLinks : estudianteLinks;
 
   function estaActivo(href: string) {
@@ -117,7 +139,24 @@ export default function MenuLateral({ rol }: Props) {
     pointerEvents: tutorialActivo ? "none" : "auto",
   };
 
-  async function cerrarSesion() {
+  function hayIntentoQuizActivo() {
+    if (typeof window === "undefined") return false;
+    return Boolean((window as any).__fccQuizIntentoActivo?.quizId);
+  }
+
+  function solicitarSalidaQuiz(
+    detail: { accion: "navegar"; destino: string } | { accion: "logout" }
+  ) {
+    if (!hayIntentoQuizActivo()) return false;
+
+    window.dispatchEvent(
+      new CustomEvent("fcc:quiz-solicitar-salida", { detail })
+    );
+
+    return true;
+  }
+
+  async function ejecutarCerrarSesion() {
     const { supabase } = await import("@/utils/supabaseClient");
 
     try {
@@ -128,8 +167,37 @@ export default function MenuLateral({ rol }: Props) {
 
     window.dispatchEvent(new Event("logout"));
 
+    const intentosActivosLocales: Array<[string, string]> = [];
+
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith("fcc_academy_quiz_active_v1_")) continue;
+
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          intentosActivosLocales.push([key, value]);
+        }
+      }
+    } catch {}
+
     localStorage.clear();
+
+    try {
+      intentosActivosLocales.forEach(([key, value]) => {
+        localStorage.setItem(key, value);
+      });
+    } catch {}
+
     window.location.href = "/login";
+  }
+
+  async function cerrarSesion() {
+    if (solicitarSalidaQuiz({ accion: "logout" })) {
+      return;
+    }
+
+    await ejecutarCerrarSesion();
   }
 
   function NavLinkItem({ item }: { item: NavItem }) {
@@ -139,6 +207,26 @@ export default function MenuLateral({ rol }: Props) {
     return (
       <Link
         href={item.href}
+        onClick={(event) => {
+          if (
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey ||
+            event.altKey
+          ) {
+            return;
+          }
+
+          if (
+            solicitarSalidaQuiz({
+              accion: "navegar",
+              destino: item.href,
+            })
+          ) {
+            event.preventDefault();
+            setMenuAbierto(false);
+          }
+        }}
         className={`fcc-nav-item ${activo ? "is-active" : ""}`}
       >
         <span className="fcc-nav-active-glow" />

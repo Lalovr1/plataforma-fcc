@@ -14,6 +14,8 @@ import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvata
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { CheckCircle2, CircleAlert, ClipboardList, RotateCcw, Target } from "lucide-react";
 
 type Rol = "estudiante" | "profesor";
 
@@ -68,6 +70,16 @@ type ContextoRankingCurso = {
   periodoNombre: string | null;
   seccionNombre: string | null;
 };
+
+type QuizEstadoUsuario = {
+  intentosRealizados: number;
+  intentosMax: number;
+  mejorPuntaje: number;
+  restantes: number;
+  perfecto: boolean;
+  agotado: boolean;
+};
+
 type VisualizadorCursoCache = {
   timestamp: number;
   materia: any;
@@ -194,6 +206,7 @@ const renderFormulaHTML = (latex: string) => {
 
     return katex.renderToString(cleanLatex, {
       throwOnError: false,
+      strict: "ignore",
       displayMode: true,
     });
   } catch {
@@ -208,6 +221,7 @@ const renderContenidoHTML = (html: string) => {
       try {
         return katex.renderToString(latex, {
           throwOnError: false,
+          strict: "ignore",
           displayMode: false,
         });
       } catch {
@@ -293,6 +307,7 @@ export default function VisualizadorCurso({
   const [bloquesAbiertosIds, setBloquesAbiertosIds] = useState<string[]>([]);
 
   const [rankingTopCurso, setRankingTopCurso] = useState<RankingCursoUsuario[]>([]);
+  const [quizEstados, setQuizEstados] = useState<Record<string, QuizEstadoUsuario>>({});
   const [contextoRankingCurso, setContextoRankingCurso] = useState<ContextoRankingCurso>({
     esVisitante: false,
     tieneInscripcion: false,
@@ -302,6 +317,26 @@ export default function VisualizadorCurso({
     seccionNombre: null,
   });
   const cacheAplicadoRef = useRef(false);
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+
+      try {
+        sessionStorage.removeItem(
+          getCursoCacheKey(materiaId, userId, rol)
+        );
+      } catch {}
+
+      window.location.reload();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [materiaId, userId, rol]);
 
   useLayoutEffect(() => {
     const cache = leerCursoCache(materiaId, userId, rol);
@@ -374,28 +409,81 @@ export default function VisualizadorCurso({
             if (rol === "estudiante") {
               const { data: quizzesMateria } = await supabase
                 .from("quizzes")
-                .select("id")
+                .select("id,intentos_max")
                 .eq("materia_id", materiaId);
 
-              const totalQuizzes = (quizzesMateria || []).length;
+              const quizzesActuales = (quizzesMateria || []) as {
+                id: string;
+                intentos_max: number | null;
+              }[];
+              const quizIdsMateria = quizzesActuales.map((q) => q.id);
+              const totalQuizzes = quizzesActuales.length;
 
-              const { data: intentosUsuario } = await supabase
-                .from("intentos_quiz")
-                .select("quiz_id")
-                .eq("usuario_id", userId)
-                .eq("completado", true)
-                .in(
-                  "quiz_id",
-                  (quizzesMateria || []).map((q: any) => q.id)
+              let intentosUsuario: {
+                quiz_id: string | null;
+                puntaje: number;
+              }[] = [];
+
+              if (quizIdsMateria.length > 0) {
+                const { data: intentosData } = await supabase
+                  .from("intentos_quiz")
+                  .select("quiz_id,puntaje")
+                  .eq("usuario_id", userId)
+                  .in("quiz_id", quizIdsMateria);
+
+                intentosUsuario =
+                  (intentosData as {
+                    quiz_id: string | null;
+                    puntaje: number;
+                  }[] | null) ?? [];
+              }
+
+              const estadosActuales: Record<string, QuizEstadoUsuario> = {};
+              let completados = 0;
+
+              quizzesActuales.forEach((quizActual) => {
+                const intentosDelQuiz = intentosUsuario.filter(
+                  (intento) => intento.quiz_id === quizActual.id
                 );
+                const intentosRealizadosQuiz = intentosDelQuiz.length;
+                const intentosMaxQuiz = Math.max(
+                  1,
+                  Number(quizActual.intentos_max ?? 1)
+                );
+                const mejorPuntajeQuiz = intentosDelQuiz.reduce(
+                  (mejor, intento) =>
+                    Math.max(mejor, Number(intento.puntaje ?? 0)),
+                  0
+                );
+                const perfecto = mejorPuntajeQuiz === 100;
+                const agotado =
+                  !perfecto &&
+                  intentosRealizadosQuiz >= intentosMaxQuiz;
 
-              const completadosUnicos = new Set(
-                (intentosUsuario || []).map((i: any) => i.quiz_id)
-              ).size;
+                if (perfecto || agotado) {
+                  completados += 1;
+                }
 
+                estadosActuales[quizActual.id] = {
+                  intentosRealizados: intentosRealizadosQuiz,
+                  intentosMax: intentosMaxQuiz,
+                  mejorPuntaje: mejorPuntajeQuiz,
+                  restantes: Math.max(
+                    0,
+                    intentosMaxQuiz - intentosRealizadosQuiz
+                  ),
+                  perfecto,
+                  agotado,
+                };
+              });
+
+              setQuizEstados(estadosActuales);
               setProgreso(
                 totalQuizzes > 0
-                  ? Math.min(100, Math.round((completadosUnicos / totalQuizzes) * 100))
+                  ? Math.min(
+                      100,
+                      Math.round((completados / totalQuizzes) * 100)
+                    )
                   : 0
               );
 
@@ -482,6 +570,7 @@ export default function VisualizadorCurso({
               }
             } else {
               setProgreso(0);
+              setQuizEstados({});
 
               let progresoQuery = supabase
                 .from("progreso")
@@ -865,6 +954,76 @@ export default function VisualizadorCurso({
             color-mix(in srgb, var(--curso-surface-soft) 92%, transparent)
           );
         box-shadow: inset 0 1px 0 color-mix(in srgb, var(--curso-surface-strong) 66%, transparent);
+      }
+
+      .curso-quiz-card {
+        padding: 13px 14px;
+      }
+
+      .curso-quiz-copy {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 13px;
+        min-width: 0;
+      }
+
+      .curso-quiz-icon {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        align-self: center;
+        flex: 0 0 auto;
+        border-radius: 16px;
+        color: var(--curso-accent);
+        background: color-mix(in srgb, var(--curso-accent) 9%, transparent);
+        border: 1px solid color-mix(in srgb, var(--curso-accent) 20%, var(--curso-border));
+      }
+
+      .curso-quiz-kicker {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--curso-accent);
+        font-size: 0.66rem;
+        font-weight: 950;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .curso-quiz-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .curso-quiz-chip {
+        min-height: 25px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        color: var(--curso-muted);
+        background: color-mix(in srgb, var(--curso-surface-strong) 74%, transparent);
+        border: 1px solid var(--curso-border);
+        font-size: 0.7rem;
+        font-weight: 850;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .curso-quiz-chip.success {
+        color: color-mix(in srgb, var(--color-success) 80%, var(--curso-text));
+        background: color-mix(in srgb, var(--color-success) 7%, var(--curso-surface));
+        border-color: color-mix(in srgb, var(--color-success) 22%, var(--curso-border));
+      }
+
+      .curso-quiz-chip.warning {
+        color: color-mix(in srgb, #d97706 78%, var(--curso-text));
+        background: color-mix(in srgb, #f59e0b 7%, var(--curso-surface));
+        border-color: color-mix(in srgb, #f59e0b 22%, var(--curso-border));
       }
 
       .curso-formula-face {
@@ -1379,42 +1538,147 @@ export default function VisualizadorCurso({
                               {b.quizzes && b.quizzes.length > 0 && (
                                 <div className="space-y-2">
                                   <h3 className="font-semibold" style={{ color: "var(--color-heading)" }}>Quizzes</h3>
-                                  {b.quizzes.map((q) => (
-                                    <div
-                                      key={q.id}
-                                      className="curso-quiz-card rounded-[18px] px-3 py-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 min-w-0"
-                                      style={cardStyle}
-                                    >
-                                      <div className="min-w-0">
-                                        <p className="font-medium truncate" style={{ color: "var(--color-text)" }}>
-                                          {q.titulo}
-                                        </p>
-                                        {q.descripcion && (
-                                          <p className="text-xs line-clamp-2" style={{ color: "var(--color-muted)" }}>
-                                            {q.descripcion}
-                                          </p>
+                                  {b.quizzes.map((q, quizIndex) => {
+                                    const estadoQuiz = quizEstados[q.id];
+                                    const numeroQuiz =
+                                      typeof q.orden === "number"
+                                        ? q.orden + 1
+                                        : quizIndex + 1;
+
+                                    return (
+                                      <div
+                                        key={q.id}
+                                        className="curso-quiz-card rounded-[18px] flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 min-w-0"
+                                        style={cardStyle}
+                                      >
+                                        <div className="curso-quiz-copy min-w-0">
+                                          <div
+                                            className="curso-quiz-icon"
+                                            aria-hidden="true"
+                                          >
+                                            <ClipboardList
+                                              size={26}
+                                              strokeWidth={2.3}
+                                            />
+                                          </div>
+
+                                          <div className="min-w-0">
+                                            <span className="curso-quiz-kicker">
+                                              Quiz {numeroQuiz}
+                                            </span>
+
+                                            <p
+                                              className="font-semibold break-words"
+                                              style={{ color: "var(--color-text)" }}
+                                            >
+                                              {q.titulo}
+                                            </p>
+
+                                            {q.descripcion && (
+                                              <p
+                                                className="text-xs line-clamp-2"
+                                                style={{ color: "var(--color-muted)" }}
+                                              >
+                                                {q.descripcion}
+                                              </p>
+                                            )}
+
+                                            {rol === "estudiante" && estadoQuiz && (
+                                              <div className="curso-quiz-meta">
+                                                {estadoQuiz.perfecto ? (
+                                                  <span className="curso-quiz-chip success">
+                                                    <CheckCircle2
+                                                      size={13}
+                                                      strokeWidth={2.5}
+                                                    />
+                                                    Completado · 100 pts
+                                                  </span>
+                                                ) : estadoQuiz.agotado ? (
+                                                  <>
+                                                    <span className="curso-quiz-chip warning">
+                                                      <CircleAlert
+                                                        size={13}
+                                                        strokeWidth={2.4}
+                                                      />
+                                                      Intentos agotados
+                                                    </span>
+                                                    <span className="curso-quiz-chip">
+                                                      <Target
+                                                        size={13}
+                                                        strokeWidth={2.35}
+                                                      />
+                                                      Mejor: {estadoQuiz.mejorPuntaje} pts
+                                                    </span>
+                                                  </>
+                                                ) : estadoQuiz.intentosRealizados > 0 ? (
+                                                  <>
+                                                    <span className="curso-quiz-chip">
+                                                      <Target
+                                                        size={13}
+                                                        strokeWidth={2.35}
+                                                      />
+                                                      Mejor: {estadoQuiz.mejorPuntaje} pts
+                                                    </span>
+                                                    <span className="curso-quiz-chip">
+                                                      <RotateCcw
+                                                        size={13}
+                                                        strokeWidth={2.35}
+                                                      />
+                                                      {estadoQuiz.restantes}{" "}
+                                                      {estadoQuiz.restantes === 1
+                                                        ? "intento restante"
+                                                        : "intentos restantes"}
+                                                    </span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <span className="curso-quiz-chip">
+                                                      Sin intentar
+                                                    </span>
+                                                    <span className="curso-quiz-chip">
+                                                      <RotateCcw
+                                                        size={13}
+                                                        strokeWidth={2.35}
+                                                      />
+                                                      {estadoQuiz.restantes}{" "}
+                                                      {estadoQuiz.restantes === 1
+                                                        ? "intento disponible"
+                                                        : "intentos disponibles"}
+                                                    </span>
+                                                  </>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {rol === "estudiante" ? (
+                                          <Link
+                                            href={`/curso/${materiaId}/quiz/${q.id}`}
+                                            prefetch={false}
+                                            className={`curso-action-button px-3 py-2 sm:py-1 text-center shrink-0 ${
+                                              estadoQuiz?.perfecto || estadoQuiz?.agotado
+                                                ? "curso-secondary-button"
+                                                : ""
+                                            }`}
+                                          >
+                                            {estadoQuiz?.perfecto || estadoQuiz?.agotado
+                                              ? "Consultar"
+                                              : "Resolver"}
+                                          </Link>
+                                        ) : (
+                                          <Link
+                                            href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
+                                            prefetch={false}
+                                            className="curso-action-button curso-secondary-button px-3 py-2 sm:py-1 text-center shrink-0"
+                                            style={{ backgroundColor: "var(--color-secondary)" }}
+                                          >
+                                            Previsualizar
+                                          </Link>
                                         )}
                                       </div>
-
-                                      {rol === "estudiante" ? (
-                                        <a
-                                          href={`/curso/${materiaId}/quiz/${q.id}`}
-                                          className="curso-action-button px-3 py-2 sm:py-1 text-center shrink-0"
-                                          style={{ backgroundColor: "var(--color-primary)" }}
-                                        >
-                                          Resolver
-                                        </a>
-                                      ) : (
-                                        <a
-                                          href={`/curso/${materiaId}/quiz/${q.id}?preview=1`}
-                                          className="curso-action-button curso-secondary-button px-3 py-2 sm:py-1 text-center shrink-0"
-                                          style={{ backgroundColor: "var(--color-secondary)" }}
-                                        >
-                                          Previsualizar
-                                        </a>
-                                      )}
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>

@@ -1,16 +1,12 @@
-/**
- * RedirecciÃ³n raÃ­z del dashboard:
- * - Si no hay usuario autenticado â†’ va a /login.
- * - Si es estudiante â†’ va a /dashboard/estudiante.
- * - Si es profesor â†’ va a /dashboard/profesor.
- * - Cualquier correo no reconocido â†’ va a /login.
- */
-
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default async function DashboardRoot() {
+export default async function EstudianteLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const cookieStore = await cookies();
 
   const supabase = createServerComponentClient({
@@ -33,13 +29,13 @@ export default async function DashboardRoot() {
 
   const esProfesor = correo.endsWith("@correo.buap.mx");
 
-  if (esEstudiante) {
-    redirect("/dashboard/estudiante");
+  if (!esEstudiante) {
+    if (esProfesor) {
+      redirect("/dashboard/profesor");
+    }
+
+    redirect("/login");
   }
 
-  if (esProfesor) {
-    redirect("/dashboard/profesor");
-  }
-
-  redirect("/login");
+  return <>{children}</>;
 }

@@ -6,13 +6,13 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter, useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import LayoutGeneral from "@/components/LayoutGeneral";
-import EditorContenidoCurso from "@/components/EditorContenidoCurso";
-import Link from "next/link";
+import EditorContenidoCurso, { type EditorContenidoNavigationGuard } from "@/components/EditorContenidoCurso";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { ArrowLeft, BookOpen } from "lucide-react";
 
 
@@ -111,6 +111,14 @@ export default function EditarContenidoCursoPage() {
 
   const [nombre, setNombre] = useState("");
   const [loading, setLoading] = useState(true);
+  const navigationGuardRef = useRef<EditorContenidoNavigationGuard>({
+    dirty: false,
+    save: async () => true,
+    discard: () => {},
+  });
+  const [hayCambiosEditor, setHayCambiosEditor] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useLayoutEffect(() => {
     if (!id) return;
@@ -172,6 +180,47 @@ export default function EditarContenidoCursoPage() {
 
     fetchData();
   }, [id, router]);
+
+  const registrarNavigationGuard = useCallback(
+    (guard: EditorContenidoNavigationGuard) => {
+      navigationGuardRef.current = guard;
+      setHayCambiosEditor((prev) => (prev === guard.dirty ? prev : guard.dirty));
+    },
+    []
+  );
+
+  const volverAlMenu = () => {
+    if (guardandoSalida) return;
+
+    if (hayCambiosEditor) {
+      setConfirmarSalida(true);
+      return;
+    }
+
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const descartarYSalir = () => {
+    navigationGuardRef.current.discard();
+    setConfirmarSalida(false);
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const guardarYSalir = async () => {
+    if (guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await navigationGuardRef.current.save();
+      if (!guardado) return;
+
+      setConfirmarSalida(false);
+      router.push(`/dashboard/profesor/cursos/${id}/editar`);
+    } finally {
+      setGuardandoSalida(false);
+    }
+  };
 
   const estilos = (
     <style>{`
@@ -482,13 +531,15 @@ export default function EditarContenidoCursoPage() {
         <div className="editar-curso-view-layout">
           <section className="editar-curso-card editar-curso-view-header">
             <div className="editar-curso-card-content editar-curso-view-row">
-              <Link
-                href={`/dashboard/profesor/cursos/${id}/editar`}
+              <button
+                type="button"
+                onClick={volverAlMenu}
+                disabled={guardandoSalida}
                 className="editar-curso-back-button"
               >
                 <ArrowLeft size={17} strokeWidth={2.8} aria-hidden="true" />
                 <span>Volver al menú</span>
-              </Link>
+              </button>
 
               <p className="editar-curso-eyebrow">Contenido del curso</p>
               <h1 className="editar-curso-title">{nombre || "Contenido del curso"}</h1>
@@ -505,6 +556,7 @@ export default function EditarContenidoCursoPage() {
           <div className="editar-curso-module-shell content-shell">
             <EditorContenidoCurso
               materiaId={id}
+              onNavigationGuardChange={registrarNavigationGuard}
               onBloquesChange={() => {
                 if (id) limpiarCachesRelacionados(id);
               }}
@@ -512,6 +564,17 @@ export default function EditarContenidoCursoPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalida}
+        titulo="¿Volver al menú del curso?"
+        descripcion="Hay cambios sin guardar en el contenido del curso. Puedes seguir editando, descartarlos o guardarlos antes de volver."
+        guardando={guardandoSalida}
+        onContinuar={() => setConfirmarSalida(false)}
+        onDescartar={descartarYSalir}
+        onGuardar={guardarYSalir}
+      />
+
     </LayoutGeneral>
   );
 }

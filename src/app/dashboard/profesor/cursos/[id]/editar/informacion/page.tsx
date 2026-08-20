@@ -14,6 +14,7 @@ import EditarCarreraModal, {
   type Carrera,
   type CursoCarrera,
 } from "@/components/EditarCarreraModal";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { createPortal } from "react-dom";
 import {
   ArrowDown,
@@ -155,6 +156,8 @@ export default function EditarInformacionCursoPage() {
   const [carreraModalIndex, setCarreraModalIndex] = useState<number | null>(null);
   const [portalReady, setPortalReady] = useState(false);
   const [infoDirty, setInfoDirty] = useState(false);
+  const [confirmarSalidaInfo, setConfirmarSalidaInfo] = useState(false);
+  const [guardandoSalidaInfo, setGuardandoSalidaInfo] = useState(false);
 
   useEffect(() => {
     setPortalReady(true);
@@ -501,13 +504,55 @@ export default function EditarInformacionCursoPage() {
   };
 
 
-  const volverAlMenu = async () => {
-    if (guardando) return;
+  const salirSinGuardar = () => {
+    const usuarioId = profesorId ?? localStorage.getItem("user_id");
 
-    if (infoDirty) {
+    if (usuarioId && id) {
+      sessionStorage.removeItem(getEditarCursoCacheKey(usuarioId, id));
+    }
+
+    setConfirmarSalidaInfo(false);
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const guardarYSalir = async () => {
+    if (guardando || guardandoSalidaInfo) return;
+
+    setGuardandoSalidaInfo(true);
+
+    try {
       const guardado = await guardarInformacionCurso();
 
       if (!guardado) return;
+
+      setConfirmarSalidaInfo(false);
+      router.push(`/dashboard/profesor/cursos/${id}/editar`);
+    } finally {
+      setGuardandoSalidaInfo(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!infoDirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [infoDirty]);
+
+  const volverAlMenu = () => {
+    if (guardando || guardandoSalidaInfo) return;
+
+    if (infoDirty) {
+      setConfirmarSalidaInfo(true);
+      return;
     }
 
     router.push(`/dashboard/profesor/cursos/${id}/editar`);
@@ -1644,6 +1689,17 @@ export default function EditarInformacionCursoPage() {
         background: color-mix(in srgb, var(--editar-accent) 8%, var(--editar-surface-strong));
       }
 
+      .editar-curso-back-button.exit {
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border-color: color-mix(in srgb, #ef4444 68%, white);
+      }
+
+      .editar-curso-back-button.exit:hover {
+        border-color: color-mix(in srgb, #ef4444 78%, white);
+        background: linear-gradient(135deg, #f05252, #dc2626);
+      }
+
       .editar-curso-view-icon {
         position: absolute;
         right: 0;
@@ -1912,7 +1968,7 @@ export default function EditarInformacionCursoPage() {
                 type="button"
                 onClick={() => void volverAlMenu()}
                 disabled={guardando}
-                className="editar-curso-back-button"
+                className="editar-curso-back-button exit"
               >
                 <ArrowLeft size={17} strokeWidth={2.8} aria-hidden="true" />
                 <span>Volver al menú</span>
@@ -2188,6 +2244,16 @@ export default function EditarInformacionCursoPage() {
             </div>
           </div>
         )}
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalidaInfo}
+        titulo="¿Salir de la información del curso?"
+        descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar la información antes de salir."
+        guardando={guardando || guardandoSalidaInfo}
+        onContinuar={() => setConfirmarSalidaInfo(false)}
+        onDescartar={salirSinGuardar}
+        onGuardar={guardarYSalir}
+      />
 
     </LayoutGeneral>
   );

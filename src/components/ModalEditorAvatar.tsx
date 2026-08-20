@@ -10,12 +10,13 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import RenderizadorAvatar, { AvatarConfig } from "./RenderizadorAvatar";
 import { supabase } from "@/utils/supabaseClient";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   initialConfig: AvatarConfig;
-  onSave: (newConfig: AvatarConfig) => void;
+  onSave: (newConfig: AvatarConfig) => void | boolean | Promise<void | boolean>;
   forzado?: boolean;
 }
 
@@ -40,6 +41,8 @@ export default function ModalEditorAvatar({
   const [desbloqueados, setDesbloqueados] = useState<string[]>([]);
   const [cargandoDesbloqueos, setCargandoDesbloqueos] = useState(true);
   const [mensaje, setMensaje] = useState("");
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useEffect(() => {
     let intentos = 0;
@@ -94,6 +97,7 @@ export default function ModalEditorAvatar({
         ...initialConfig,
         sueterColor: initialConfig.sueterColor ?? "#ffffff",
       });
+      setConfirmarSalida(false);
     }
   }, [open]);
 
@@ -315,16 +319,16 @@ export default function ModalEditorAvatar({
     },
   ];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!["masculino", "femenino"].includes(config.gender)) {
       alert("Debes seleccionar un tipo de cuerpo antes de guardar.");
-      return;
+      return false;
     }
 
     // Si el usuario es profesor, omitir validaciones de desbloqueo
     if (rolUsuario === "profesor") {
-      onSave(config);
-      return;
+      const resultado = await onSave(config);
+      return resultado !== false;
     }
 
     const campos = [
@@ -372,10 +376,79 @@ export default function ModalEditorAvatar({
 
       setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
       setTimeout(() => setMensaje(""), 5000);
+      return false;
+    }
+
+    const resultado = await onSave(config);
+    return resultado !== false;
+  };
+
+  const configInicialNormalizada: AvatarConfig = {
+    ...initialConfig,
+    sueterColor: initialConfig.sueterColor ?? "#ffffff",
+  };
+
+  const hayCambiosSinGuardar =
+    JSON.stringify(config) !== JSON.stringify(configInicialNormalizada);
+
+  useEffect(() => {
+    if (
+      !open ||
+      forzado ||
+      rolUsuario !== "profesor" ||
+      !hayCambiosSinGuardar
+    ) {
       return;
     }
 
-    onSave(config);
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [open, forzado, rolUsuario, hayCambiosSinGuardar]);
+
+  const solicitarSalida = () => {
+    if (forzado) return;
+
+    if (rolUsuario !== "profesor") {
+      onClose();
+      return;
+    }
+
+    if (hayCambiosSinGuardar) {
+      setConfirmarSalida(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const descartarYSalir = () => {
+    setConfirmarSalida(false);
+    onClose();
+  };
+
+  const guardarYSalir = async () => {
+    if (guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await handleSave();
+
+      if (!guardado) return;
+
+      setConfirmarSalida(false);
+      onClose();
+    } finally {
+      setGuardandoSalida(false);
+    }
   };
 
   function coincideNombre(a: string, b: string) {
@@ -388,13 +461,13 @@ export default function ModalEditorAvatar({
   const mostrarPaletaColor =
     currentTab === "gender" || (currentTab === "ropa" && rolUsuario !== "profesor");
 
-  return createPortal(
+  const modal = createPortal(
     <div
       className="avatar-editor-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-4"
       style={{
         zIndex: 10020,
       }}
-      onClick={forzado ? undefined : onClose}
+      onClick={forzado ? undefined : solicitarSalida}
     >
       <div
         className="avatar-editor-modal relative flex max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-[28px] p-3 sm:p-6"
@@ -403,7 +476,7 @@ export default function ModalEditorAvatar({
         {!forzado && (
           <button
             type="button"
-            onClick={onClose}
+            onClick={solicitarSalida}
             className="avatar-editor-close absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-xl leading-none"
             title="Cerrar"
           >
@@ -886,11 +959,11 @@ export default function ModalEditorAvatar({
 
         {/* Pie del modal */}
         <div className="avatar-editor-footer mt-4 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-6 sm:flex-row sm:items-center sm:gap-4">
-          {!forzado && (
+          {!forzado && rolUsuario !== "profesor" && (
             <button
               type="button"
               className="avatar-editor-secondary-button px-4 py-2"
-              onClick={onClose}
+              onClick={solicitarSalida}
             >
               Cancelar
             </button>
@@ -898,8 +971,14 @@ export default function ModalEditorAvatar({
 
           <button
             type="button"
-            className="fcc-premium-button px-5 py-2"
-            onClick={handleSave}
+            className={
+              forzado
+                ? "fcc-premium-button px-5 py-2"
+                : `fcc-premium-button px-5 py-2 ${
+                    rolUsuario === "profesor" ? "avatar-editor-save-button" : ""
+                  }`
+            }
+            onClick={() => void handleSave()}
           >
             {forzado ? "Crear avatar" : "Guardar cambios"}
           </button>
@@ -979,21 +1058,17 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-close {
-          color: var(--fcc-premium-text);
-          background:
-            linear-gradient(
-              135deg,
-              color-mix(in srgb, var(--fcc-premium-surface-strong) 92%, transparent),
-              color-mix(in srgb, var(--fcc-premium-surface-soft) 92%, transparent)
-            );
-          border: 1px solid var(--fcc-premium-border);
-          box-shadow: var(--fcc-premium-shadow-soft);
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
         }
 
         .avatar-editor-close:hover {
           transform: translateY(-1px);
-          border-color: var(--fcc-premium-border-strong);
-          color: var(--fcc-premium-accent);
+          border-color: color-mix(in srgb, #ef4444 82%, white);
+          color: #ffffff;
+          filter: brightness(1.05);
         }
 
         .avatar-editor-eyebrow {
@@ -1389,6 +1464,28 @@ export default function ModalEditorAvatar({
           transform: translateY(-1px);
           color: var(--fcc-premium-accent);
           border-color: var(--fcc-premium-border-strong);
+        }
+
+        .avatar-editor-secondary-button.avatar-editor-exit-button {
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border-color: color-mix(in srgb, #ef4444 70%, white);
+        }
+
+        .avatar-editor-secondary-button.avatar-editor-exit-button:hover {
+          color: #ffffff;
+          border-color: color-mix(in srgb, #ef4444 82%, white);
+          filter: brightness(1.04);
+        }
+
+        .avatar-editor-save-button {
+          color: #ffffff !important;
+          background: linear-gradient(135deg, #10b981, #059669) !important;
+          border-color: color-mix(in srgb, #10b981 68%, white) !important;
+        }
+
+        .theme-oscuro .avatar-editor-save-button {
+          color: #ffffff !important;
         }
 
         .avatar-editor-toast {
@@ -1847,5 +1944,22 @@ export default function ModalEditorAvatar({
       `}</style>
     </div>,
     document.body
+  );
+
+  return (
+    <>
+      {modal}
+      {!forzado && rolUsuario === "profesor" && (
+        <ConfirmarSalidaEdicion
+          open={confirmarSalida}
+          titulo="¿Salir del editor de avatar?"
+          descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar el avatar antes de salir."
+          guardando={guardandoSalida}
+          onContinuar={() => setConfirmarSalida(false)}
+          onDescartar={descartarYSalir}
+          onGuardar={guardarYSalir}
+        />
+      )}
+    </>
   );
 }

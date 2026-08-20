@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/utils/supabaseClient";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 
 type EstadoExplicacion =
   | "ia"
@@ -70,6 +71,8 @@ export default function ExplicacionesQuiz({
   const [preguntas, setPreguntas] = useState<PreguntaExplicacion[]>([]);
   const [originales, setOriginales] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -116,6 +119,21 @@ export default function ExplicacionesQuiz({
   );
 
   const hayCambios = idsModificados.length > 0;
+
+  useEffect(() => {
+    if (!open || !hayCambios) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [open, hayCambios]);
 
   const cargar = async () => {
     setLoading(true);
@@ -219,7 +237,7 @@ export default function ExplicacionesQuiz({
   const guardar = async () => {
     if (!hayCambios) {
       toast("No hay cambios por guardar.");
-      return;
+      return false;
     }
 
     try {
@@ -300,34 +318,58 @@ export default function ExplicacionesQuiz({
       toast.success(
         "Explicaciones guardadas"
       );
+
+      return true;
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
           : "No se pudieron guardar las explicaciones."
       );
+
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
   const cerrar = () => {
-    if (
-      hayCambios &&
-      !window.confirm(
-        "Tienes cambios sin guardar. ¿Quieres salir de todos modos?"
-      )
-    ) {
+    if (hayCambios) {
+      setConfirmarSalida(true);
       return;
     }
 
     onClose();
   };
 
+  const descartarYSalir = () => {
+    setConfirmarSalida(false);
+    onClose();
+  };
+
+  const guardarYSalir = async () => {
+    if (guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await guardar();
+
+      if (!guardado) return;
+
+      setConfirmarSalida(false);
+      onClose();
+    } finally {
+      setGuardandoSalida(false);
+    }
+  };
+
   if (!mounted) return null;
 
-  return createPortal(
-    <div className="explicaciones-quiz-overlay">
+  return (
+    <>
+      {createPortal(
+        <div className="explicaciones-quiz-overlay">
       <style>{`
         .explicaciones-quiz-overlay {
           --exp-accent: var(--fcc-premium-accent);
@@ -362,6 +404,7 @@ export default function ExplicacionesQuiz({
           background: var(--exp-surface);
           border: 1px solid var(--exp-border);
           box-shadow: var(--exp-shadow);
+          position: relative;
         }
 
         .explicaciones-quiz-scroll {
@@ -639,7 +682,7 @@ export default function ExplicacionesQuiz({
         .explicaciones-quiz-footer {
           flex: 0 0 auto;
           display: flex;
-          justify-content: center;
+          justify-content: flex-end;
           gap: 10px;
           flex-wrap: wrap;
           padding: 14px 22px 20px;
@@ -683,6 +726,34 @@ export default function ExplicacionesQuiz({
             #10b981,
             #14b8a6
           );
+        }
+
+        .explicaciones-quiz-button.danger {
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+        }
+
+        .explicaciones-quiz-close {
+          position: absolute;
+          right: 14px;
+          top: 14px;
+          z-index: 4;
+          width: 38px;
+          height: 38px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
+          transition: transform 170ms ease, filter 170ms ease;
+        }
+
+        .explicaciones-quiz-close:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.05);
         }
 
         .explicaciones-quiz-loading,
@@ -730,6 +801,16 @@ export default function ExplicacionesQuiz({
       `}</style>
 
       <section className="explicaciones-quiz-modal">
+        <button
+          type="button"
+          onClick={cerrar}
+          className="explicaciones-quiz-close"
+          aria-label="Cerrar explicaciones"
+          title="Cerrar"
+        >
+          <X size={20} strokeWidth={2.5} />
+        </button>
+
         <div className="explicaciones-quiz-scroll">
           <header className="explicaciones-quiz-header">
             <span className="explicaciones-quiz-kicker">
@@ -943,14 +1024,6 @@ export default function ExplicacionesQuiz({
         </div>
 
         <footer className="explicaciones-quiz-footer">
-          <button
-            type="button"
-            onClick={cerrar}
-            className="explicaciones-quiz-button secondary"
-          >
-            <X size={17} />
-            Volver al quiz
-          </button>
 
           <button
             type="button"
@@ -977,7 +1050,19 @@ export default function ExplicacionesQuiz({
           </button>
         </footer>
       </section>
-    </div>,
-    document.body
+        </div>,
+        document.body
+      )}
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalida}
+        titulo="¿Salir de las explicaciones?"
+        descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar las explicaciones antes de salir."
+        guardando={guardandoSalida}
+        onContinuar={() => setConfirmarSalida(false)}
+        onDescartar={descartarYSalir}
+        onGuardar={guardarYSalir}
+      />
+    </>
   );
 }

@@ -10,6 +10,7 @@ import MenuLateral from "./MenuLateral";
 import TutorialInicio from "./TutorialInicio";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
+import toast from "react-hot-toast";
 import {
   CLASES_TEMA,
   TEMA_PREDETERMINADO,
@@ -277,10 +278,43 @@ export default function LayoutGeneral({
     );
 
     const user = localStorage.getItem("user_id") || "";
-    const { recompensas } = await obtenerRecompensasAleatorias(user);
+    const resultado = await obtenerRecompensasAleatorias(user);
+
+    if (resultado.error) {
+      setNivelSubido(null);
+      setRecompensasCofre([]);
+
+      toast.error(
+        resultado.error ||
+          "No se pudo reclamar el cofre de este nivel."
+      );
+      return;
+    }
+
+    if (resultado.yaReclamado) {
+      setNivelSubido(null);
+      setRecompensasCofre([]);
+      return;
+    }
+
+    if (resultado.agotado) {
+      setNivelSubido(null);
+      setRecompensasCofre([]);
+
+      toast.success(
+        `¡Subiste al nivel ${e.detail}! Ya desbloqueaste todas las recompensas disponibles.`
+      );
+      return;
+    }
+
+    if (resultado.recompensas.length === 0) {
+      setNivelSubido(null);
+      setRecompensasCofre([]);
+      return;
+    }
 
     setNivelSubido(e.detail);
-    setRecompensasCofre(recompensas);
+    setRecompensasCofre(resultado.recompensas);
   }
 
   useEffect(() => {
@@ -352,17 +386,15 @@ export default function LayoutGeneral({
         </main>
       </div>
 
-      {logrosDesbloqueados.map((l) => (
+      {logrosDesbloqueados.length > 0 && (
         <ModalLogroDesbloqueado
-          key={l.__key}
-          logro={l}
+          key={logrosDesbloqueados[0].__key}
+          logro={logrosDesbloqueados[0]}
           onClose={() =>
-            setLogrosDesbloqueados((prev) =>
-              prev.filter((x) => x.__key !== l.__key)
-            )
+            setLogrosDesbloqueados((prev) => prev.slice(1))
           }
         />
-      ))}
+      )}
 
       {nivelSubido !== null && (
         <div

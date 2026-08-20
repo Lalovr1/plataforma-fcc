@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2, X } from "lucide-react";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 
 export interface Carrera {
   id: number;
@@ -201,6 +202,8 @@ export default function EditarCarreraModal({
   const [portalReady, setPortalReady] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useEffect(() => {
     setPortalReady(true);
@@ -211,6 +214,7 @@ export default function EditarCarreraModal({
 
     setLocalCarrera(clonarCursoCarrera(carrera));
     setValidationMessage("");
+    setConfirmarSalida(false);
   }, [open, carrera]);
 
   useEffect(() => {
@@ -223,6 +227,30 @@ export default function EditarCarreraModal({
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !carrera || !localCarrera) return;
+
+    const firmaInicialUnload = JSON.stringify(
+      normalizarCursoCarrera(clonarCursoCarrera(carrera))
+    );
+    const firmaActualUnload = JSON.stringify(
+      normalizarCursoCarrera(clonarCursoCarrera(localCarrera))
+    );
+
+    if (firmaActualUnload === firmaInicialUnload) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [open, carrera, localCarrera]);
 
   if (!open || !localCarrera || !portalReady || typeof document === "undefined") {
     return null;
@@ -339,7 +367,7 @@ export default function EditarCarreraModal({
   };
 
   const handleSave = async () => {
-    if (!localCarrera) return;
+    if (!localCarrera) return false;
 
     const error = validarCursoCarrera(localCarrera, {
       carrerasExistentes: carrerasYaAgregadas,
@@ -348,7 +376,7 @@ export default function EditarCarreraModal({
 
     if (error) {
       setValidationMessage(error);
-      return;
+      return false;
     }
 
     setValidationMessage("");
@@ -358,24 +386,63 @@ export default function EditarCarreraModal({
       const carreraNormalizada = normalizarCursoCarrera(localCarrera);
       const resultado = await onSave(carreraNormalizada);
 
-      if (resultado === false) return;
+      if (resultado === false) return false;
 
       onClose();
+      return true;
     } finally {
       setGuardando(false);
     }
   };
 
-  const cerrar = () => {
-    if (guardando) return;
+  const firmaInicial = carrera
+    ? JSON.stringify(normalizarCursoCarrera(clonarCursoCarrera(carrera)))
+    : "";
+
+  const firmaActual = localCarrera
+    ? JSON.stringify(normalizarCursoCarrera(clonarCursoCarrera(localCarrera)))
+    : "";
+
+  const hayCambiosSinGuardar =
+    Boolean(firmaInicial) && firmaActual !== firmaInicial;
+
+  const solicitarSalida = () => {
+    if (guardando || guardandoSalida) return;
+
+    if (hayCambiosSinGuardar) {
+      setConfirmarSalida(true);
+      return;
+    }
+
     onClose();
   };
 
-  return createPortal(
+  const descartarYSalir = () => {
+    setConfirmarSalida(false);
+    onClose();
+  };
+
+  const guardarYSalir = async () => {
+    if (guardando || guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await handleSave();
+
+      if (guardado) {
+        setConfirmarSalida(false);
+      }
+    } finally {
+      setGuardandoSalida(false);
+    }
+  };
+
+  const modal = createPortal(
     <div
       className="editar-carrera-overlay"
       onClick={() => {
-        if (closeOnBackdrop) cerrar();
+        if (closeOnBackdrop) solicitarSalida();
       }}
     >
       <style>{`
@@ -501,6 +568,28 @@ export default function EditarCarreraModal({
           padding-right: 0;
           padding-left: 0;
           text-align: center;
+        }
+
+                .editar-carrera-close {
+          position: absolute;
+          right: 14px;
+          top: 14px;
+          z-index: 5;
+          width: 38px;
+          height: 38px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
+          transition: transform 170ms ease, filter 170ms ease;
+        }
+
+        .editar-carrera-close:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.05);
         }
 
         .editar-carrera-title {
@@ -665,6 +754,7 @@ export default function EditarCarreraModal({
           position: relative;
           z-index: 3;
           flex: 0 0 auto;
+          justify-content: flex-end;
           margin: 0;
           padding: 14px clamp(18px, 3vw, 28px) calc(18px + env(safe-area-inset-bottom));
           background: var(--carrera-surface);
@@ -733,6 +823,22 @@ export default function EditarCarreraModal({
           border-color: color-mix(in srgb, var(--carrera-danger) 70%, white);
         }
 
+        .editar-carrera-button.exit-action {
+          color: #ffffff;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          border-color: color-mix(in srgb, #ef4444 70%, white);
+        }
+
+        .editar-carrera-button.success-action {
+          color: #ffffff;
+          background: linear-gradient(135deg, #10b981, #059669);
+          border-color: color-mix(in srgb, #10b981 64%, white);
+        }
+
+        .theme-oscuro .editar-carrera-button.success-action {
+          color: #ffffff;
+        }
+
         .editar-carrera-icon-button {
           min-width: 38px;
           width: 38px;
@@ -796,6 +902,17 @@ export default function EditarCarreraModal({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          onClick={solicitarSalida}
+          disabled={guardando || guardandoSalida}
+          className="editar-carrera-close"
+          aria-label="Cerrar edición de carrera"
+          title="Cerrar"
+        >
+          <X size={20} strokeWidth={2.5} />
+        </button>
+
         <div className="editar-carrera-scroll">
           <div className="editar-carrera-content">
           <div className="editar-carrera-header">
@@ -998,20 +1115,12 @@ export default function EditarCarreraModal({
         </div>
 
         <div className="editar-carrera-actions editar-carrera-footer-actions">
-          <button
-            type="button"
-            onClick={cerrar}
-            disabled={guardando}
-            className="editar-carrera-button"
-          >
-            Cancelar
-          </button>
 
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={guardando}
-            className="editar-carrera-button primary"
+            disabled={guardando || guardandoSalida}
+            className="editar-carrera-button success-action"
           >
             <Save size={16} strokeWidth={2.6} />
             {modo === "agregar" ? "Guardar carrera" : "Guardar cambios"}
@@ -1020,5 +1129,20 @@ export default function EditarCarreraModal({
       </div>
     </div>,
     document.body
+  );
+
+  return (
+    <>
+      {modal}
+      <ConfirmarSalidaEdicion
+        open={confirmarSalida}
+        titulo="¿Salir de la edición de la carrera?"
+        descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar la carrera antes de salir."
+        guardando={guardando || guardandoSalida}
+        onContinuar={() => setConfirmarSalida(false)}
+        onDescartar={descartarYSalir}
+        onGuardar={guardarYSalir}
+      />
+    </>
   );
 }

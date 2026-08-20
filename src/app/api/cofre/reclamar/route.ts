@@ -153,33 +153,64 @@ function obtenerRarezaMaxima(
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies();
-
-    const supabaseAuth = createServerClient(
+    const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
       {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(
-                ({ name, value, options }) => {
-                  cookieStore.set(name, value, options);
-                }
-              );
-            } catch {}
-          },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
         },
       }
     );
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
+    const authorization = req.headers.get("authorization");
+    const bearerToken =
+      authorization?.startsWith("Bearer ")
+        ? authorization.slice(7).trim()
+        : null;
+
+    let user: { id: string } | null = null;
+    let authError: any = null;
+
+    if (bearerToken) {
+      const resultadoAuth = await admin.auth.getUser(bearerToken);
+
+      user = resultadoAuth.data.user
+        ? { id: resultadoAuth.data.user.id }
+        : null;
+      authError = resultadoAuth.error;
+    } else {
+      const cookieStore = await cookies();
+
+      const supabaseAuth = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll();
+            },
+            setAll(cookiesToSet) {
+              try {
+                cookiesToSet.forEach(
+                  ({ name, value, options }) => {
+                    cookieStore.set(name, value, options);
+                  }
+                );
+              } catch {}
+            },
+          },
+        }
+      );
+
+      const resultadoAuth = await supabaseAuth.auth.getUser();
+
+      user = resultadoAuth.data.user
+        ? { id: resultadoAuth.data.user.id }
+        : null;
+      authError = resultadoAuth.error;
+    }
 
     if (authError || !user) {
       return NextResponse.json(
@@ -203,17 +234,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const admin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      }
-    );
 
     const { data: perfil, error: perfilError } = await admin
       .from("usuarios")
@@ -269,8 +289,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: existente } =
+    const { data: existente, error: errorExistente } =
       await consultaExistente.maybeSingle();
+
+    if (errorExistente) {
+      throw errorExistente;
+    }
 
     if (existente) {
       const recompensasExistentes = Array.isArray(
@@ -285,6 +309,8 @@ export async function POST(req: Request) {
         ),
         recompensas: recompensasExistentes,
         ya_reclamado: true,
+        bloqueado_historico:
+          recompensasExistentes.length === 0,
       });
     }
 
@@ -313,6 +339,21 @@ export async function POST(req: Request) {
         (item) =>
           !yaTiene.has(normalizarNombre(item.nombre))
       );
+    }
+
+    const totalDisponibles = ORDEN_RAREZA.reduce(
+      (total, rareza) =>
+        total + disponibles[rareza].length,
+      0
+    );
+
+    if (totalDisponibles === 0) {
+      return NextResponse.json({
+        rareza: "comun" as Rareza,
+        recompensas: [],
+        ya_reclamado: false,
+        agotado: true,
+      });
     }
 
     const seleccionadas: RecompensaDisponible[] = [];
@@ -346,6 +387,16 @@ export async function POST(req: Request) {
       seleccionadas.push(item);
     }
 
+    if (seleccionadas.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No se pudieron seleccionar recompensas para el cofre",
+          codigo: "COFRE_SIN_SELECCION",
+        },
+        { status: 409 }
+      );
+    }
+
     const registroCofre = {
       user_id: user.id,
       tipo,
@@ -370,7 +421,12 @@ export async function POST(req: Request) {
             ? repetido.eq("nivel", nivelActual)
             : repetido.is("nivel", null);
 
-        const { data } = await repetido.maybeSingle();
+        const { data, error: errorRepetido } =
+          await repetido.maybeSingle();
+
+        if (errorRepetido) {
+          throw errorRepetido;
+        }
 
         const recompensasRepetidas = Array.isArray(
           data?.recompensas
@@ -384,58 +440,70 @@ export async function POST(req: Request) {
           ),
           recompensas: recompensasRepetidas,
           ya_reclamado: true,
+          bloqueado_historico:
+            recompensasRepetidas.length === 0,
         });
       }
 
       throw errorCofre;
     }
 
-    if (seleccionadas.length > 0) {
-      const fecha = new Date().toISOString();
+    const fecha = new Date().toISOString();
 
-      const registros = seleccionadas.map((item) => ({
-        user_id: user.id,
-        tipo: item.tipo,
-        nombre: item.nombre,
-        rareza: item.rareza,
-        fecha_desbloqueo: fecha,
-      }));
+    const registros = seleccionadas.map((item) => ({
+      user_id: user.id,
+      tipo: item.tipo,
+      nombre: item.nombre,
+      rareza: item.rareza,
+      fecha_desbloqueo: fecha,
+    }));
 
-      const { error: errorRecompensas } = await admin
-        .from("recompensas_usuario")
-        .upsert(registros, {
-          onConflict: "user_id,nombre",
-          ignoreDuplicates: true,
-        });
+    const { error: errorRecompensas } = await admin
+      .from("recompensas_usuario")
+      .upsert(registros, {
+        onConflict: "user_id,nombre",
+        ignoreDuplicates: true,
+      });
 
-      if (errorRecompensas) {
-        let limpiezaCofre = admin
-          .from("cofres_reclamados")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("tipo", tipo);
+    if (errorRecompensas) {
+      let limpiezaCofre = admin
+        .from("cofres_reclamados")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("tipo", tipo);
 
-        limpiezaCofre =
-          tipo === "nivel"
-            ? limpiezaCofre.eq("nivel", nivelActual)
-            : limpiezaCofre.is("nivel", null);
+      limpiezaCofre =
+        tipo === "nivel"
+          ? limpiezaCofre.eq("nivel", nivelActual)
+          : limpiezaCofre.is("nivel", null);
 
-        await limpiezaCofre;
+      await limpiezaCofre;
 
-        throw errorRecompensas;
-      }
+      throw errorRecompensas;
     }
 
     return NextResponse.json({
       rareza: obtenerRarezaMaxima(seleccionadas),
       recompensas: seleccionadas,
       ya_reclamado: false,
+      agotado: false,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error reclamando cofre:", error);
 
+    const detalle =
+      typeof error?.message === "string"
+        ? error.message
+        : undefined;
+
     return NextResponse.json(
-      { error: "No se pudo reclamar el cofre" },
+      {
+        error: "No se pudo reclamar el cofre",
+        codigo: "COFRE_ERROR_INTERNO",
+        ...(process.env.NODE_ENV === "development" && detalle
+          ? { detalle }
+          : {}),
+      },
       { status: 500 }
     );
   }

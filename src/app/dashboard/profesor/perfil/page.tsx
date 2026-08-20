@@ -13,6 +13,7 @@ import LayoutGeneral from "@/components/LayoutGeneral";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import ModalEditorAvatar from "@/components/ModalEditorAvatar";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import toast from "react-hot-toast";
 
 const CACHE_KEY_BASE = "fcc_academy_perfil_profesor_v1";
@@ -78,12 +79,35 @@ function ModalEditarNombre({
   setUsuario: any;
 }) {
   const [nombreLocal, setNombreLocal] = useState(usuario?.nombre ?? "");
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNombreLocal(usuario?.nombre ?? "");
+      setConfirmarSalida(false);
     }
   }, [open, usuario]);
+
+  useEffect(() => {
+    if (!open || !usuario) return;
+
+    const dirty =
+      nombreLocal.trim() !== String(usuario.nombre ?? "").trim();
+
+    if (!dirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [open, usuario, nombreLocal]);
 
   if (!open || !usuario) return null;
 
@@ -92,7 +116,7 @@ function ModalEditarNombre({
 
     if (!nombreLimpio) {
       toast.error("El nombre no puede estar vacío");
-      return;
+      return false;
     }
 
     const { error } = await supabase
@@ -102,7 +126,7 @@ function ModalEditarNombre({
 
     if (error) {
       toast.error("Error al guardar cambios");
-      return;
+      return false;
     }
 
     toast.success("Nombre actualizado correctamente");
@@ -113,17 +137,51 @@ function ModalEditarNombre({
     }));
 
     onClose();
+    return true;
   };
 
-  return createPortal(
-    <div className="perfil-profesor-modal-overlay" onClick={onClose}>
+  const hayCambiosSinGuardar =
+    nombreLocal.trim() !== String(usuario.nombre ?? "").trim();
+
+  const solicitarSalida = () => {
+    if (hayCambiosSinGuardar) {
+      setConfirmarSalida(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const descartarYSalir = () => {
+    setConfirmarSalida(false);
+    onClose();
+  };
+
+  const guardarYSalir = async () => {
+    if (guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await handleSave();
+
+      if (guardado) {
+        setConfirmarSalida(false);
+      }
+    } finally {
+      setGuardandoSalida(false);
+    }
+  };
+
+  const modal = createPortal(
+    <div className="perfil-profesor-modal-overlay" onClick={solicitarSalida}>
       <div
         className="perfil-profesor-modal-card"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={solicitarSalida}
           className="perfil-profesor-modal-close"
           title="Cerrar"
         >
@@ -144,18 +202,11 @@ function ModalEditarNombre({
         />
 
         <div className="perfil-profesor-modal-actions">
-          <button
-            type="button"
-            className="perfil-profesor-secondary-button"
-            onClick={onClose}
-          >
-            Cancelar
-          </button>
 
           <button
             type="button"
-            className="perfil-profesor-primary-button"
-            onClick={handleSave}
+            className="perfil-profesor-save-button"
+            onClick={() => void handleSave()}
           >
             Guardar cambios
           </button>
@@ -163,6 +214,21 @@ function ModalEditarNombre({
       </div>
     </div>,
     document.body
+  );
+
+  return (
+    <>
+      {modal}
+      <ConfirmarSalidaEdicion
+        open={confirmarSalida}
+        titulo="¿Salir de la edición del nombre?"
+        descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar el nombre antes de salir."
+        guardando={guardandoSalida}
+        onContinuar={() => setConfirmarSalida(false)}
+        onDescartar={descartarYSalir}
+        onGuardar={guardarYSalir}
+      />
+    </>
   );
 }
 
@@ -535,6 +601,35 @@ export default function PerfilProfesorPage() {
         border: 1px solid var(--perfil-profesor-border);
       }
 
+      .perfil-profesor-exit-button,
+      .perfil-profesor-save-button {
+        min-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 15px;
+        padding: 0 16px;
+        color: #ffffff;
+        border: 1px solid transparent;
+        font-size: 0.94rem;
+        font-weight: 950;
+        transition: transform 170ms ease, filter 170ms ease;
+      }
+
+      .perfil-profesor-exit-button {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+      }
+
+      .perfil-profesor-save-button {
+        background: linear-gradient(135deg, #10b981, #059669);
+      }
+
+      .perfil-profesor-exit-button:hover,
+      .perfil-profesor-save-button:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.04);
+      }
+
       .perfil-profesor-primary-button:hover,
       .perfil-profesor-secondary-button:hover {
         transform: translateY(-1px);
@@ -624,7 +719,7 @@ export default function PerfilProfesorPage() {
         z-index: 2;
       }
 
-      .perfil-profesor-modal-close {
+            .perfil-profesor-modal-close {
         position: absolute;
         right: 14px;
         top: 14px;
@@ -634,16 +729,19 @@ export default function PerfilProfesorPage() {
         border-radius: 999px;
         display: grid;
         place-items: center;
-        color: var(--perfil-profesor-text);
-        background: color-mix(in srgb, var(--perfil-profesor-surface-strong) 76%, transparent);
-        border: 1px solid var(--perfil-profesor-border);
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+        box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
         font-size: 1.35rem;
         line-height: 1;
-        transition: transform 170ms ease;
+        transition: transform 170ms ease, filter 170ms ease;
       }
 
       .perfil-profesor-modal-close:hover {
-        transform: scale(1.04);
+        transform: translateY(-1px);
+        color: #ffffff;
+        filter: brightness(1.05);
       }
 
       .perfil-profesor-modal-head {
@@ -890,7 +988,7 @@ export default function PerfilProfesorPage() {
 
     if (error) {
       toast.error("Error al guardar avatar");
-      return;
+      return false;
     }
 
     toast.success("Avatar actualizado correctamente");
@@ -901,6 +999,7 @@ export default function PerfilProfesorPage() {
     }));
 
     setOpen(false);
+    return true;
   };
 
   return (

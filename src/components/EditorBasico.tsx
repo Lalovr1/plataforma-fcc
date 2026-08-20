@@ -650,7 +650,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       .editor-basico-toolbar {
         display: grid;
         gap: 8px;
-        padding: 10px 58px 10px 10px;
+        padding: 10px;
         background: color-mix(in srgb, var(--editor-surface-strong) 70%, transparent);
         border-bottom: 1px solid var(--editor-border);
       }
@@ -787,7 +787,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       }
 
       .editor-basico-tool-button.formula-panel {
-        margin-left: auto;
+        margin-left: 0;
         color: var(--editor-text);
         background:
           linear-gradient(
@@ -887,22 +887,22 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
       .editor-basico-preview-close {
         position: absolute;
-        right: -12px;
-        top: -12px;
-        width: 38px;
-        height: 38px;
-        display: grid;
-        place-items: center;
+        right: 8px;
+        top: 8px;
+        z-index: 10;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         border-radius: 999px;
-        color: #ffffff;
-        background: var(--color-danger);
-        border: 1px solid color-mix(in srgb, var(--color-danger) 70%, white);
-        font-weight: 950;
-        transition: transform 170ms ease;
-      }
-
-      .editor-basico-preview-close:hover {
-        transform: translateY(-1px);
+        color: var(--editor-text);
+        background: var(--editor-surface-strong);
+        border: 1px solid var(--editor-border);
+        box-shadow: var(--editor-shadow-soft);
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1;
       }
 
       @media (max-width: 1640px) {
@@ -913,7 +913,11 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
       @media (max-width: 640px) {
         .editor-basico-toolbar {
-          padding: 8px 54px 8px 8px;
+          padding: 8px;
+        }
+
+        .editor-basico-format-row {
+          padding-right: 46px;
         }
 
         .editor-basico-tool-button {
@@ -941,6 +945,58 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           padding: 10px;
         }
       }
+
+      /* FCC: filas de toolbar separadas por responsabilidad */
+      .editor-basico-format-row {
+        width: 100%;
+        padding-right: 48px;
+        box-sizing: border-box;
+      }
+
+      .editor-basico-media-row {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-sizing: border-box;
+      }
+
+      .editor-basico-media-left {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .editor-basico-media-right {
+        flex: 0 0 auto;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+
+      .editor-basico-media-right .editor-basico-tool-button.formula-panel {
+        margin: 0;
+      }
+
+      @media (max-width: 760px) {
+        .editor-basico-media-row {
+          flex-wrap: wrap;
+        }
+
+        .editor-basico-media-left {
+          flex: 1 1 100%;
+        }
+
+        .editor-basico-media-right {
+          width: 100%;
+          margin-left: 0;
+          justify-content: flex-end;
+        }
+      }
+
     `}</style>
   );
 
@@ -954,7 +1010,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       {estilos}
 
       <div className="editor-basico-toolbar">
-        <div className="editor-basico-toolbar-row">
+        <div className="editor-basico-toolbar-row editor-basico-format-row">
           <div className="editor-basico-tool-group">
             <button
               type="button"
@@ -1058,62 +1114,66 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           </button>
         </div>
 
-        <div className="editor-basico-toolbar-row">
-          <button
-            type="button"
-            onClick={onRequestFormula}
-            className="editor-basico-tool-button media formula"
-          >
-            <Sigma size={15} strokeWidth={2.7} />
-            Fórmula
-          </button>
-
-          <button
-            type="button"
-            onClick={onRequestImage}
-            className="editor-basico-tool-button media image"
-          >
-            <ImageIcon size={15} strokeWidth={2.7} />
-            Imagen
-          </button>
-
-          <button
-            type="button"
-            onClick={onRequestVideo}
-            className="editor-basico-tool-button media video"
-          >
-            <VideoIcon size={15} strokeWidth={2.7} />
-            Video
-          </button>
-
-          <button
-            type="button"
-            onClick={onRequestDocument}
-            className="editor-basico-tool-button media document"
-          >
-            <FileText size={15} strokeWidth={2.7} />
-            Documento
-          </button>
-
-          <button
-            type="button"
-            onClick={onRequestLink}
-            className="editor-basico-tool-button media link"
-          >
-            <Link2 size={15} strokeWidth={2.7} />
-            Enlace
-          </button>
-
-          {showFormulaPanelButton && !isExpanded && (
+        <div className="editor-basico-toolbar-row editor-basico-media-row">
+          <div className="editor-basico-media-left">
             <button
               type="button"
-              onClick={onRequestFormulaPanel}
-              className="editor-basico-tool-button formula-panel"
-              title="Abrir fórmulas guardadas del bloque"
+              onClick={onRequestFormula}
+              className="editor-basico-tool-button media formula"
             >
-              Fórmulas guardadas
-              <ChevronRight size={15} strokeWidth={2.9} />
+              <Sigma size={15} strokeWidth={2.7} />
+              Fórmula
             </button>
+
+            <button
+              type="button"
+              onClick={onRequestImage}
+              className="editor-basico-tool-button media image"
+            >
+              <ImageIcon size={15} strokeWidth={2.7} />
+              Imagen
+            </button>
+
+            <button
+              type="button"
+              onClick={onRequestVideo}
+              className="editor-basico-tool-button media video"
+            >
+              <VideoIcon size={15} strokeWidth={2.7} />
+              Video
+            </button>
+
+            <button
+              type="button"
+              onClick={onRequestDocument}
+              className="editor-basico-tool-button media document"
+            >
+              <FileText size={15} strokeWidth={2.7} />
+              Documento
+            </button>
+
+            <button
+              type="button"
+              onClick={onRequestLink}
+              className="editor-basico-tool-button media link"
+            >
+              <Link2 size={15} strokeWidth={2.7} />
+              Enlace
+            </button>
+          </div>
+
+          {showFormulaPanelButton && !isExpanded && (
+            <div className="editor-basico-media-right">
+              <button
+                type="button"
+                onClick={onRequestFormulaPanel}
+                className="editor-basico-tool-button formula-panel"
+                title="Abrir fórmulas guardadas del bloque"
+              >
+                Fórmulas guardadas
+                <ChevronRight size={15} strokeWidth={2.9} />
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1181,7 +1241,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
                 onClick={() => setPreview(null)}
                 aria-label="Cerrar vista previa"
               >
-                <X size={20} strokeWidth={2.7} />
+                ✕
               </button>
 
               {preview.type === "image" && (

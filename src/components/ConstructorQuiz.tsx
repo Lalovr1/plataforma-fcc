@@ -15,6 +15,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import EditorQuizCampo from "@/components/EditorQuizCampo";
 import ExplicacionesQuiz from "@/components/ExplicacionesQuiz";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, MessageCircle, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
 
 type Bloque = {
@@ -37,7 +38,21 @@ type PreguntaLocal = {
   respuestas: { id: string; texto: string; es_correcta: boolean }[];
 };
 
-export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
+export type ConstructorQuizNavigationGuard = {
+  dirty: boolean;
+  save: () => Promise<boolean>;
+  discard: () => void;
+};
+
+type ConstructorQuizProps = {
+  materiaId: string;
+  onNavigationGuardChange?: (guard: ConstructorQuizNavigationGuard) => void;
+};
+
+export default function ConstructorQuiz({
+  materiaId,
+  onNavigationGuardChange,
+}: ConstructorQuizProps) {
   const [bloques, setBloques] = useState<Bloque[]>([]);
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [bloqueId, setBloqueId] = useState<string>("");
@@ -86,6 +101,8 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   });
   const [bloquesContextoIA, setBloquesContextoIA] = useState<string[]>([]);
   const [firmaGuardadaIA, setFirmaGuardadaIA] = useState("");
+  const [confirmarSalidaQuiz, setConfirmarSalidaQuiz] = useState(false);
+  const [guardandoSalidaQuiz, setGuardandoSalidaQuiz] = useState(false);
 
   const [intentosIAUsados, setIntentosIAUsados] = useState(0);
   const [cargandoIntentosIA, setCargandoIntentosIA] = useState(false);
@@ -1769,9 +1786,11 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
       setQuizzesGuardados(data || []);
+      return true;
     } catch (err) {
       console.error(err);
       toast.error("No se pudo guardar el quiz");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1789,15 +1808,15 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
   };
 
   const handleSaveEditQuiz = async (mantenerAbierto = false) => {
-    if (!editQuiz) return;
+    if (!editQuiz) return false;
 
     if (!editQuiz.titulo?.trim()) {
       toast.error("Pon un título al quiz");
-      return;
+      return false;
     }
 
     if (!validateQuizPreguntas(editQuiz.preguntas || [])) {
-      return;
+      return false;
     }
 
     try {
@@ -2084,8 +2103,113 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
           err?.details ||
           "Error al actualizar quiz"
       );
+      return false;
     }
   };
+
+  const limpiarEdicionQuiz = () => {
+    setConfirmarSalidaQuiz(false);
+    setEditQuiz(null);
+    setDeletedPreguntas([]);
+    setDeletedRespuestas([]);
+  };
+
+  const solicitarSalidaQuiz = () => {
+    if (!editQuiz) return;
+
+    if (hayCambiosSinGuardarIA()) {
+      setConfirmarSalidaQuiz(true);
+      return;
+    }
+
+    limpiarEdicionQuiz();
+  };
+
+  const guardarYSalirQuiz = async () => {
+    if (guardandoSalidaQuiz) return;
+
+    setGuardandoSalidaQuiz(true);
+
+    try {
+      const guardado = await handleSaveEditQuiz(false);
+
+      if (guardado) {
+        setConfirmarSalidaQuiz(false);
+      }
+    } finally {
+      setGuardandoSalidaQuiz(false);
+    }
+  };
+
+  const hayCambiosCreacionQuiz = () =>
+    Boolean(
+      titulo.trim() ||
+      descripcion.trim() ||
+      tiempoMin !== null ||
+      intentosMax !== 1 ||
+      preguntas.length > 0
+    );
+
+  const hayCambiosNavegacionQuiz = () =>
+    hayCambiosCreacionQuiz() ||
+    (Boolean(editQuiz) && hayCambiosSinGuardarIA());
+
+  const guardarCambiosNavegacionQuiz = async () => {
+    if (editQuiz && hayCambiosSinGuardarIA()) {
+      const guardado = await handleSaveEditQuiz(false);
+      if (!guardado) return false;
+    }
+
+    if (hayCambiosCreacionQuiz()) {
+      const guardado = await saveQuiz();
+      if (!guardado) return false;
+    }
+
+    return true;
+  };
+
+  const descartarCambiosNavegacionQuiz = () => {
+    limpiarEdicionQuiz();
+    setTitulo("");
+    setDescripcion("");
+    setTiempoMin(null);
+    setIntentosMax(1);
+    setPreguntas([]);
+  };
+
+  useEffect(() => {
+    const dirty = hayCambiosNavegacionQuiz();
+
+    onNavigationGuardChange?.({
+      dirty,
+      save: guardarCambiosNavegacionQuiz,
+      discard: descartarCambiosNavegacionQuiz,
+    });
+
+    if (!dirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [
+    titulo,
+    descripcion,
+    tiempoMin,
+    intentosMax,
+    preguntas,
+    editQuiz,
+    deletedPreguntas,
+    deletedRespuestas,
+    firmaGuardadaIA,
+    onNavigationGuardChange,
+  ]);
 
   const onInsertFormula = () => {
     if (!targetTextarea) return;
@@ -3974,6 +4098,25 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
           );
       }
 
+      .constructor-quiz-button.exit-action {
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border-color: color-mix(in srgb, #ef4444 70%, white);
+      }
+
+      .constructor-quiz-button.info-action,
+      .constructor-quiz-button.add-action {
+        color: #ffffff;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border-color: color-mix(in srgb, #3b82f6 62%, white);
+      }
+
+      .constructor-quiz-button.ai-launch {
+        color: #ffffff;
+        background: linear-gradient(135deg, #8b5cf6, #6d4aff);
+        border-color: color-mix(in srgb, #8b5cf6 62%, white);
+      }
+
       .constructor-quiz-icon-button {
         width: 38px;
         height: 38px;
@@ -4251,7 +4394,17 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
       }
 
       .constructor-quiz-edit-modal .constructor-quiz-modal-close {
-        display: none;
+        display: grid;
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border-color: color-mix(in srgb, #ef4444 70%, white);
+        box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
+      }
+
+      .constructor-quiz-edit-modal .constructor-quiz-modal-close:hover {
+        color: #ffffff;
+        border-color: color-mix(in srgb, #ef4444 82%, white);
+        filter: brightness(1.05);
       }
 
       .constructor-quiz-edit-modal {
@@ -4628,7 +4781,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                     <button
                       type="button"
                       onClick={() => addRespuesta(p.id)}
-                      className="constructor-quiz-button secondary"
+                      className="constructor-quiz-button add-action"
                     >
                       <Plus size={16} strokeWidth={2.7} />
                       Opción
@@ -4643,7 +4796,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             <button
               type="button"
               onClick={addPregunta}
-              className="constructor-quiz-button secondary"
+              className="constructor-quiz-button add-action"
             >
               <Plus size={17} strokeWidth={2.7} />
               Pregunta
@@ -4862,13 +5015,9 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
             <div className="constructor-quiz-modal constructor-quiz-edit-modal">
               <button
                 type="button"
-                onClick={() => {
-                  setEditQuiz(null);
-                  setDeletedPreguntas([]);
-                  setDeletedRespuestas([]);
-                }}
+                onClick={solicitarSalidaQuiz}
                 className="constructor-quiz-modal-close"
-                aria-label="Cerrar edición"
+                aria-label="Salir de la edición"
               >
                 <X size={20} strokeWidth={2.5} />
               </button>
@@ -5129,7 +5278,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                                   ),
                                 }))
                               }
-                              className="constructor-quiz-button secondary"
+                              className="constructor-quiz-button add-action"
                             >
                               <Plus size={16} strokeWidth={2.7} />
                               Opción
@@ -5160,7 +5309,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                           ],
                         }))
                       }
-                      className="constructor-quiz-button secondary"
+                      className="constructor-quiz-button add-action"
                     >
                       <Plus size={17} strokeWidth={2.7} />
                       Pregunta
@@ -5171,24 +5320,13 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
               </div>
 
               <div className="constructor-quiz-modal-actions constructor-quiz-edit-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditQuiz(null);
-                    setDeletedPreguntas([]);
-                    setDeletedRespuestas([]);
-                  }}
-                  className="constructor-quiz-button secondary"
-                >
-                  Cancelar
-                </button>
 
                 <button
                   type="button"
                   onClick={() =>
                     setMostrarExplicacionesQuiz(true)
                   }
-                  className="constructor-quiz-button secondary"
+                  className="constructor-quiz-button info-action"
                 >
                   <MessageCircle
                     size={17}
@@ -5211,7 +5349,7 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
                     cargandoIntentosIA ||
                     intentosIAUsados >= 3
                   }
-                  className="constructor-quiz-button secondary ai-launch"
+                  className="constructor-quiz-button ai-launch"
                 >
                   <Sparkles size={17} strokeWidth={2.6} />
 
@@ -5238,6 +5376,16 @@ export default function ConstructorQuiz({ materiaId }: { materiaId: string }) {
           </div>,
           document.body
         )}
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalidaQuiz}
+        titulo="¿Salir de la edición del quiz?"
+        descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar el quiz antes de salir."
+        guardando={guardandoSalidaQuiz}
+        onContinuar={() => setConfirmarSalidaQuiz(false)}
+        onDescartar={limpiarEdicionQuiz}
+        onGuardar={guardarYSalirQuiz}
+      />
 
       {editQuiz &&
         vistaIA !== "editor" &&

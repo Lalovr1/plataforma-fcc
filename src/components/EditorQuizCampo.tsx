@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import ImageBase from "@tiptap/extension-image";
@@ -122,6 +123,27 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [portalReady, setPortalReady] = useState(false);
+
+    useEffect(() => {
+      setPortalReady(true);
+    }, []);
+
+    useEffect(() => {
+      if (!showFormulaModal && !showImageModal && !previewImage) return;
+
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }, [showFormulaModal, showImageModal, previewImage]);
+
+    const renderPortal = (content: React.ReactNode) => {
+      if (!portalReady || typeof document === "undefined") return null;
+      return createPortal(content, document.body);
+    };
 
     const editor = useEditor({
       extensions: [
@@ -214,7 +236,8 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
       <div className={`editor-quiz-campo ${compact ? "compact" : ""}`}>
         <style>{`
           .editor-quiz-campo,
-          .editor-quiz-overlay {
+          .editor-quiz-overlay,
+          .editor-quiz-preview-overlay {
             --editor-quiz-accent: var(--fcc-premium-accent, var(--color-accent));
             --editor-quiz-cyan: var(--fcc-premium-cyan, var(--color-accent));
             --editor-quiz-surface: var(--fcc-premium-surface, var(--color-card));
@@ -489,9 +512,36 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
             backdrop-filter: blur(6px);
           }
 
+          .editor-quiz-preview-content {
+            position: relative;
+            max-width: 92vw;
+            max-height: 90vh;
+          }
+
+          .editor-quiz-preview-close {
+            position: absolute;
+            right: 8px;
+            top: 8px;
+            z-index: 10;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            color: var(--editor-quiz-text);
+            background: var(--editor-quiz-surface-strong);
+            border: 1px solid var(--editor-quiz-border);
+            box-shadow: var(--fcc-premium-shadow-soft, 0 10px 28px rgba(2, 8, 23, 0.16));
+            font-size: 0.875rem;
+            font-weight: 600;
+            line-height: 1;
+          }
+
           .editor-quiz-preview-image {
             max-width: 100%;
             max-height: 90vh;
+            display: block;
             border-radius: 18px;
             border: 1px solid color-mix(in srgb, white 18%, transparent);
             box-shadow: var(--editor-quiz-shadow);
@@ -562,144 +612,162 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
           </button>
         </div>
 
-        {showFormulaModal && (
-          <div className="editor-quiz-overlay">
-            <div className="editor-quiz-modal">
-              <h3 className="editor-quiz-modal-title">Insertar fórmula</h3>
+        {showFormulaModal &&
+          renderPortal(
+            <div className="editor-quiz-overlay">
+              <div className="editor-quiz-modal">
+                <h3 className="editor-quiz-modal-title">Insertar fórmula</h3>
 
-              <textarea
-                value={formulaLatex}
-                onChange={(e) => setFormulaLatex(e.target.value)}
-                rows={3}
-                className="editor-quiz-textarea"
-                placeholder="Ej. x + 1"
-              />
-
-              <div className="editor-quiz-modal-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormulaLatex("");
-                    setShowFormulaModal(false);
-                  }}
-                  className="editor-quiz-modal-button"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!formulaLatex.trim()) return;
-
-                    editor
-                      .chain()
-                      .focus()
-                      .insertContent({
-                        type: "inlineMath",
-                        attrs: {
-                          latex: formulaLatex.trim(),
-                        },
-                      })
-                      .run();
-
-                    setFormulaLatex("");
-                    setShowFormulaModal(false);
-                  }}
-                  className="editor-quiz-modal-button primary"
-                >
-                  Insertar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showImageModal && (
-          <div className="editor-quiz-overlay">
-            <div className="editor-quiz-modal">
-              <h3 className="editor-quiz-modal-title">Insertar imagen</h3>
-
-              <label className="editor-quiz-file-picker">
-                {imageFile ? "Cambiar imagen" : "Seleccionar imagen"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                <textarea
+                  value={formulaLatex}
+                  onChange={(e) => setFormulaLatex(e.target.value)}
+                  rows={3}
+                  className="editor-quiz-textarea"
+                  placeholder="Formato LaTeX. Ej.: \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
                 />
-              </label>
 
-              {imageFile && (
-                <p className="editor-quiz-file-name">{imageFile.name}</p>
-              )}
+                <div className="editor-quiz-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormulaLatex("");
+                      setShowFormulaModal(false);
+                    }}
+                    className="editor-quiz-modal-button"
+                  >
+                    Cancelar
+                  </button>
 
-              <div className="editor-quiz-modal-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageFile(null);
-                    setShowImageModal(false);
-                  }}
-                  className="editor-quiz-modal-button"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!imageFile || uploadingImage}
-                  onClick={async () => {
-                    if (!imageFile || !onUploadImage) return;
-
-                    setUploadingImage(true);
-
-                    try {
-                      const { url, name } = await onUploadImage(imageFile);
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!formulaLatex.trim()) return;
 
                       editor
                         .chain()
                         .focus()
                         .insertContent({
-                          type: "image",
+                          type: "inlineMath",
                           attrs: {
-                            src: url,
-                            alt: name,
+                            latex: formulaLatex.trim(),
                           },
                         })
                         .run();
 
-                      setImageFile(null);
-                      setShowImageModal(false);
-                    } catch (error) {
-                      console.error(error);
-                    } finally {
-                      setUploadingImage(false);
-                    }
-                  }}
-                  className="editor-quiz-modal-button primary"
-                >
-                  {uploadingImage ? "Subiendo..." : "Insertar"}
-                </button>
+                      setFormulaLatex("");
+                      setShowFormulaModal(false);
+                    }}
+                    className="editor-quiz-modal-button primary"
+                  >
+                    Insertar
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {previewImage && (
-          <div
-            className="editor-quiz-preview-overlay"
-            onClick={() => setPreviewImage(null)}
-          >
-            <img
-              src={previewImage}
-              className="editor-quiz-preview-image"
-              alt="Vista ampliada"
-            />
-          </div>
-        )}
+        {showImageModal &&
+          renderPortal(
+            <div className="editor-quiz-overlay">
+              <div className="editor-quiz-modal">
+                <h3 className="editor-quiz-modal-title">Insertar imagen</h3>
+
+                <label className="editor-quiz-file-picker">
+                  {imageFile ? "Cambiar imagen" : "Seleccionar imagen"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+
+                {imageFile && (
+                  <p className="editor-quiz-file-name">{imageFile.name}</p>
+                )}
+
+                <div className="editor-quiz-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setShowImageModal(false);
+                    }}
+                    className="editor-quiz-modal-button"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!imageFile || uploadingImage}
+                    onClick={async () => {
+                      if (!imageFile || !onUploadImage) return;
+
+                      setUploadingImage(true);
+
+                      try {
+                        const { url, name } = await onUploadImage(imageFile);
+
+                        editor
+                          .chain()
+                          .focus()
+                          .insertContent({
+                            type: "image",
+                            attrs: {
+                              src: url,
+                              alt: name,
+                            },
+                          })
+                          .run();
+
+                        setImageFile(null);
+                        setShowImageModal(false);
+                      } catch (error) {
+                        console.error(error);
+                      } finally {
+                        setUploadingImage(false);
+                      }
+                    }}
+                    className="editor-quiz-modal-button primary"
+                  >
+                    {uploadingImage ? "Subiendo..." : "Insertar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        {previewImage &&
+          renderPortal(
+            <div
+              className="editor-quiz-preview-overlay"
+              onClick={() => setPreviewImage(null)}
+            >
+              <div
+                className="editor-quiz-preview-content"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="editor-quiz-preview-close"
+                  onClick={() => setPreviewImage(null)}
+                  aria-label="Cerrar imagen"
+                >
+                  ✕
+                </button>
+
+                <img
+                  src={previewImage}
+                  className="editor-quiz-preview-image"
+                  alt="Vista ampliada"
+                />
+              </div>
+            </div>
+          )}
       </div>
     );
   }
 );
 
 export default EditorQuizCampo;
+

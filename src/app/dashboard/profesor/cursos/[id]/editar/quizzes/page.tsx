@@ -6,13 +6,13 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter, useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import LayoutGeneral from "@/components/LayoutGeneral";
-import ConstructorQuiz from "@/components/ConstructorQuiz";
-import Link from "next/link";
+import ConstructorQuiz, { type ConstructorQuizNavigationGuard } from "@/components/ConstructorQuiz";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 
 
@@ -111,6 +111,14 @@ export default function EditarQuizzesCursoPage() {
 
   const [nombre, setNombre] = useState("");
   const [loading, setLoading] = useState(true);
+  const navigationGuardRef = useRef<ConstructorQuizNavigationGuard>({
+    dirty: false,
+    save: async () => true,
+    discard: () => {},
+  });
+  const [hayCambiosEditor, setHayCambiosEditor] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
+  const [guardandoSalida, setGuardandoSalida] = useState(false);
 
   useLayoutEffect(() => {
     if (!id) return;
@@ -172,6 +180,47 @@ export default function EditarQuizzesCursoPage() {
 
     fetchData();
   }, [id, router]);
+
+  const registrarNavigationGuard = useCallback(
+    (guard: ConstructorQuizNavigationGuard) => {
+      navigationGuardRef.current = guard;
+      setHayCambiosEditor((prev) => (prev === guard.dirty ? prev : guard.dirty));
+    },
+    []
+  );
+
+  const volverAlMenu = () => {
+    if (guardandoSalida) return;
+
+    if (hayCambiosEditor) {
+      setConfirmarSalida(true);
+      return;
+    }
+
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const descartarYSalir = () => {
+    navigationGuardRef.current.discard();
+    setConfirmarSalida(false);
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const guardarYSalir = async () => {
+    if (guardandoSalida) return;
+
+    setGuardandoSalida(true);
+
+    try {
+      const guardado = await navigationGuardRef.current.save();
+      if (!guardado) return;
+
+      setConfirmarSalida(false);
+      router.push(`/dashboard/profesor/cursos/${id}/editar`);
+    } finally {
+      setGuardandoSalida(false);
+    }
+  };
 
   const estilos = (
     <style>{`
@@ -482,13 +531,15 @@ export default function EditarQuizzesCursoPage() {
         <div className="editar-curso-view-layout">
           <section className="editar-curso-card editar-curso-view-header">
             <div className="editar-curso-card-content editar-curso-view-row">
-              <Link
-                href={`/dashboard/profesor/cursos/${id}/editar`}
+              <button
+                type="button"
+                onClick={volverAlMenu}
+                disabled={guardandoSalida}
                 className="editar-curso-back-button"
               >
                 <ArrowLeft size={17} strokeWidth={2.8} aria-hidden="true" />
                 <span>Volver al menú</span>
-              </Link>
+              </button>
 
               <p className="editar-curso-eyebrow">Quizzes del curso</p>
               <h1 className="editar-curso-title">{nombre || "Quizzes del curso"}</h1>
@@ -506,13 +557,27 @@ export default function EditarQuizzesCursoPage() {
             <section className="editar-curso-card editar-curso-section">
               <div className="editar-curso-card-content">
                 <div className="editar-curso-editor-box">
-                  <ConstructorQuiz materiaId={id} />
+                  <ConstructorQuiz
+              materiaId={id}
+              onNavigationGuardChange={registrarNavigationGuard}
+            />
                 </div>
               </div>
             </section>
           </div>
         </div>
       </div>
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalida}
+        titulo="¿Volver al menú del curso?"
+        descripcion="Hay cambios sin guardar en los quizzes. Puedes seguir editando, descartarlos o guardarlos antes de volver."
+        guardando={guardandoSalida}
+        onContinuar={() => setConfirmarSalida(false)}
+        onDescartar={descartarYSalir}
+        onGuardar={guardarYSalir}
+      />
+
     </LayoutGeneral>
   );
 }

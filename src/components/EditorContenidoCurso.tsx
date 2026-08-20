@@ -17,8 +17,9 @@ import rehypeRaw from "rehype-raw";
 import { useRef } from "react"; 
 import OcrFormula from "@/components/OcrFormula";
 import EditorBasico, { type EditorBasicoRef } from "@/components/EditorBasico";
+import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Info, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 
 type BlockType = "texto" | "imagen" | "video" | "documento";
 
@@ -100,12 +101,20 @@ const extractLatexFormulas = (text: string): string[] => {
   return Array.from(new Set(results));
 };
 
+export type EditorContenidoNavigationGuard = {
+  dirty: boolean;
+  save: () => Promise<boolean>;
+  discard: () => void;
+};
+
 export default function EditorContenidoCurso({
   materiaId,
   onBloquesChange,
+  onNavigationGuardChange,
 }: {
   materiaId: string;
-  onBloquesChange?: () => void; 
+  onBloquesChange?: () => void;
+  onNavigationGuardChange?: (guard: EditorContenidoNavigationGuard) => void;
 }) {
   const [fileMap, setFileMap] = useState<Record<string, string>>({});
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -143,6 +152,9 @@ export default function EditorContenidoCurso({
     { id: string; titulo: string; ecuacion: string; descripcion: string; publica: boolean }[]
   >([]);
   const [deletedFormulas, setDeletedFormulas] = useState<string[]>([]);
+  const [firmaEdicionInicial, setFirmaEdicionInicial] = useState("");
+  const [confirmarSalidaEdicion, setConfirmarSalidaEdicion] = useState(false);
+  const [guardandoSalidaEdicion, setGuardandoSalidaEdicion] = useState(false);
   const [targetFormulaId, setTargetFormulaId] = useState<string | null>(null);
   const [formulaDraft, setFormulaDraft] = useState<{id:string, titulo:string, ecuacion:string, publica:boolean} | null>(null);
 
@@ -402,8 +414,8 @@ export default function EditorContenidoCurso({
     return { url: data.publicUrl, originalName, key };
   };
 
-  const handleAddBlock = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddBlock = async (e?: React.FormEvent) => {
+    e?.preventDefault();
 
     if (!unidad) {
       setToast({
@@ -573,9 +585,11 @@ export default function EditorContenidoCurso({
 
       await fetchBlocks();
       if (onBloquesChange) onBloquesChange();
+      return true;
     } catch (err: any) {
       console.error(err);
       setToast({ message: "Error al agregar bloque", type: "error" });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -707,13 +721,79 @@ export default function EditorContenidoCurso({
     fetchBlocks();
   };
 
-  const handleOpenEdit = async (block: Block) => {
-    setEditBlock(block);
+  const crearFirmaEdicionBloque = ({
+    unidadActual = editUnidad,
+    tituloActual = editTitulo,
+    introActual = editIntro,
+    contenidoActual = editContenido,
+    formulasActuales = editFormulas,
+    formulasEliminadas = deletedFormulas,
+    archivosActuales = fileMap,
+  }: {
+    unidadActual?: string;
+    tituloActual?: string;
+    introActual?: string;
+    contenidoActual?: string;
+    formulasActuales?: typeof editFormulas;
+    formulasEliminadas?: string[];
+    archivosActuales?: Record<string, string>;
+  } = {}) =>
+    JSON.stringify({
+      unidad: unidadActual,
+      titulo: tituloActual,
+      intro: introActual,
+      contenido: contenidoActual,
+      formulas: formulasActuales.map((formula) => ({
+        id: formula.id,
+        titulo: formula.titulo,
+        ecuacion: formula.ecuacion,
+        descripcion: formula.descripcion,
+        publica: Boolean(formula.publica),
+      })),
+      eliminadas: [...formulasEliminadas].sort(),
+      archivos: Object.entries(archivosActuales).sort(([a], [b]) =>
+        a.localeCompare(b)
+      ),
+    });
 
-    setEditUnidad((block as any).unidad_id || unidad || unidades[0]?.id || "");
-    setEditTitulo(block.titulo || "");
-    setEditIntro((block as any).introduccion || "");
-    setEditContenido(convertFromCustomfile(block.contenido || ""));
+  const hayCambiosEdicionBloque = () => {
+    if (!editBlock || !firmaEdicionInicial) return false;
+    return crearFirmaEdicionBloque() !== firmaEdicionInicial;
+  };
+
+  const descartarYSalirEdicion = () => {
+    setConfirmarSalidaEdicion(false);
+    setEditBlock(null);
+    setDeletedFormulas([]);
+    setFirmaEdicionInicial("");
+    setShowFormulaPanel(false);
+  };
+
+  const solicitarSalidaEdicion = () => {
+    if (!editBlock) return;
+
+    if (hayCambiosEdicionBloque()) {
+      setConfirmarSalidaEdicion(true);
+      return;
+    }
+
+    descartarYSalirEdicion();
+  };
+
+  const handleOpenEdit = async (block: Block) => {
+    const unidadInicial =
+      (block as any).unidad_id || unidad || unidades[0]?.id || "";
+    const tituloInicial = block.titulo || "";
+    const introInicial = (block as any).introduccion || "";
+    const contenidoInicial = convertFromCustomfile(block.contenido || "");
+
+    setConfirmarSalidaEdicion(false);
+    setDeletedFormulas([]);
+    setEditBlock(block);
+    setEditUnidad(unidadInicial);
+    setEditTitulo(tituloInicial);
+    setEditIntro(introInicial);
+    setEditContenido(contenidoInicial);
     setEditorKey((prev) => prev + 1);
 
     const { data: archivos } = await supabase
@@ -721,13 +801,13 @@ export default function EditorContenidoCurso({
       .select("nombre, url, tipo")
       .eq("bloque_id", block.id);
 
-    if (archivos) {
-      const newMap: Record<string, string> = {};
-      archivos.forEach((a) => {
-        newMap[a.nombre] = JSON.stringify({ name: a.nombre, url: a.url });
-      });
-      setFileMap(newMap);
-    }
+    const newMap: Record<string, string> = {};
+
+    (archivos || []).forEach((a) => {
+      newMap[a.nombre] = JSON.stringify({ name: a.nombre, url: a.url });
+    });
+
+    setFileMap(newMap);
 
     const { data: formulas } = await supabase
       .from("curso_formulas")
@@ -735,21 +815,31 @@ export default function EditorContenidoCurso({
       .eq("bloque_id", block.id)
       .order("orden", { ascending: true });
 
-    if (formulas) {
-      setEditFormulas(
-        formulas.map((f: any) => ({
-          id: f.id,
-          titulo: f.titulo || "",
-          ecuacion: f.ecuacion || "",
-          descripcion: f.descripcion || "",
-          publica: f.publica || false,
-        }))
-      );
-    }
+    const formulasIniciales = (formulas || []).map((f: any) => ({
+      id: f.id,
+      titulo: f.titulo || "",
+      ecuacion: f.ecuacion || "",
+      descripcion: f.descripcion || "",
+      publica: f.publica || false,
+    }));
+
+    setEditFormulas(formulasIniciales);
+
+    setFirmaEdicionInicial(
+      crearFirmaEdicionBloque({
+        unidadActual: unidadInicial,
+        tituloActual: tituloInicial,
+        introActual: introInicial,
+        contenidoActual: contenidoInicial,
+        formulasActuales: formulasIniciales,
+        formulasEliminadas: [],
+        archivosActuales: newMap,
+      })
+    );
   };
 
   const handleSaveEdit = async () => {
-    if (!editBlock) return;
+    if (!editBlock) return false;
     const convertToCustomfile = (md: string) => {
       return md.replace(/\[\s*(?:📷|🖼)\s+([^\]]+)\]/g, (_, filename) => {
         if (fileMap[filename]) {
@@ -774,7 +864,7 @@ export default function EditorContenidoCurso({
     if (error) {
       console.error(error);
       alert("No se pudo guardar los cambios.");
-      return;
+      return false;
     }
 
     for (let i = 0; i < editFormulas.length; i++) {
@@ -832,8 +922,104 @@ export default function EditorContenidoCurso({
     }
 
     setEditBlock(null);
+    setConfirmarSalidaEdicion(false);
+    setFirmaEdicionInicial("");
+    setDeletedFormulas([]);
+    setShowFormulaPanel(false);
     fetchBlocks();
+    return true;
   };
+
+  const guardarYSalirEdicion = async () => {
+    if (guardandoSalidaEdicion) return;
+
+    setGuardandoSalidaEdicion(true);
+
+    try {
+      const guardado = await handleSaveEdit();
+
+      if (guardado) {
+        setConfirmarSalidaEdicion(false);
+      }
+    } finally {
+      setGuardandoSalidaEdicion(false);
+    }
+  };
+
+  const hayCambiosCreacionContenido = () =>
+    Boolean(
+      titulo.trim() ||
+      intro.trim() ||
+      contenidoPrincipal.trim() ||
+      file
+    );
+
+  const hayCambiosNavegacionContenido = () =>
+    hayCambiosCreacionContenido() ||
+    (Boolean(editBlock) && hayCambiosEdicionBloque());
+
+  const guardarCambiosNavegacionContenido = async () => {
+    if (editBlock && hayCambiosEdicionBloque()) {
+      const guardado = await handleSaveEdit();
+      if (!guardado) return false;
+    }
+
+    if (hayCambiosCreacionContenido()) {
+      const guardado = await handleAddBlock();
+      if (!guardado) return false;
+    }
+
+    return true;
+  };
+
+  const descartarCambiosNavegacionContenido = () => {
+    descartarYSalirEdicion();
+    setTitulo("");
+    setIntro("");
+    setContenidoPrincipal("");
+    contenidoPrincipalEditorRef.current?.setContent("");
+    setFile(null);
+    setTipo("texto");
+    setFileMap({});
+    setInlineFormulaTitles([]);
+  };
+
+  useEffect(() => {
+    const dirty = hayCambiosNavegacionContenido();
+
+    onNavigationGuardChange?.({
+      dirty,
+      save: guardarCambiosNavegacionContenido,
+      discard: descartarCambiosNavegacionContenido,
+    });
+
+    if (!dirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [
+    titulo,
+    intro,
+    contenidoPrincipal,
+    file,
+    editBlock,
+    editTitulo,
+    editContenido,
+    editUnidad,
+    editIntro,
+    editFormulas,
+    deletedFormulas,
+    firmaEdicionInicial,
+    onNavigationGuardChange,
+  ]);
 
   const preprocessMarkdown = (md: string) => {
     return md
@@ -1027,7 +1213,7 @@ export default function EditorContenidoCurso({
       .contenido-editor-overlay {
         position: fixed;
         inset: 0;
-        z-index: 120;
+        z-index: 150;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1147,6 +1333,7 @@ export default function EditorContenidoCurso({
       }
 
       .contenido-edit-modal {
+        position: relative;
         width: min(94vw, 920px);
         max-height: 92dvh;
         display: grid;
@@ -1248,6 +1435,28 @@ export default function EditorContenidoCurso({
         gap: 10px;
       }
 
+      .contenido-edit-close {
+        position: absolute;
+        right: 14px;
+        top: 14px;
+        z-index: 24;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border: 1px solid color-mix(in srgb, #ef4444 70%, white);
+        box-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
+        transition: transform 170ms ease, filter 170ms ease;
+      }
+
+      .contenido-edit-close:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.05);
+      }
+
       .contenido-formula-panel {
         position: fixed;
         top: 50%;
@@ -1258,6 +1467,8 @@ export default function EditorContenidoCurso({
         height: 92dvh;
         max-height: 92dvh;
         overflow-y: auto;
+        overflow-x: hidden;
+        box-sizing: border-box;
         transform: translateY(-50%);
         border-radius: 22px;
         padding: 14px;
@@ -1273,24 +1484,58 @@ export default function EditorContenidoCurso({
       }
 
       .contenido-formula-panel-head {
-        display: flex;
+        display: block;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         gap: 10px;
         margin-bottom: 12px;
+        position: static;
+        padding-left: 44px;
+        padding-right: 44px;
+        padding-top: 4px;
+        text-align: center;
       }
 
       .contenido-formula-panel-title {
+        min-width: 0;
         color: var(--contenido-text);
         font-size: 0.95rem;
         font-weight: 950;
+        width: 100%;
+        text-align: center;
+        margin: 0;
+      }
+
+      /* FCC: X exclusiva del panel de formulas */
+      .contenido-formula-panel-close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 6;
+        width: 32px;
+        min-width: 32px;
+        height: 32px;
+        padding: 0;
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transform: none;
+      }
+
+      .contenido-formula-panel-close:hover {
+        transform: translateY(-1px);
       }
 
       .contenido-formula-card {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
         display: grid;
-        gap: 10px;
+        gap: 9px;
+        box-sizing: border-box;
         border-radius: 18px;
-        padding: 12px;
+        padding: 11px;
         background: color-mix(in srgb, var(--contenido-surface-strong) 70%, transparent);
         border: 1px solid var(--contenido-border);
       }
@@ -1301,7 +1546,17 @@ export default function EditorContenidoCurso({
 
       .contenido-formula-add-button {
         width: max-content;
+        max-width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
         margin: 14px auto 0;
+        justify-self: center;
+        margin-top: 14px;
+        margin-bottom: 0;
+        margin-left: auto;
+        margin-right: auto;
       }
 
       .contenido-panel-grid {
@@ -1332,57 +1587,130 @@ export default function EditorContenidoCurso({
 
       .contenido-panel-checkbox {
         width: max-content;
+        max-width: 100%;
+        min-width: 0;
         min-height: 30px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: 5px;
         border-radius: 999px;
-        padding: 0 10px;
+        padding: 0 8px;
         color: var(--contenido-muted);
         background: color-mix(in srgb, var(--contenido-accent) 6%, transparent);
         border: 1px solid color-mix(in srgb, var(--contenido-accent) 16%, var(--contenido-border));
-        font-size: 0.74rem;
+        font-size: 0.78rem;
         font-weight: 850;
         white-space: nowrap;
+        line-height: 1;
       }
 
       .contenido-panel-checkbox input {
+        flex: 0 0 auto;
         accent-color: var(--contenido-accent);
       }
 
+      .contenido-formula-info-inline {
+        position: relative;
+        flex: 0 0 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: var(--contenido-accent);
+        background: color-mix(in srgb, var(--contenido-accent) 7%, transparent);
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 34%, var(--contenido-border));
+        font-size: 0.66rem;
+        font-weight: 1000;
+        line-height: 1;
+        cursor: help;
+        outline: none;
+        align-self: center;
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        margin-left: 1px;
+        box-sizing: border-box;
+        border-radius: 999px;
+        vertical-align: middle;
+      }
+
+      .contenido-formula-info-inline:hover,
+      .contenido-formula-info-inline:focus,
+      .contenido-formula-info-inline:focus-visible {
+        color: color-mix(
+          in srgb,
+          var(--contenido-accent) 82%,
+          var(--contenido-text)
+        );
+      }
+
+      .contenido-formula-info-inline .contenido-formula-info-tooltip {
+        left: 0;
+        width: 190px;
+        max-width: 190px;
+        transform: translate(0, 4px);
+      }
+
+      .contenido-formula-info-inline:hover .contenido-formula-info-tooltip,
+      .contenido-formula-info-inline:focus .contenido-formula-info-tooltip,
+      .contenido-formula-info-inline:focus-visible .contenido-formula-info-tooltip {
+        opacity: 1;
+        transform: translate(0, 0);
+      }
+
       .contenido-formula-preview {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 2px 3px 4px;
         color: var(--contenido-accent);
         text-align: center;
-        font-size: 0.86rem;
+        font-size: 0.82rem;
         line-height: 1.16;
-        overflow-x: auto;
+        scrollbar-width: thin;
       }
 
       .contenido-formula-preview .katex {
-        font-size: 1em;
+        font-size: 0.96em;
       }
 
       .contenido-formula-preview .katex-display {
+        width: max-content;
+        min-width: 100%;
+        max-width: none;
         margin: 0.18em 0;
+        text-align: center;
+      }
+
+      .contenido-formula-preview .katex-display > .katex {
+        display: inline-block;
       }
 
       .contenido-formula-actions {
+        min-width: 0;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        justify-content: flex-end;
+        gap: 6px;
       }
 
       .contenido-formula-card-actions {
+        width: 100%;
+        min-width: 0;
         display: grid;
-        grid-template-columns: auto auto auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
+        gap: 6px;
       }
 
       .contenido-mini-button {
+        min-width: 0;
         min-height: 30px;
+        flex: 0 0 auto;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1396,7 +1724,8 @@ export default function EditorContenidoCurso({
       }
 
       .contenido-mini-button.icon {
-        width: 32px;
+        width: 30px;
+        min-width: 30px;
         padding: 0;
       }
 
@@ -1541,6 +1870,81 @@ export default function EditorContenidoCurso({
         accent-color: var(--contenido-accent);
       }
 
+      .contenido-formula-info {
+        position: relative;
+        flex: 0 0 auto;
+        width: 24px;
+        height: 24px;
+        display: inline-grid;
+        place-items: center;
+        margin-left: 2px;
+        border-radius: 999px;
+        color: var(--contenido-accent);
+        background: color-mix(
+          in srgb,
+          var(--contenido-accent) 8%,
+          var(--contenido-surface)
+        );
+        border: 1px solid color-mix(
+          in srgb,
+          var(--contenido-accent) 24%,
+          var(--contenido-border)
+        );
+        cursor: help;
+        outline: none;
+      }
+
+      .contenido-formula-info.compact {
+        width: 22px;
+        height: 22px;
+      }
+
+      .contenido-formula-info-tooltip {
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        z-index: 80;
+        width: max-content;
+        max-width: min(220px, 72vw);
+        border-radius: 10px;
+        padding: 7px 9px;
+        color: var(--contenido-text);
+        background: var(--contenido-surface-strong);
+        border: 1px solid var(--contenido-border-strong);
+        box-shadow: var(--contenido-shadow-soft);
+        font-size: 0.72rem;
+        font-weight: 750;
+        line-height: 1.35;
+        text-align: left;
+        white-space: normal;
+        pointer-events: none;
+        opacity: 0;
+        transform: translate(-50%, 4px);
+        transition:
+          opacity 140ms ease,
+          transform 140ms ease;
+      }
+
+      .contenido-formula-info-tooltip::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 100%;
+        width: 8px;
+        height: 8px;
+        background: var(--contenido-surface-strong);
+        border-right: 1px solid var(--contenido-border-strong);
+        border-bottom: 1px solid var(--contenido-border-strong);
+        transform: translate(-50%, -4px) rotate(45deg);
+      }
+
+      .contenido-formula-info:hover .contenido-formula-info-tooltip,
+      .contenido-formula-info:focus .contenido-formula-info-tooltip,
+      .contenido-formula-info:focus-visible .contenido-formula-info-tooltip {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
       .contenido-formula-preview-box {
         border-radius: 18px;
         padding: 14px;
@@ -1668,6 +2072,18 @@ export default function EditorContenidoCurso({
         color: #ffffff;
         background: var(--color-danger);
         border-color: color-mix(in srgb, var(--color-danger) 70%, white);
+      }
+
+      .contenido-button.exit-action {
+        color: #ffffff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border-color: color-mix(in srgb, #ef4444 70%, white);
+      }
+
+      .contenido-button.success {
+        color: #ffffff;
+        background: linear-gradient(135deg, #10b981, #059669);
+        border-color: color-mix(in srgb, #10b981 62%, white);
       }
 
       .contenido-icon-button {
@@ -1894,6 +2310,17 @@ export default function EditorContenidoCurso({
         .contenido-edit-actions {
           justify-content: stretch;
         }
+      }
+
+      /* FCC: centrado forzado del botón Agregar fórmula */
+      .contenido-formula-panel .contenido-formula-add-button {
+        display: flex !important;
+        width: max-content !important;
+        max-width: calc(100% - 8px) !important;
+        margin: 14px auto 0 !important;
+        align-items: center !important;
+        justify-content: center !important;
+        justify-self: center !important;
       }
     `}</style>
   );
@@ -2431,6 +2858,16 @@ export default function EditorContenidoCurso({
             }`}
           >
             <section className="contenido-edit-modal">
+              <button
+                type="button"
+                onClick={solicitarSalidaEdicion}
+                className="contenido-edit-close"
+                aria-label="Salir de la edición"
+                title="Cerrar"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+
               <div className="contenido-edit-header">
                 <input
                   type="text"
@@ -2516,19 +2953,13 @@ export default function EditorContenidoCurso({
               </div>
 
               <div className="contenido-edit-actions">
-                <button
-                  type="button"
-                  onClick={() => setEditBlock(null)}
-                  className="contenido-button secondary"
-                >
-                  Cancelar
-                </button>
 
                 <button
                   type="button"
-                  onClick={handleSaveEdit}
-                  className="contenido-button"
+                  onClick={() => void handleSaveEdit()}
+                  className="contenido-button success"
                 >
+                  <Save size={17} strokeWidth={2.5} />
                   Guardar cambios
                 </button>
               </div>
@@ -2544,7 +2975,9 @@ export default function EditorContenidoCurso({
                   <button
                     type="button"
                     onClick={() => setShowFormulaPanel(false)}
-                    className="contenido-mini-button"
+                    className="contenido-mini-button contenido-formula-panel-close"
+                    aria-label="Cerrar fórmulas del bloque"
+                    title="Cerrar"
                   >
                     ×
                   </button>
@@ -2582,6 +3015,26 @@ export default function EditorContenidoCurso({
                             }
                           />
                           Visible
+
+                          <span
+                            className="contenido-formula-info-inline"
+                            tabIndex={0}
+                            role="button"
+                            aria-label="Información sobre la visibilidad de la fórmula"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                          >
+                            !
+
+                            <span
+                              className="contenido-formula-info-tooltip"
+                              role="tooltip"
+                            >
+                              La fórmula aparecerá en la sección «Formulario» del curso.
+                            </span>
+                          </span>
                         </label>
 
                         <div className="contenido-formula-actions">
@@ -2660,6 +3113,7 @@ export default function EditorContenidoCurso({
                   }}
                   className="contenido-button contenido-formula-add-button"
                 >
+                  <Plus size={16} strokeWidth={2.7} aria-hidden="true" />
                   Agregar fórmula
                 </button>
               </aside>
@@ -2668,6 +3122,16 @@ export default function EditorContenidoCurso({
         </div>,
         document.body
       )}
+
+      <ConfirmarSalidaEdicion
+        open={confirmarSalidaEdicion}
+        titulo="¿Salir de la edición del contenido?"
+        descripcion="Hay cambios sin guardar en este bloque. Puedes seguir editando, descartarlos o guardarlos antes de salir."
+        guardando={guardandoSalidaEdicion}
+        onContinuar={() => setConfirmarSalidaEdicion(false)}
+        onDescartar={descartarYSalirEdicion}
+        onGuardar={guardarYSalirEdicion}
+      />
 
       {showFormulaModal && renderPortal(
         <div className="contenido-editor-overlay">
@@ -2711,7 +3175,7 @@ export default function EditorContenidoCurso({
                   minRows={3}
                   value={formulaEcuacion}
                   onChange={(e) => setFormulaEcuacion(e.target.value)}
-                  placeholder="Escribe LaTeX aquí"
+                  placeholder="Formato LaTeX. Ej.: \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
                   className="contenido-modal-textarea"
                 />
 
@@ -2723,15 +3187,33 @@ export default function EditorContenidoCurso({
                   className="contenido-modal-textarea"
                 />
 
-                <label
-                  className="contenido-modal-check"
-                >
+                <label className="contenido-modal-check">
                   <input
                     type="checkbox"
                     checked={formulaPublica}
                     onChange={(e) => setFormulaPublica(e.target.checked)}
                   />
-                  Visible para estudiantes
+                  Incluir en formulario
+
+                  <span
+                    className="contenido-formula-info"
+                    tabIndex={0}
+                    role="button"
+                    aria-label="Información sobre incluir la fórmula en el formulario"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <Info size={14} strokeWidth={2.6} aria-hidden="true" />
+
+                    <span
+                      className="contenido-formula-info-tooltip"
+                      role="tooltip"
+                    >
+                      La fórmula aparecerá en la sección «Formulario» del curso.
+                    </span>
+                  </span>
                 </label>
 
                 <div

@@ -1,4 +1,5 @@
 import type { Rareza } from "./rarezaConfig";
+import { supabase } from "@/utils/supabaseClient";
 
 type Recompensa = {
   nombre: string;
@@ -7,18 +8,31 @@ type Recompensa = {
   tipo?: string;
 };
 
+type ResultadoCofre = {
+  rareza: Rareza;
+  recompensas: Recompensa[];
+  yaReclamado?: boolean;
+  agotado?: boolean;
+  bloqueadoHistorico?: boolean;
+  error?: string;
+};
+
 export async function obtenerRecompensasAleatorias(
   _userId: string,
   tipo?: "normal" | "bienvenida"
-): Promise<{
-  rareza: Rareza;
-  recompensas: Recompensa[];
-}> {
+): Promise<ResultadoCofre> {
   try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     const response = await fetch("/api/cofre/reclamar", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {}),
       },
       cache: "no-store",
       body: JSON.stringify({
@@ -26,13 +40,28 @@ export async function obtenerRecompensasAleatorias(
       }),
     });
 
-    const data = await response.json();
+    const texto = await response.text();
+
+    let data: any = {};
+
+    try {
+      data = texto ? JSON.parse(texto) : {};
+    } catch {
+      data = {};
+    }
 
     if (!response.ok) {
-      console.error("Error reclamando cofre:", data);
+      const mensaje =
+        typeof data?.error === "string" && data.error.trim()
+          ? data.error
+          : `No se pudo reclamar el cofre (${response.status}).`;
+
+      console.warn("No se pudo reclamar el cofre:", mensaje);
+
       return {
         rareza: "comun",
         recompensas: [],
+        error: mensaje,
       };
     }
 
@@ -41,13 +70,20 @@ export async function obtenerRecompensasAleatorias(
       recompensas: Array.isArray(data?.recompensas)
         ? data.recompensas
         : [],
+      yaReclamado: Boolean(data?.ya_reclamado),
+      agotado: Boolean(data?.agotado),
+      bloqueadoHistorico: Boolean(data?.bloqueado_historico),
     };
-  } catch (error) {
-    console.error("Error reclamando cofre:", error);
+  } catch (error: any) {
+    const mensaje =
+      error?.message || "No se pudo conectar con el servicio de cofres.";
+
+    console.warn("No se pudo reclamar el cofre:", mensaje);
 
     return {
       rareza: "comun",
       recompensas: [],
+      error: mensaje,
     };
   }
 }

@@ -13,6 +13,7 @@ import katex from "katex";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import { AlertCircle, CheckCircle2, Sparkles, Target, Trophy } from "lucide-react";
 import "katex/dist/katex.min.css";
 
 type Pregunta = { id: string; enunciado: string };
@@ -48,6 +49,27 @@ type QuizUserCache = {
   esPreview: boolean;
 };
 
+type IntentoActivoServidor = {
+  intento_id: string;
+  iniciado_en: string;
+  expira_en: string | null;
+  respuestas: Record<string, string> | null;
+  numero_intento: number;
+  intentos_max: number;
+  server_now: string;
+  expirado: boolean;
+};
+
+type QuizActiveLocalCache = {
+  intentoId: string;
+  seleccionadas: Record<string, string>;
+};
+
+type SalidaPendiente =
+  | { tipo: "atras" }
+  | { tipo: "navegar"; destino: string }
+  | { tipo: "logout" };
+
 type RetroalimentacionIntento = {
   pregunta_id: string | null;
   respuesta_id: string | null;
@@ -60,6 +82,8 @@ type RetroalimentacionIntento = {
 
 const STATIC_CACHE_KEY_BASE = "fcc_academy_quiz_static_v3";
 const USER_CACHE_KEY_BASE = "fcc_academy_quiz_user_v1";
+const ACTIVE_CACHE_KEY_BASE = "fcc_academy_quiz_active_v1";
+const AUTO_RESULT_SEEN_KEY_BASE = "fcc_academy_quiz_auto_result_seen_v1";
 
 function getStaticCacheKey(quizId: string) {
   return `${STATIC_CACHE_KEY_BASE}_${quizId}`;
@@ -137,6 +161,87 @@ function leerUserCache(userId: string, quizId: string): QuizUserCache | null {
   }
 }
 
+function getActiveCacheKey(userId: string, quizId: string) {
+  return `${ACTIVE_CACHE_KEY_BASE}_${userId}_${quizId}`;
+}
+
+function guardarActiveLocalCache(
+  userId: string,
+  quizId: string,
+  intentoId: string,
+  seleccionadas: Record<string, string>
+) {
+  try {
+    const data: QuizActiveLocalCache = {
+      intentoId,
+      seleccionadas,
+    };
+
+    localStorage.setItem(
+      getActiveCacheKey(userId, quizId),
+      JSON.stringify(data)
+    );
+  } catch {}
+}
+
+function leerActiveLocalCache(
+  userId: string,
+  quizId: string
+): QuizActiveLocalCache | null {
+  try {
+    const raw = localStorage.getItem(getActiveCacheKey(userId, quizId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed?.intentoId || typeof parsed?.seleccionadas !== "object") {
+      return null;
+    }
+
+    return {
+      intentoId: String(parsed.intentoId),
+      seleccionadas: parsed.seleccionadas ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function limpiarActiveLocalCache(userId: string, quizId: string) {
+  try {
+    localStorage.removeItem(getActiveCacheKey(userId, quizId));
+  } catch {}
+}
+
+function getAutoResultSeenKey(userId: string, quizId: string) {
+  return `${AUTO_RESULT_SEEN_KEY_BASE}_${userId}_${quizId}`;
+}
+
+function resultadoAutomaticoYaVisto(
+  userId: string,
+  quizId: string,
+  intentoId: string
+) {
+  try {
+    return localStorage.getItem(getAutoResultSeenKey(userId, quizId)) === intentoId;
+  } catch {
+    return false;
+  }
+}
+
+function marcarResultadoAutomaticoVisto(
+  userId: string,
+  quizId: string,
+  intentoId: string
+) {
+  try {
+    localStorage.setItem(
+      getAutoResultSeenKey(userId, quizId),
+      intentoId
+    );
+  } catch {}
+}
+
 function limpiarCachesDerivados() {
   try {
     const prefixes = [
@@ -182,8 +287,23 @@ export default function ResolverQuizPage() {
 
   const [estado, setEstado] = useState<EstadoQuiz>("intro");
   const [timeLeftSec, setTimeLeftSec] = useState<number | null>(null);
+  const [deadlineLocalMs, setDeadlineLocalMs] = useState<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const enviadoRef = useRef<boolean>(false);
+
+  const [intentoActivoId, setIntentoActivoId] = useState<string | null>(null);
+  const intentoActivoIdRef = useRef<string | null>(null);
+  const historyGuardActivoRef = useRef(false);
+  const ignorarPopstateRef = useRef(false);
+  const [mostrarAvisoSalida, setMostrarAvisoSalida] = useState(false);
+  const [procesandoSalida, setProcesandoSalida] = useState(false);
+  const [salidaPendiente, setSalidaPendiente] = useState<SalidaPendiente | null>(null);
+  const [expiraEnIso, setExpiraEnIso] = useState<string | null>(null);
+  const [mensajeResultadoAutomatico, setMensajeResultadoAutomatico] = useState<string | null>(null);
+  const [preguntaPendienteEnvio, setPreguntaPendienteEnvio] = useState<number | null>(null);
+  const [iniciandoIntento, setIniciandoIntento] = useState(false);
+  const [finalizarPorExpiracionPendiente, setFinalizarPorExpiracionPendiente] =
+    useState(false);
 
   const [mejorPuntaje, setMejorPuntaje] = useState<number>(0);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -226,6 +346,261 @@ export default function ResolverQuizPage() {
 
     setRetroalimentacionIntento(mapa);
     return mapa;
+  };
+
+  const activarBarreraHistorial = () => {
+    if (typeof window === "undefined") return;
+
+    if (window.history.state?.fccQuizGuard === quizId) {
+      historyGuardActivoRef.current = true;
+      return;
+    }
+
+    const baseState = { ...(window.history.state ?? {}) };
+    delete baseState.fccQuizEnCurso;
+    delete baseState.fccQuizGuard;
+
+    window.history.replaceState(
+      {
+        ...baseState,
+        fccQuizBase: quizId,
+      },
+      "",
+      window.location.href
+    );
+
+    window.history.pushState(
+      {
+        ...baseState,
+        fccQuizGuard: quizId,
+      },
+      "",
+      window.location.href
+    );
+
+    historyGuardActivoRef.current = true;
+  };
+
+  const quitarBarreraHistorial = () => {
+    if (typeof window === "undefined") return;
+    if (!historyGuardActivoRef.current) return;
+
+    ignorarPopstateRef.current = true;
+    historyGuardActivoRef.current = false;
+    window.history.back();
+  };
+
+  const activarBarreraResultado = () => {
+    if (typeof window === "undefined") return;
+
+    const actual = { ...(window.history.state ?? {}) };
+
+    if (actual.fccQuizResultado === quizId) {
+      return;
+    }
+
+    if (actual.fccQuizGuard === quizId) {
+      delete actual.fccQuizGuard;
+      delete actual.fccQuizEnCurso;
+
+      window.history.replaceState(
+        {
+          ...actual,
+          fccQuizResultado: quizId,
+        },
+        "",
+        window.location.href
+      );
+
+      historyGuardActivoRef.current = false;
+      return;
+    }
+
+    delete actual.fccQuizGuard;
+    delete actual.fccQuizEnCurso;
+    delete actual.fccQuizResultado;
+
+    window.history.replaceState(
+      {
+        ...actual,
+        fccQuizBase: quizId,
+      },
+      "",
+      window.location.href
+    );
+
+    window.history.pushState(
+      {
+        ...actual,
+        fccQuizResultado: quizId,
+      },
+      "",
+      window.location.href
+    );
+
+    historyGuardActivoRef.current = false;
+  };
+
+  const prepararIntentoActivo = (
+    activo: IntentoActivoServidor,
+    currentUserId: string
+  ) => {
+    const intentoId = String(activo.intento_id);
+    const respuestasServidor =
+      activo.respuestas && typeof activo.respuestas === "object"
+        ? activo.respuestas
+        : {};
+
+    const cacheLocal = leerActiveLocalCache(currentUserId, quizId);
+
+    const respuestasRestauradas =
+      cacheLocal?.intentoId === intentoId
+        ? {
+            ...respuestasServidor,
+            ...cacheLocal.seleccionadas,
+          }
+        : respuestasServidor;
+
+    intentoActivoIdRef.current = intentoId;
+    setIntentoActivoId(intentoId);
+
+    seleccionadasRef.current = respuestasRestauradas;
+    setSeleccionadas(respuestasRestauradas);
+
+    guardarActiveLocalCache(
+      currentUserId,
+      quizId,
+      intentoId,
+      respuestasRestauradas
+    );
+
+    const expiraMs = activo.expira_en
+      ? Date.parse(activo.expira_en)
+      : null;
+    const serverNowMs = activo.server_now
+      ? Date.parse(activo.server_now)
+      : Date.now();
+
+    setExpiraEnIso(activo.expira_en ?? null);
+    setMensajeResultadoAutomatico(null);
+
+    if (expiraMs !== null && Number.isFinite(expiraMs)) {
+      const restanteMs = Math.max(0, expiraMs - serverNowMs);
+      const restanteSec = Math.max(0, Math.ceil(restanteMs / 1000));
+
+      setTimeLeftSec(restanteSec);
+      setDeadlineLocalMs(Date.now() + restanteMs);
+    } else {
+      setTimeLeftSec(null);
+      setDeadlineLocalMs(null);
+    }
+
+    enviadoRef.current = false;
+    setEstado("en_curso");
+    activarBarreraHistorial();
+
+    if (activo.expirado) {
+      setFinalizarPorExpiracionPendiente(true);
+    }
+
+    if (
+      cacheLocal?.intentoId === intentoId &&
+      Object.keys(cacheLocal.seleccionadas).length > 0 &&
+      !activo.expirado
+    ) {
+      void Promise.allSettled(
+        Object.entries(respuestasRestauradas).map(
+          ([preguntaId, respuestaId]) =>
+            supabase.rpc("guardar_respuesta_intento_activo", {
+              p_intento_id: intentoId,
+              p_pregunta_id: preguntaId,
+              p_respuesta_id: respuestaId,
+            })
+        )
+      );
+    }
+  };
+
+  const aplicarUltimoIntentoAutomatico = async (
+    resumen: any,
+    currentUserId: string
+  ) => {
+    if (!resumen?.intento_id || !resumen?.envio_automatico) return false;
+
+    const seleccionadasAutomaticas =
+      resumen.respuestas && typeof resumen.respuestas === "object"
+        ? resumen.respuestas
+        : {};
+
+    seleccionadasRef.current = seleccionadasAutomaticas;
+    setSeleccionadas(seleccionadasAutomaticas);
+
+    setResultado({
+      correctas: Number(resumen.correctas ?? 0),
+      total: Number(resumen.total ?? preguntas.length ?? 0),
+    });
+
+    const numeroIntento = Number(resumen.numero_intento ?? 0);
+    const puntaje = Number(resumen.puntaje ?? 0);
+    const intentosMaxResumen = Number(
+      resumen.intentos_max ?? quizInfo?.intentos_max ?? 1
+    );
+
+    setIntentosRealizados((prev) => Math.max(prev, numeroIntento));
+    setMejorPuntaje((prev) => Math.max(prev, puntaje));
+    setXpGanado(Number(resumen.xp_agregado ?? 0));
+    setResultadoHistorico(true);
+    setEnvioAutomaticoPorTiempo(false);
+    setMostrarAvisoTiempo(false);
+    setFinalizarPorExpiracionPendiente(false);
+    setDeadlineLocalMs(null);
+    setTimeLeftSec(null);
+    setExpiraEnIso(resumen.expiraba_en ?? null);
+    intentoActivoIdRef.current = null;
+    setIntentoActivoId(null);
+    limpiarActiveLocalCache(currentUserId, quizId);
+
+    const hora = formatearHora(resumen.expiraba_en ?? null);
+
+    setMensajeResultadoAutomatico(
+      hora
+        ? `El tiempo de tu último intento terminó a las ${hora}. Se enviaron automáticamente las respuestas que alcanzaron a guardarse dentro del tiempo establecido.`
+        : "El tiempo de tu último intento terminó. Se enviaron automáticamente las respuestas que alcanzaron a guardarse dentro del tiempo establecido."
+    );
+
+    const puedeVerExplicaciones =
+      puntaje === 100 || numeroIntento >= intentosMaxResumen;
+
+    if (puedeVerExplicaciones) {
+      try {
+        const items = await cargarRetroalimentacionIntento(
+          String(resumen.intento_id)
+        );
+        aplicarRetroalimentacionIntento(items);
+        setUltimoIntentoId(String(resumen.intento_id));
+      } catch {
+        setRetroalimentacionIntento({});
+      }
+    } else {
+      setRetroalimentacionIntento({});
+    }
+
+    guardarUserCache(currentUserId, quizId, {
+      rol: "estudiante",
+      intentosRealizados: numeroIntento,
+      mejorPuntaje: Math.max(mejorPuntaje, puntaje),
+      esPreview: false,
+    });
+
+    marcarResultadoAutomaticoVisto(
+      currentUserId,
+      quizId,
+      String(resumen.intento_id)
+    );
+
+    activarBarreraResultado();
+    setEstado("finalizado");
+    return true;
   };
 
   useLayoutEffect(() => {
@@ -390,7 +765,7 @@ export default function ResolverQuizPage() {
             Number(ultimo?.numero_intento ?? 0) >= intentosMaxActual);
 
         setUltimoIntentoId(
-          puedeConsultarUltimo ? String(ultimo.id) : null
+          puedeConsultarUltimo && ultimo ? String(ultimo.id) : null
         );
 
         setRol(rolUser);
@@ -413,6 +788,50 @@ export default function ResolverQuizPage() {
           mejorPuntaje: best,
           esPreview: preview,
         });
+
+        if (!preview) {
+          const { data: intentoActivo, error: intentoActivoError } =
+            await supabase.rpc("obtener_intento_activo_quiz", {
+              p_quiz_id: quizId,
+            });
+
+          if (intentoActivoError) {
+            console.error(
+              "Error comprobando intento activo:",
+              intentoActivoError
+            );
+          } else if (intentoActivo?.intento_id) {
+            prepararIntentoActivo(
+              intentoActivo as IntentoActivoServidor,
+              currentUserId
+            );
+          } else {
+            const { data: ultimoResumen, error: ultimoResumenError } =
+              await supabase.rpc("obtener_ultimo_intento_quiz_resumen", {
+                p_quiz_id: quizId,
+              });
+
+            if (ultimoResumenError) {
+              console.warn(
+                "No se pudo comprobar el último intento automático:",
+                ultimoResumenError
+              );
+            } else if (
+              ultimoResumen?.envio_automatico &&
+              ultimoResumen?.intento_id &&
+              !resultadoAutomaticoYaVisto(
+                currentUserId,
+                quizId,
+                String(ultimoResumen.intento_id)
+              )
+            ) {
+              await aplicarUltimoIntentoAutomatico(
+                ultimoResumen,
+                currentUserId
+              );
+            }
+          }
+        }
       } catch (e) {
         console.error("Error inicializando quiz:", e);
       } finally {
@@ -435,6 +854,175 @@ export default function ResolverQuizPage() {
   }, []);
 
   useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (ignorarPopstateRef.current) {
+        ignorarPopstateRef.current = false;
+        return;
+      }
+
+      if (
+        estado === "finalizado" &&
+        !esPreview &&
+        event.state?.fccQuizBase === quizId
+      ) {
+        seleccionadasRef.current = {};
+        setSeleccionadas({});
+        setResultado(null);
+        setRetroalimentacionIntento({});
+        setResultadoHistorico(false);
+        setEnvioAutomaticoPorTiempo(false);
+        setMostrarAvisoTiempo(false);
+        setMensajeResultadoAutomatico(null);
+        setXpGanado(0);
+        enviadoRef.current = false;
+        setEstado("intro");
+        window.scrollTo({ top: 0, behavior: "auto" });
+        return;
+      }
+
+      if (
+        estado === "en_curso" &&
+        !esPreview &&
+        intentoActivoIdRef.current &&
+        event.state?.fccQuizBase === quizId
+      ) {
+        const guardState = { ...(event.state ?? {}) };
+        delete guardState.fccQuizBase;
+        guardState.fccQuizGuard = quizId;
+
+        window.history.pushState(
+          guardState,
+          "",
+          window.location.href
+        );
+
+        historyGuardActivoRef.current = true;
+        setSalidaPendiente({ tipo: "atras" });
+        setMostrarAvisoSalida(true);
+        return;
+      }
+
+      if (
+        event.state?.fccQuizGuard === quizId &&
+        estado === "intro" &&
+        !esPreview &&
+        userId &&
+        intentoActivoIdRef.current
+      ) {
+        historyGuardActivoRef.current = true;
+
+        void supabase
+          .rpc("obtener_intento_activo_quiz", {
+            p_quiz_id: quizId,
+          })
+          .then(async ({ data, error }) => {
+            if (!error && data?.intento_id) {
+              prepararIntentoActivo(
+                data as IntentoActivoServidor,
+                userId
+              );
+              return;
+            }
+
+            const { data: ultimoResumen } = await supabase.rpc(
+              "obtener_ultimo_intento_quiz_resumen",
+              { p_quiz_id: quizId }
+            );
+
+            if (
+              ultimoResumen?.envio_automatico &&
+              ultimoResumen?.intento_id &&
+              !resultadoAutomaticoYaVisto(
+                userId,
+                quizId,
+                String(ultimoResumen.intento_id)
+              )
+            ) {
+              await aplicarUltimoIntentoAutomatico(
+                ultimoResumen,
+                userId
+              );
+            }
+          });
+
+        return;
+      }
+
+      historyGuardActivoRef.current =
+        event.state?.fccQuizGuard === quizId;
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [estado, esPreview, quizId, userId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const activo =
+      estado === "en_curso" &&
+      !esPreview &&
+      Boolean(intentoActivoId);
+
+    if (activo) {
+      (window as any).__fccQuizIntentoActivo = {
+        quizId,
+        expiraEn: expiraEnIso,
+      };
+    } else if ((window as any).__fccQuizIntentoActivo?.quizId === quizId) {
+      delete (window as any).__fccQuizIntentoActivo;
+    }
+
+    return () => {
+      if ((window as any).__fccQuizIntentoActivo?.quizId === quizId) {
+        delete (window as any).__fccQuizIntentoActivo;
+      }
+    };
+  }, [estado, esPreview, intentoActivoId, expiraEnIso, quizId]);
+
+  useEffect(() => {
+    const handleSolicitudSalida = (event: Event) => {
+      if (
+        estado !== "en_curso" ||
+        esPreview ||
+        !intentoActivoIdRef.current
+      ) {
+        return;
+      }
+
+      const detail = (event as CustomEvent).detail ?? {};
+
+      if (detail.accion === "logout") {
+        setSalidaPendiente({ tipo: "logout" });
+      } else if (detail.destino) {
+        setSalidaPendiente({
+          tipo: "navegar",
+          destino: String(detail.destino),
+        });
+      } else {
+        return;
+      }
+
+      setMostrarAvisoSalida(true);
+    };
+
+    window.addEventListener(
+      "fcc:quiz-solicitar-salida",
+      handleSolicitudSalida
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fcc:quiz-solicitar-salida",
+        handleSolicitudSalida
+      );
+    };
+  }, [estado, esPreview]);
+
+  useEffect(() => {
     if (!(estado === "finalizado" && envioAutomaticoPorTiempo)) return;
 
     setMostrarAvisoTiempo(true);
@@ -446,6 +1034,57 @@ export default function ResolverQuizPage() {
     return () => clearTimeout(timer);
   }, [estado, envioAutomaticoPorTiempo]);
 
+  useEffect(() => {
+    if (
+      estado !== "en_curso" ||
+      esPreview ||
+      !userId ||
+      !intentoActivoId
+    ) {
+      return;
+    }
+
+    let sincronizando = false;
+
+    const sincronizar = async () => {
+      if (sincronizando) return;
+      sincronizando = true;
+
+      try {
+        const respuestasActuales = seleccionadasRef.current;
+
+        await Promise.allSettled(
+          Object.entries(respuestasActuales).map(
+            ([preguntaId, respuestaId]) =>
+              supabase.rpc("guardar_respuesta_intento_activo", {
+                p_intento_id: intentoActivoId,
+                p_pregunta_id: preguntaId,
+                p_respuesta_id: respuestaId,
+              })
+          )
+        );
+      } finally {
+        sincronizando = false;
+      }
+    };
+
+    const handleOnline = () => {
+      void sincronizar();
+    };
+
+    const timer = window.setInterval(() => {
+      void sincronizar();
+    }, 5000);
+
+    window.addEventListener("online", handleOnline);
+    void sincronizar();
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [estado, esPreview, userId, intentoActivoId]);
+
   const seleccionarRespuesta = (preguntaId: string, respuestaId: string) => {
     const next = {
       ...seleccionadasRef.current,
@@ -454,13 +1093,44 @@ export default function ResolverQuizPage() {
 
     seleccionadasRef.current = next;
     setSeleccionadas(next);
+
+    const activeId = intentoActivoIdRef.current;
+
+    if (!esPreview && activeId && userId) {
+      guardarActiveLocalCache(userId, quizId, activeId, next);
+
+      void supabase
+        .rpc("guardar_respuesta_intento_activo", {
+          p_intento_id: activeId,
+          p_pregunta_id: preguntaId,
+          p_respuesta_id: respuestaId,
+        })
+        .then(({ error }) => {
+          if (!error) return;
+
+          console.warn(
+            "No se pudo guardar inmediatamente la respuesta del intento:",
+            error
+          );
+
+          if (
+            String(error.message ?? "")
+              .toLowerCase()
+              .includes("tiempo")
+          ) {
+            setFinalizarPorExpiracionPendiente(true);
+          }
+        });
+    }
   };
 
-  const iniciar = () => {
+  const iniciar = async () => {
     setEnvioAutomaticoPorTiempo(false);
     setMostrarAvisoTiempo(false);
     setRetroalimentacionIntento({});
     setResultadoHistorico(false);
+    setMensajeResultadoAutomatico(null);
+    setPreguntaPendienteEnvio(null);
 
     if (verificandoIntentos && !esPreview) {
       alert("Espera un momento. Estamos verificando tus intentos disponibles.");
@@ -472,52 +1142,68 @@ export default function ResolverQuizPage() {
       setEstado("en_curso");
 
       if (quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0) {
-        setTimeLeftSec(quizInfo.tiempo_limite_min * 60);
+        const segundos = quizInfo.tiempo_limite_min * 60;
+        setTimeLeftSec(segundos);
+        setDeadlineLocalMs(Date.now() + segundos * 1000);
+      } else {
+        setTimeLeftSec(null);
+        setDeadlineLocalMs(null);
       }
 
-      arrancarCronometro();
       return;
     }
 
-    if (intentosRealizados >= (quizInfo?.intentos_max ?? 1) || mejorPuntaje === 100) {
+    if (
+      intentosRealizados >= (quizInfo?.intentos_max ?? 1) ||
+      mejorPuntaje === 100
+    ) {
       alert("❌ Ya alcanzaste el número máximo de intentos para este quiz.");
       return;
     }
 
-    enviadoRef.current = false;
-    setEstado("en_curso");
-
-    if (quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0) {
-      setTimeLeftSec(quizInfo.tiempo_limite_min * 60);
+    if (!userId) {
+      alert("No se pudo identificar al usuario.");
+      return;
     }
 
-    arrancarCronometro();
-  };
+    try {
+      setIniciandoIntento(true);
 
-  const arrancarCronometro = () => {
-    if (!quizInfo?.tiempo_limite_min || quizInfo.tiempo_limite_min <= 0) return;
-
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    intervalRef.current = setInterval(() => {
-      setTimeLeftSec((prev) => {
-        if (prev === null) return null;
-
-        if (prev <= 1) {
-          clearInterval(intervalRef.current as NodeJS.Timeout);
-
-          if (!enviadoRef.current) enviarQuiz(true);
-
-          return 0;
+      const { data, error } = await supabase.rpc(
+        "iniciar_o_reanudar_intento_quiz",
+        {
+          p_quiz_id: quizId,
         }
+      );
 
-        return prev - 1;
-      });
-    }, 1000);
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.intento_id) {
+        throw new Error("No se pudo crear o recuperar el intento.");
+      }
+
+      prepararIntentoActivo(
+        data as IntentoActivoServidor,
+        userId
+      );
+    } catch (error: any) {
+      console.error("Error iniciando intento:", error);
+
+      alert(
+        error?.message ||
+          "No se pudo iniciar el intento. Intenta nuevamente."
+      );
+    } finally {
+      setIniciandoIntento(false);
+    }
   };
 
-  const enviarQuiz = async (auto: boolean = false) => {
-    if (enviadoRef.current) return;
+  const enviarQuiz = async (
+    auto: boolean = false
+  ): Promise<boolean> => {
+    if (enviadoRef.current) return false;
 
     const seleccionadasActuales = seleccionadasRef.current;
 
@@ -527,10 +1213,8 @@ export default function ResolverQuizPage() {
       );
 
       if (primeraSinResponder !== -1) {
-        alert(
-          `Responde la pregunta ${primeraSinResponder + 1} antes de enviar el quiz.`
-        );
-        return;
+        setPreguntaPendienteEnvio(primeraSinResponder + 1);
+        return false;
       }
     }
 
@@ -561,20 +1245,26 @@ export default function ResolverQuizPage() {
       });
 
       setEstado("finalizado");
-      return;
+      return true;
     }
 
     if (!userId || !quizInfo) {
       enviadoRef.current = false;
       alert("No se pudo identificar al usuario o al quiz.");
-      return;
+      return false;
     }
 
     try {
+      const activeId = intentoActivoIdRef.current;
+
+      if (!activeId) {
+        throw new Error("No se pudo identificar el intento activo.");
+      }
+
       const { data, error } = await supabase.rpc(
-        "finalizar_intento_quiz",
+        "finalizar_intento_quiz_activo",
         {
-          p_quiz_id: quizId,
+          p_intento_activo_id: activeId,
           p_respuestas: seleccionadasActuales,
           p_envio_automatico: auto,
         }
@@ -603,6 +1293,14 @@ export default function ResolverQuizPage() {
         nuevo_nivel: boolean;
       };
 
+      if (auto) {
+        marcarResultadoAutomaticoVisto(
+          userId,
+          quizId,
+          String(resultadoServidor.intento_id)
+        );
+      }
+
       const nuevoMejor = Math.max(
         mejorPuntaje,
         resultadoServidor.puntaje
@@ -615,7 +1313,7 @@ export default function ResolverQuizPage() {
 
       setIntentosRealizados(resultadoServidor.numero_intento);
       setMejorPuntaje(nuevoMejor);
-      setXpGanado(resultadoServidor.xp_quiz);
+      setXpGanado(resultadoServidor.xp_agregado);
       setResultadoHistorico(false);
 
       const puedeVerExplicaciones =
@@ -647,7 +1345,22 @@ export default function ResolverQuizPage() {
         esPreview: false,
       });
 
+      limpiarActiveLocalCache(userId, quizId);
+      intentoActivoIdRef.current = null;
+      setIntentoActivoId(null);
+      setDeadlineLocalMs(null);
+      setTimeLeftSec(null);
+      setExpiraEnIso(null);
+      setMensajeResultadoAutomatico(null);
+      activarBarreraResultado();
+
       setEstado("finalizado");
+
+      if (auto && typeof window !== "undefined") {
+        window.setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }, 0);
+      }
 
       window.dispatchEvent(new Event("xpActualizada"));
 
@@ -726,6 +1439,7 @@ export default function ResolverQuizPage() {
           error
         );
       }
+      return true;
     } catch (error: any) {
       console.error("Error finalizando intento:", error);
 
@@ -735,8 +1449,122 @@ export default function ResolverQuizPage() {
         error?.message ||
           "No se pudo registrar el intento. Intenta nuevamente."
       );
+
+      return false;
     }
   };
+
+  useEffect(() => {
+    if (
+      estado !== "en_curso" ||
+      deadlineLocalMs === null ||
+      enviadoRef.current
+    ) {
+      return;
+    }
+
+    let envioDisparado = false;
+
+    const tick = () => {
+      const restante = Math.max(
+        0,
+        Math.ceil((deadlineLocalMs - Date.now()) / 1000)
+      );
+
+      setTimeLeftSec(restante);
+
+      if (
+        restante <= 0 &&
+        !envioDisparado &&
+        !enviadoRef.current
+      ) {
+        envioDisparado = true;
+
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+
+        void enviarQuiz(true);
+      }
+    };
+
+    tick();
+
+    intervalRef.current = setInterval(tick, 250);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [estado, deadlineLocalMs]);
+
+  useEffect(() => {
+    if (
+      !finalizarPorExpiracionPendiente ||
+      estado !== "en_curso" ||
+      esPreview ||
+      !intentoActivoId
+    ) {
+      return;
+    }
+
+    setFinalizarPorExpiracionPendiente(false);
+    void enviarQuiz(true);
+  }, [
+    finalizarPorExpiracionPendiente,
+    estado,
+    esPreview,
+    intentoActivoId,
+  ]);
+
+  const confirmarSalidaQuiz = async () => {
+    if (procesandoSalida) return;
+
+    try {
+      setProcesandoSalida(true);
+
+      const pendiente = salidaPendiente ?? { tipo: "atras" as const };
+
+      setMostrarAvisoSalida(false);
+      setSalidaPendiente(null);
+
+      if (pendiente.tipo === "atras") {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+
+        setDeadlineLocalMs(null);
+        setTimeLeftSec(null);
+        setEstado("intro");
+        quitarBarreraHistorial();
+        return;
+      }
+
+      if (pendiente.tipo === "navegar") {
+        router.push(pendiente.destino);
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("fcc:quiz-salida-confirmada", {
+          detail: { accion: "logout" },
+        })
+      );
+    } finally {
+      setProcesandoSalida(false);
+    }
+  };
+
+  const cancelarSalidaQuiz = () => {
+    if (procesandoSalida) return;
+    setMostrarAvisoSalida(false);
+    setSalidaPendiente(null);
+  };
+
   const verUltimoResultado = async () => {
     if (!ultimoIntentoId) return;
 
@@ -768,6 +1596,8 @@ export default function ResolverQuizPage() {
       });
 
       setResultadoHistorico(true);
+      setXpGanado(0);
+      activarBarreraResultado();
       setEstado("finalizado");
     } catch (error) {
       console.warn("No se pudo cargar el último resultado:", error);
@@ -780,15 +1610,25 @@ export default function ResolverQuizPage() {
   const reiniciarQuiz = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
+    if (
+      typeof window !== "undefined" &&
+      window.history.state?.fccQuizResultado === quizId
+    ) {
+      ignorarPopstateRef.current = true;
+      window.history.back();
+    }
+
     seleccionadasRef.current = {};
     setSeleccionadas({});
     setEstado("intro");
     setResultado(null);
     setTimeLeftSec(null);
+    setDeadlineLocalMs(null);
     setEnvioAutomaticoPorTiempo(false);
     setRetroalimentacionIntento({});
     setResultadoHistorico(false);
     setMostrarAvisoTiempo(false);
+    setMensajeResultadoAutomatico(null);
     enviadoRef.current = false;
   };
 
@@ -797,6 +1637,23 @@ export default function ResolverQuizPage() {
     const sec = s % 60;
     return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
+
+  const formatearHora = (value: string | null | undefined) => {
+    if (!value) return null;
+
+    try {
+      return new Intl.DateTimeFormat("es-MX", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+        .format(new Date(value))
+        .replace(/\.$/, "");
+    } catch {
+      return null;
+    }
+  };
+
+  const horaCierreIntento = formatearHora(expiraEnIso);
 
   const decodeHtmlAttr = (value: string) => {
     return value
@@ -826,6 +1683,7 @@ export default function ResolverQuizPage() {
         try {
           return katex.renderToString(decodeHtmlAttr(latex), {
             throwOnError: false,
+            strict: "ignore",
             displayMode: false,
           });
         } catch {
@@ -840,6 +1698,7 @@ export default function ResolverQuizPage() {
         try {
           return katex.renderToString(decodeHtmlAttr(latex), {
             throwOnError: false,
+            strict: "ignore",
             displayMode: false,
           });
         } catch {
@@ -852,6 +1711,7 @@ export default function ResolverQuizPage() {
       try {
         return katex.renderToString(String(latex).trim(), {
           throwOnError: false,
+          strict: "ignore",
           displayMode: true,
         });
       } catch {
@@ -863,6 +1723,7 @@ export default function ResolverQuizPage() {
       try {
         return katex.renderToString(String(latex).trim(), {
           throwOnError: false,
+          strict: "ignore",
           displayMode: false,
         });
       } catch {
@@ -883,10 +1744,20 @@ export default function ResolverQuizPage() {
   };
 
   const intentosMax = quizInfo?.intentos_max ?? 1;
-  const sinMasIntentos =
+  const quizCompletadoPerfecto =
     !esPreview &&
     !verificandoIntentos &&
-    (intentosRealizados >= intentosMax || mejorPuntaje === 100);
+    mejorPuntaje === 100;
+  const intentosAgotados =
+    !esPreview &&
+    !verificandoIntentos &&
+    mejorPuntaje < 100 &&
+    intentosRealizados >= intentosMax;
+  const sinMasIntentos = quizCompletadoPerfecto || intentosAgotados;
+  const puntajeResultado =
+    resultado && resultado.total > 0
+      ? Math.round((resultado.correctas / resultado.total) * 100)
+      : 0;
 
   const tiempoTieneLimite =
     !!quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0;
@@ -963,7 +1834,7 @@ export default function ResolverQuizPage() {
       }
 
       .quiz-header {
-        padding: 22px clamp(18px, 3vw, 30px);
+        padding: 26px clamp(18px, 3vw, 30px) 32px;
         text-align: center;
       }
 
@@ -1087,7 +1958,8 @@ export default function ResolverQuizPage() {
 
       .quiz-primary-button,
       .quiz-secondary-button,
-      .quiz-success-button {
+      .quiz-success-button,
+      .quiz-danger-button {
         min-height: 44px;
         display: inline-flex;
         align-items: center;
@@ -1131,17 +2003,103 @@ export default function ResolverQuizPage() {
         border: 1px solid var(--quiz-border);
       }
 
+      .quiz-emphasis-button {
+        color: var(--quiz-accent);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-accent) 13%, var(--quiz-surface-strong)),
+            color-mix(in srgb, var(--quiz-accent) 8%, var(--quiz-surface))
+          );
+        border-color: color-mix(
+          in srgb,
+          var(--quiz-accent) 42%,
+          var(--quiz-border)
+        );
+        box-shadow:
+          0 8px 20px color-mix(in srgb, var(--quiz-accent) 12%, transparent),
+          inset 0 1px 0 color-mix(in srgb, var(--quiz-surface-strong) 76%, transparent);
+      }
+
       .quiz-primary-button:hover,
       .quiz-secondary-button:hover,
-      .quiz-success-button:hover {
+      .quiz-success-button:hover,
+      .quiz-danger-button:hover {
         transform: translateY(-1px);
       }
 
       .quiz-primary-button:disabled,
-      .quiz-success-button:disabled {
+      .quiz-success-button:disabled,
+      .quiz-danger-button:disabled {
         cursor: not-allowed;
         opacity: 0.58;
         transform: none;
+      }
+
+      .quiz-danger-button {
+        color: #ffffff;
+        background: linear-gradient(135deg, #dc2626, #ef4444);
+        box-shadow: 0 14px 26px rgba(220, 38, 38, 0.22);
+      }
+
+      .quiz-active-notice,
+      .quiz-auto-result-note {
+        width: min(100%, 720px);
+        border-radius: 17px;
+        padding: 12px 14px;
+        color: var(--quiz-text-soft);
+        background: color-mix(in srgb, var(--quiz-accent) 7%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        font-size: 0.88rem;
+        font-weight: 760;
+        line-height: 1.45;
+      }
+
+      .quiz-auto-result-note {
+        color: color-mix(in srgb, #d97706 72%, var(--quiz-text));
+        background: color-mix(in srgb, #f59e0b 7%, var(--quiz-surface));
+        border-color: color-mix(in srgb, #f59e0b 24%, var(--quiz-border));
+      }
+
+      .quiz-best-summary {
+        width: min(100%, 520px);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        border-radius: 18px;
+        padding: 13px 15px;
+        text-align: left;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-accent) 7%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+      }
+
+      .quiz-best-summary-icon {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 10%, transparent);
+      }
+
+      .quiz-best-summary-copy {
+        display: grid;
+        gap: 2px;
+      }
+
+      .quiz-best-summary-copy span {
+        color: var(--quiz-muted);
+        font-size: 0.76rem;
+        font-weight: 850;
+      }
+
+      .quiz-best-summary-copy strong {
+        color: var(--quiz-text);
+        font-size: 1rem;
+        font-weight: 950;
       }
 
       .quiz-warning {
@@ -1155,6 +2113,57 @@ export default function ResolverQuizPage() {
         font-size: 0.92rem;
         font-weight: 750;
         line-height: 1.45;
+      }
+
+      .quiz-completion-note {
+        width: min(100%, 610px);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        border-radius: 18px;
+        padding: 14px 16px;
+        text-align: left;
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-completion-note.perfect {
+        color: color-mix(in srgb, var(--color-success) 78%, var(--quiz-text));
+        background: color-mix(in srgb, var(--color-success) 8%, var(--quiz-surface));
+        border-color: color-mix(in srgb, var(--color-success) 24%, var(--quiz-border));
+      }
+
+      .quiz-completion-note.exhausted {
+        color: color-mix(in srgb, #d97706 76%, var(--quiz-text));
+        background: color-mix(in srgb, #f59e0b 7%, var(--quiz-surface));
+        border-color: color-mix(in srgb, #f59e0b 22%, var(--quiz-border));
+      }
+
+      .quiz-completion-icon {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: color-mix(in srgb, currentColor 10%, transparent);
+      }
+
+      .quiz-completion-copy {
+        display: grid;
+        gap: 2px;
+      }
+
+      .quiz-completion-copy strong {
+        color: var(--quiz-text);
+        font-size: 0.98rem;
+        font-weight: 950;
+      }
+
+      .quiz-completion-copy span {
+        color: var(--quiz-muted);
+        font-size: 0.86rem;
+        font-weight: 760;
+        line-height: 1.4;
       }
 
       .quiz-timer-card {
@@ -1182,6 +2191,11 @@ export default function ResolverQuizPage() {
         padding: 60px 20px 96px;
         overflow: visible;
       }
+
+      .quiz-question-card.has-feedback {
+        padding-bottom: 20px;
+      }
+
       .quiz-question-card > .quiz-card-content {
         position: static;
       }
@@ -1303,6 +2317,10 @@ export default function ResolverQuizPage() {
         border: 1px solid var(--quiz-border);
       }
 
+      .quiz-question-card.has-feedback .quiz-feedback-card {
+        margin-top: 72px;
+      }
+
       .quiz-feedback-card.correct {
         background: color-mix(in srgb, var(--color-success) 7%, var(--quiz-surface));
         border-color: color-mix(in srgb, var(--color-success) 24%, var(--quiz-border));
@@ -1395,6 +2413,57 @@ export default function ResolverQuizPage() {
         font-weight: 950;
       }
 
+      .quiz-result-visual {
+        width: min(100%, 520px);
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        border-radius: 20px;
+        padding: 14px 16px;
+        background: color-mix(in srgb, var(--quiz-accent) 6%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 18%, var(--quiz-border));
+      }
+
+      .quiz-result-visual.perfect {
+        color: var(--color-success);
+        background: color-mix(in srgb, var(--color-success) 7%, var(--quiz-surface));
+        border-color: color-mix(in srgb, var(--color-success) 22%, var(--quiz-border));
+      }
+
+      .quiz-result-visual.retry {
+        color: var(--quiz-accent);
+      }
+
+      .quiz-result-visual.finished {
+        color: #d97706;
+        background: color-mix(in srgb, #f59e0b 6%, var(--quiz-surface));
+        border-color: color-mix(in srgb, #f59e0b 20%, var(--quiz-border));
+      }
+
+      .quiz-result-visual-icon {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: color-mix(in srgb, currentColor 10%, transparent);
+      }
+
+      .quiz-result-visual strong {
+        color: var(--quiz-text);
+        font-size: 0.96rem;
+        font-weight: 950;
+        text-align: center;
+      }
+
+      .quiz-result-visual span {
+        color: var(--quiz-muted);
+        font-size: 0.84rem;
+        font-weight: 740;
+        line-height: 1.4;
+        text-align: center;
+      }
+
       .quiz-floating-alert,
       .quiz-floating-timer {
         position: fixed;
@@ -1421,6 +2490,127 @@ export default function ResolverQuizPage() {
         line-height: 1.35;
       }
 
+      .quiz-exit-overlay {
+        --quiz-accent: var(--fcc-premium-accent);
+        --quiz-surface: var(--fcc-premium-surface);
+        --quiz-surface-soft: var(--fcc-premium-surface-soft);
+        --quiz-surface-strong: var(--fcc-premium-surface-strong);
+        --quiz-text: var(--fcc-premium-text);
+        --quiz-muted: var(--fcc-premium-muted);
+        --quiz-border: var(--fcc-premium-border);
+        --quiz-shadow: var(--fcc-premium-shadow);
+        --quiz-button: var(--fcc-premium-button);
+
+        position: fixed;
+        inset: 0;
+        z-index: 180;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        background: rgba(2, 8, 23, 0.72);
+        backdrop-filter: blur(8px);
+      }
+
+      .quiz-exit-modal {
+        width: min(92vw, 500px);
+        border-radius: 26px;
+        padding: 24px;
+        color: var(--quiz-text);
+        background:
+          linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--quiz-surface) 98%, transparent),
+            color-mix(in srgb, var(--quiz-surface-soft) 99%, transparent)
+          );
+        border: 1px solid color-mix(
+          in srgb,
+          var(--quiz-accent) 18%,
+          var(--quiz-border)
+        );
+        box-shadow: var(--quiz-shadow);
+      }
+
+      .quiz-exit-modal h2 {
+        color: var(--quiz-text);
+        font-size: 1.35rem;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+        text-align: center;
+      }
+
+      .quiz-exit-modal p {
+        margin: 10px auto 0;
+        max-width: 420px;
+        color: var(--quiz-muted);
+        font-size: 0.92rem;
+        font-weight: 700;
+        line-height: 1.45;
+        text-align: center;
+      }
+
+      .quiz-exit-actions {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .quiz-validation-modal {
+        width: min(92vw, 430px);
+      }
+
+      .quiz-validation-icon {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 10px;
+        border-radius: 16px;
+        color: #d97706;
+        background: color-mix(in srgb, #f59e0b 10%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, #f59e0b 24%, var(--quiz-border));
+      }
+
+      .quiz-result-status-top {
+        display: grid;
+        gap: 5px;
+        border-radius: 18px;
+        padding: 13px 16px;
+        text-align: center;
+        color: var(--quiz-text-soft);
+        background: color-mix(in srgb, var(--quiz-accent) 7%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+      }
+
+      .quiz-result-status-top.warning {
+        background: color-mix(in srgb, #f59e0b 8%, var(--quiz-surface));
+        border-color: color-mix(in srgb, #f59e0b 24%, var(--quiz-border));
+      }
+
+      .quiz-result-status-top strong {
+        color: var(--quiz-text);
+        font-size: 0.95rem;
+        font-weight: 950;
+      }
+
+      .quiz-result-status-top span {
+        color: var(--quiz-muted);
+        font-size: 0.86rem;
+        font-weight: 720;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 640px) {
+        .quiz-exit-actions {
+          flex-direction: column-reverse;
+        }
+
+        .quiz-exit-actions button {
+          width: 100%;
+        }
+      }
+
       .quiz-preview-overlay {
         position: fixed;
         inset: 0;
@@ -1441,30 +2631,22 @@ export default function ResolverQuizPage() {
 
       .quiz-preview-close {
         position: absolute;
-        right: 12px;
-        top: 12px;
+        right: 8px;
+        top: 8px;
         z-index: 2;
-        width: 40px;
-        height: 40px;
-        display: grid;
-        place-items: center;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         border-radius: 999px;
-        color: #ffffff;
-        background: var(--color-danger);
-        border: 1px solid color-mix(in srgb, var(--color-danger) 65%, white);
-        box-shadow: none;
-        font-size: 1.35rem;
-        font-weight: 950;
+        color: var(--quiz-text);
+        background: var(--quiz-surface-strong);
+        border: 1px solid var(--quiz-border);
+        box-shadow: var(--fcc-premium-shadow-soft);
+        font-size: 0.875rem;
+        font-weight: 600;
         line-height: 1;
-        transition:
-          transform 170ms ease,
-          opacity 170ms ease,
-          background 170ms ease;
-      }
-
-      .quiz-preview-close:hover {
-        transform: translateY(-1px);
-        opacity: 0.94;
       }
 
       .quiz-preview-image {
@@ -1506,6 +2688,14 @@ export default function ResolverQuizPage() {
           padding: 48px 16px 80px;
         }
 
+        .quiz-question-card.has-feedback {
+          padding-bottom: 16px;
+        }
+
+        .quiz-question-card.has-feedback .quiz-feedback-card {
+          margin-top: 54px;
+        }
+
         .quiz-intro-grid {
           grid-template-columns: 1fr;
         }
@@ -1540,7 +2730,7 @@ export default function ResolverQuizPage() {
     `}</style>
   );
 
-  if (loading) {
+  if (loading || (!esPreview && verificandoIntentos)) {
     return (
       <LayoutGeneral rol={rol}>
         {estilos}
@@ -1628,6 +2818,30 @@ export default function ResolverQuizPage() {
           </div>
         </section>
 
+        {estado === "finalizado" && !esPreview && resultado && (
+          <div
+            className={`quiz-result-status-top ${
+              mensajeResultadoAutomatico ? "warning" : ""
+            }`}
+          >
+            <strong>
+              {mensajeResultadoAutomatico
+                ? "Intento finalizado por tiempo"
+                : resultadoHistorico
+                  ? "Resultado registrado"
+                  : "Intento finalizado"}
+            </strong>
+
+            <span>
+              {mensajeResultadoAutomatico
+                ? `${mensajeResultadoAutomatico} Estás viendo las respuestas registradas. Consulta tu resultado al final de la página.`
+                : resultadoHistorico
+                  ? "Estás viendo las respuestas de tu último intento. Consulta el resultado al final de la página."
+                  : "Ya no estás respondiendo el quiz. Puedes revisar tus respuestas y consultar el resultado al final de la página."}
+            </span>
+          </div>
+        )}
+
         {estado === "intro" && (
           <section className="quiz-card quiz-intro-card no-diagonal">
             <div className="quiz-card-content quiz-intro-content">
@@ -1654,24 +2868,79 @@ export default function ResolverQuizPage() {
                 </div>
               </div>
 
+              {!esPreview && intentoActivoId && (
+                <p className="quiz-active-notice">
+                  Tienes un intento en curso. Tus respuestas siguen guardadas
+                  {horaCierreIntento
+                    ? ` y podrás retomarlo hasta las ${horaCierreIntento}.`
+                    : "."}
+                </p>
+              )}
+
+              {!esPreview &&
+                !sinMasIntentos &&
+                !intentoActivoId &&
+                intentosRealizados > 0 && (
+                  <div className="quiz-best-summary">
+                    <div className="quiz-best-summary-icon" aria-hidden="true">
+                      <Target size={23} strokeWidth={2.35} />
+                    </div>
+
+                    <div className="quiz-best-summary-copy">
+                      <span>Mejor puntaje obtenido</span>
+                      <strong>{mejorPuntaje} pts</strong>
+                    </div>
+                  </div>
+                )}
+
               <button
                 type="button"
                 onClick={iniciar}
-                disabled={verificandoIntentos || sinMasIntentos}
+                disabled={
+                  verificandoIntentos ||
+                  sinMasIntentos ||
+                  iniciandoIntento
+                }
                 className="quiz-primary-button"
               >
-                {verificandoIntentos && !esPreview ? "Verificando..." : "Iniciar"}
+                {iniciandoIntento
+                  ? "Iniciando..."
+                  : verificandoIntentos && !esPreview
+                  ? "Verificando..."
+                  : quizCompletadoPerfecto
+                  ? "Completado"
+                  : intentosAgotados
+                  ? "Intentos agotados"
+                  : intentoActivoId && !esPreview
+                  ? "Continuar intento"
+                  : "Iniciar"}
               </button>
 
-              {sinMasIntentos && (
-                <div className="quiz-info-text">
-                  <p className="quiz-warning">Ya no tienes intentos disponibles.</p>
-                  <p>
-                    Mejor puntaje obtenido:{" "}
-                    <strong style={{ color: "var(--quiz-accent)" }}>
-                      {mejorPuntaje}%
-                    </strong>
-                  </p>
+              {quizCompletadoPerfecto && (
+                <div className="quiz-completion-note perfect">
+                  <div className="quiz-completion-icon" aria-hidden="true">
+                    <Trophy size={23} strokeWidth={2.4} />
+                  </div>
+                  <div className="quiz-completion-copy">
+                    <strong>¡Quiz completado!</strong>
+                    <span>
+                      Alcanzaste el puntaje máximo: <b>100 pts</b>.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {intentosAgotados && (
+                <div className="quiz-completion-note exhausted">
+                  <div className="quiz-completion-icon" aria-hidden="true">
+                    <CheckCircle2 size={23} strokeWidth={2.4} />
+                  </div>
+                  <div className="quiz-completion-copy">
+                    <strong>Intentos agotados</strong>
+                    <span>
+                      Mejor puntaje obtenido: <b>{mejorPuntaje} pts</b>.
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1680,7 +2949,7 @@ export default function ResolverQuizPage() {
                   type="button"
                   onClick={() => void verUltimoResultado()}
                   disabled={cargandoResultadoAnterior}
-                  className="quiz-secondary-button quiz-history-button"
+                  className="quiz-secondary-button quiz-emphasis-button quiz-history-button"
                 >
                   {cargandoResultadoAnterior
                     ? "Cargando resultado..."
@@ -1715,7 +2984,12 @@ export default function ResolverQuizPage() {
               return (
               <section
                 key={p.id}
-                className="quiz-card quiz-question-card no-diagonal"
+                id={`quiz-pregunta-${idx + 1}`}
+                className={`quiz-card quiz-question-card no-diagonal ${
+                  estado === "finalizado" && !esPreview && feedback
+                    ? "has-feedback"
+                    : ""
+                }`}
               >
                 <div className="quiz-card-content">
                   <div className="quiz-question-top">
@@ -1837,6 +3111,44 @@ export default function ResolverQuizPage() {
         {resultado && (
           <section className="quiz-card quiz-result-card no-diagonal">
             <div className="quiz-card-content quiz-result-content">
+              {!esPreview && (
+                <div
+                  className={`quiz-result-visual ${
+                    puntajeResultado === 100
+                      ? "perfect"
+                      : !sinMasIntentos
+                      ? "retry"
+                      : "finished"
+                  }`}
+                >
+                  <div className="quiz-result-visual-icon" aria-hidden="true">
+                    {puntajeResultado === 100 ? (
+                      <Trophy size={26} strokeWidth={2.35} />
+                    ) : !sinMasIntentos ? (
+                      <Sparkles size={25} strokeWidth={2.25} />
+                    ) : (
+                      <CheckCircle2 size={25} strokeWidth={2.3} />
+                    )}
+                  </div>
+
+                  <strong>
+                    {puntajeResultado === 100
+                      ? "¡Excelente, completaste el quiz!"
+                      : !sinMasIntentos
+                      ? "Tu intento quedó registrado"
+                      : "Resultado registrado"}
+                  </strong>
+
+                  <span>
+                    {puntajeResultado === 100
+                      ? "Obtuviste el puntaje máximo."
+                      : !sinMasIntentos
+                      ? "Aún tienes intentos disponibles para seguir mejorando."
+                      : "Puedes revisar tus respuestas y la retroalimentación disponible."}
+                  </span>
+                </div>
+              )}
+
               <div className="quiz-result-score">
                 <p className="quiz-result-main">
                   Respuestas correctas:{" "}
@@ -1848,30 +3160,13 @@ export default function ResolverQuizPage() {
 
                 <p className="quiz-result-main">
                   Puntaje final:{" "}
-                  <strong>
-                    {resultado.total > 0
-                      ? Math.round((resultado.correctas / resultado.total) * 100)
-                      : 0}
-                    %
-                  </strong>
+                  <strong>{puntajeResultado} pts</strong>
                 </p>
 
-                {!esPreview && (
-                  <>
-                    {resultadoHistorico ? (
-                      <p className="quiz-info-text">
-                        Este es tu último resultado registrado.
-                      </p>
-                    ) : sinMasIntentos || resultado.correctas === resultado.total ? (
-                      <p className="quiz-result-main">
-                        XP ganado: <strong>{xpGanado}</strong>
-                      </p>
-                    ) : (
-                      <p className="quiz-info-text">
-                        Puedes volver a intentarlo para mejorar tu puntaje y XP.
-                      </p>
-                    )}
-                  </>
+                {!esPreview && xpGanado > 0 && (
+                  <p className="quiz-result-main">
+                    XP ganado en este intento: <strong>{xpGanado}</strong>
+                  </p>
                 )}
               </div>
 
@@ -1880,7 +3175,7 @@ export default function ResolverQuizPage() {
                   <button
                     type="button"
                     onClick={() => router.push(`/curso/${materiaId}`)}
-                    className="quiz-secondary-button"
+                    className="quiz-secondary-button quiz-emphasis-button"
                   >
                     Regresar al curso
                   </button>
@@ -1915,7 +3210,108 @@ export default function ResolverQuizPage() {
         createPortal(
           <div className="quiz-floating-alert">
             Se terminó el tiempo. Se enviaron automáticamente las respuestas que
-            alcanzaste a seleccionar.
+            alcanzaron a guardarse dentro del tiempo establecido.
+          </div>,
+          document.body
+        )}
+
+      {mostrarAvisoSalida &&
+        createPortal(
+          <div
+            className="quiz-exit-overlay"
+            onClick={cancelarSalidaQuiz}
+          >
+            <div
+              className="quiz-exit-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2>¿Salir del intento?</h2>
+
+              <p>
+                Tu intento seguirá activo y tus respuestas están guardadas.{" "}
+                {horaCierreIntento ? (
+                  <>
+                    Puedes retomarlo desde este u otro dispositivo hasta las{" "}
+                    <strong>{horaCierreIntento}</strong>. Las respuestas guardadas
+                    se enviarán automáticamente a esa hora.
+                  </>
+                ) : (
+                  <>Puedes retomarlo más tarde desde este u otro dispositivo.</>
+                )}
+              </p>
+
+              <div className="quiz-exit-actions">
+                <button
+                  type="button"
+                  onClick={cancelarSalidaQuiz}
+                  disabled={procesandoSalida}
+                  className="quiz-secondary-button"
+                >
+                  Seguir resolviendo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void confirmarSalidaQuiz()}
+                  disabled={procesandoSalida}
+                  className="quiz-danger-button"
+                >
+                  {procesandoSalida
+                    ? "Saliendo..."
+                    : salidaPendiente?.tipo === "logout"
+                    ? "Cerrar sesión"
+                    : "Salir por ahora"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+
+      {preguntaPendienteEnvio !== null &&
+        createPortal(
+          <div
+            className="quiz-exit-overlay"
+            onClick={() => setPreguntaPendienteEnvio(null)}
+          >
+            <div
+              className="quiz-exit-modal quiz-validation-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="quiz-validation-icon" aria-hidden="true">
+                <AlertCircle size={26} strokeWidth={2.35} />
+              </div>
+
+              <h2>Falta una respuesta</h2>
+
+              <p>
+                Responde la pregunta {preguntaPendienteEnvio} antes de enviar
+                el quiz.
+              </p>
+
+              <div className="quiz-exit-actions">
+                <button
+                  type="button"
+                  className="quiz-primary-button"
+                  onClick={() => {
+                    const numeroPregunta = preguntaPendienteEnvio;
+                    setPreguntaPendienteEnvio(null);
+
+                    window.setTimeout(() => {
+                      document
+                        .getElementById(`quiz-pregunta-${numeroPregunta}`)
+                        ?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                    }, 0);
+                  }}
+                >
+                  Ir a la pregunta
+                </button>
+              </div>
+            </div>
           </div>,
           document.body
         )}
@@ -1936,7 +3332,7 @@ export default function ResolverQuizPage() {
                 className="quiz-preview-close"
                 aria-label="Cerrar imagen"
               >
-                ×
+                ✕
               </button>
 
               <img
