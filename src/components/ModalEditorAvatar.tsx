@@ -112,6 +112,36 @@ export default function ModalEditorAvatar({
     }
   }, [rolUsuario]);
 
+  const configInicialNormalizada: AvatarConfig = {
+    ...initialConfig,
+    sueterColor: initialConfig.sueterColor ?? "#ffffff",
+  };
+
+  const hayCambiosSinGuardar =
+    JSON.stringify(config) !== JSON.stringify(configInicialNormalizada);
+
+  useEffect(() => {
+    if (
+      !open ||
+      forzado ||
+      rolUsuario !== "profesor" ||
+      !hayCambiosSinGuardar
+    ) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [open, forzado, rolUsuario, hayCambiosSinGuardar]);
+
   if (!open) return null;
   if (cargandoDesbloqueos) return null;
 
@@ -382,36 +412,6 @@ export default function ModalEditorAvatar({
     const resultado = await onSave(config);
     return resultado !== false;
   };
-
-  const configInicialNormalizada: AvatarConfig = {
-    ...initialConfig,
-    sueterColor: initialConfig.sueterColor ?? "#ffffff",
-  };
-
-  const hayCambiosSinGuardar =
-    JSON.stringify(config) !== JSON.stringify(configInicialNormalizada);
-
-  useEffect(() => {
-    if (
-      !open ||
-      forzado ||
-      rolUsuario !== "profesor" ||
-      !hayCambiosSinGuardar
-    ) {
-      return;
-    }
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [open, forzado, rolUsuario, hayCambiosSinGuardar]);
 
   const solicitarSalida = () => {
     if (forzado) return;
