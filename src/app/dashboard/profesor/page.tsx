@@ -12,13 +12,21 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function ProfesorDashboard() {
   const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error("No se pudo confirmar la sesión del profesor");
+  }
 
   if (!user) {
     return (
@@ -28,7 +36,10 @@ export default async function ProfesorDashboard() {
     );
   }
 
-  const [{ data: profesor }, { data: cursos }] = await Promise.all([
+  const [
+    { data: profesor, error: profesorError },
+    { data: cursos, error: cursosError },
+  ] = await Promise.all([
     supabase
       .from("usuarios")
       .select("id, nombre, avatar_config")
@@ -51,6 +62,13 @@ export default async function ProfesorDashboard() {
       .eq("profesor_id", user.id)
       .order("nombre", { ascending: true }),
   ]);
+
+  const errorCarga = profesorError ?? cursosError;
+
+  if (errorCarga) {
+    console.error("No se pudo construir el dashboard del profesor:", errorCarga);
+    throw new Error("No se pudieron confirmar todos los datos del panel del profesor");
+  }
 
   return (
     <LayoutGeneral rol="profesor">

@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import CargadorFCC from "@/components/CargadorFCC";
+import {
+  obtenerUrlImagenOptimizada,
+  precargarImagen,
+} from "@/lib/imagenes";
 
 interface Props {
   logro: {
@@ -14,10 +19,42 @@ interface Props {
 
 export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
   const [visible, setVisible] = useState(false);
+  const [recursoListo, setRecursoListo] = useState(false);
+  const [fuenteIcono, setFuenteIcono] = useState("/ui/trophy-default.svg");
 
   useEffect(() => {
-    setVisible(true);
-  }, []);
+    let activo = true;
+    const fallback = "/ui/trophy-default.svg";
+    const solicitada = obtenerUrlImagenOptimizada(
+      logro.icono_url || fallback,
+      256,
+      75
+    );
+
+    setVisible(false);
+    setRecursoListo(false);
+
+    void precargarImagen(solicitada, 20_000).then(async (completo) => {
+      let fuente = solicitada;
+
+      if (!completo) {
+        await precargarImagen(fallback, 10_000);
+        fuente = fallback;
+      }
+
+      if (!activo) return;
+
+      setFuenteIcono(fuente);
+      setRecursoListo(true);
+      window.requestAnimationFrame(() => {
+        if (activo) setVisible(true);
+      });
+    });
+
+    return () => {
+      activo = false;
+    };
+  }, [logro.icono_url]);
 
   const cerrarModal = () => {
     window.dispatchEvent(new Event("logroCerrado"));
@@ -25,6 +62,16 @@ export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
     setVisible(false);
     setTimeout(onClose, 500);
   };
+
+  if (!recursoListo) {
+    return (
+      <CargadorFCC
+        flotante
+        mensaje="Preparando tu logro"
+        detalle=""
+      />
+    );
+  }
 
   return (
     <div
@@ -236,11 +283,12 @@ export default function ModalLogroDesbloqueado({ logro, onClose }: Props) {
           <div className="modal-logro-icon-stage">
             {logro.nombre ? (
               <img
-                src={logro.icono_url || "/icons/trophy_default.png"}
+                src={fuenteIcono}
                 alt={logro.nombre}
                 onError={(e) => {
-                  e.currentTarget.src = "/icons/trophy_default.png";
+                  e.currentTarget.src = "/ui/trophy-default.svg";
                 }}
+                decoding="async"
                 className="modal-logro-icon"
               />
             ) : (

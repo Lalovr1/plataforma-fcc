@@ -11,6 +11,9 @@ interface Params {
   id: string;
 }
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function CursoPage({
   params,
 }: {
@@ -23,7 +26,12 @@ export default async function CursoPage({
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error("No se pudo confirmar la sesión para abrir el curso");
+  }
 
   if (!user) {
     return (
@@ -33,11 +41,15 @@ export default async function CursoPage({
     );
   }
 
-  const { data: perfil } = await supabase
+  const { data: perfil, error: perfilError } = await supabase
     .from("usuarios")
     .select("rol")
     .eq("id", user.id)
     .single();
+
+  if (perfilError) {
+    throw new Error("No se pudo confirmar el rol necesario para abrir el curso");
+  }
 
   const rol = perfil?.rol === "profesor" ? "profesor" : "estudiante";
 

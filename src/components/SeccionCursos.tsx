@@ -5,7 +5,7 @@
  * Muestra los cursos con su progreso, acceso directo y opción para quitarlos de inicio.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -21,57 +21,11 @@ interface Curso {
 
 interface Props {
   initialCourses: Curso[];
-  userId: string;
 }
 
-export default function SeccionCursos({ initialCourses, userId }: Props) {
+export default function SeccionCursos({ initialCourses }: Props) {
   const [misCursos, setMisCursos] = useState<Curso[]>(initialCourses);
   const [loadingId, setLoadingId] = useState<string | null>(null);
-
-  const fetchCursos = async () => {
-    const { data: cursos, error } = await supabase
-      .from("progreso")
-      .select(
-        `
-        id,
-        progreso,
-        visible,
-        materia:materias ( id, nombre )
-      `
-      )
-      .eq("usuario_id", userId)
-      .eq("visible", true);
-
-    if (error) {
-      console.error("Error al traer cursos:", error.message);
-      return;
-    }
-
-    if (!cursos) return;
-
-    const mapped = cursos
-      .filter((c: any) => c.materia?.id)
-      .map((c: any) => ({
-        id: c.materia.id,
-        name: c.materia.nombre,
-        progress: c.progreso,
-        progresoId: c.id,
-      }));
-
-    mapped.sort((a, b) => {
-      if (b.progress !== a.progress) {
-        return b.progress - a.progress;
-      }
-
-      return a.name.localeCompare(b.name);
-    });
-
-    setMisCursos(mapped);
-  };
-
-  useEffect(() => {
-    fetchCursos();
-  }, [userId]);
 
   const removeCourse = async (progresoId: string) => {
     setLoadingId(progresoId);

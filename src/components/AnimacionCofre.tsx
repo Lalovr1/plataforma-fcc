@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
 import { rarezaConfig, Rareza } from "@/lib/rarezaConfig";
+import CargadorFCC from "@/components/CargadorFCC";
+import {
+  obtenerUrlImagenOptimizada,
+  precargarImagenes,
+} from "@/lib/imagenes";
+import { FRAMES_COFRE_FCC } from "@/lib/recursosCofre";
 interface Recompensa {
   nombre: string;
   imagen: string;
@@ -16,9 +21,21 @@ interface Props {
   nivel?: number;
   tipo?: "nivel" | "bienvenida";
   onFinish?: () => void;
+  recursosPrecargados?: boolean;
 }
 
-export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: Props) {
+const FRAMES_COFRE = FRAMES_COFRE_FCC;
+
+const prepararImagenRecompensa = (src: string) =>
+  obtenerUrlImagenOptimizada(src || "/ui/trophy-default.svg", 256, 75);
+
+export default function AnimacionCofre({
+  recompensas,
+  nivel,
+  tipo,
+  onFinish,
+  recursosPrecargados = false,
+}: Props) {
   const [abierto, setAbierto] = useState(false);
   const [indiceActual, setIndiceActual] = useState(0);
   const [mostrarListaFinal, setMostrarListaFinal] = useState(false);
@@ -31,6 +48,11 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
   const [mostrarRecompensaActual, setMostrarRecompensaActual] = useState(true);
   const [skipRapido, setSkipRapido] = useState(false);
   const [animandoFinal, setAnimandoFinal] = useState(false);
+  const [animandoApertura, setAnimandoApertura] = useState(false);
+  const [recursosListos, setRecursosListos] = useState(recursosPrecargados);
+  const [errorRecursos, setErrorRecursos] = useState(false);
+  const [reintentoRecursos, setReintentoRecursos] = useState(0);
+  const aperturaTimerRef = useRef<number | null>(null);
 
   const [bloquearClicks, setBloquearClicks] = useState(true);
 
@@ -54,15 +76,49 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
   const rarezaMax = tipo === "bienvenida" ? "legendario" : (recompensasOrdenadas[0]?.rareza || "comun");
   const auraPrincipal = rarezaConfig[rarezaMax].aura;
 
-  const [frameIndex, setFrameIndex] = useState(0);
+  const recursosVisuales = useMemo(
+    () => [
+      ...FRAMES_COFRE,
+      ...recompensasOrdenadas.map((recompensa) =>
+        prepararImagenRecompensa(recompensa.imagen)
+      ),
+    ],
+    [recompensasOrdenadas]
+  );
 
-  const framesCofre = [
-    "/cofre/frame1.png",
-    "/cofre/frame2.png",
-    "/cofre/frame3.png",
-    "/cofre/frame4.png",
-    "/cofre/frame5.png",
-  ];
+  useEffect(() => {
+    let activo = true;
+
+    if (recursosPrecargados) {
+      setRecursosListos(true);
+      setErrorRecursos(false);
+      return () => {
+        activo = false;
+      };
+    }
+
+    setRecursosListos(false);
+    setErrorRecursos(false);
+
+    void precargarImagenes(recursosVisuales, 30_000).then((completo) => {
+      if (!activo) return;
+
+      setRecursosListos(completo);
+      setErrorRecursos(!completo);
+    });
+
+    return () => {
+      activo = false;
+    };
+  }, [recursosVisuales, reintentoRecursos, recursosPrecargados]);
+
+  useEffect(() => {
+    return () => {
+      if (aperturaTimerRef.current !== null) {
+        window.clearTimeout(aperturaTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (cofreVisible && contador === null) {
@@ -96,17 +152,15 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
     }
 
     if (!abierto) {
-      let i = 0;
-      const intervalo = setInterval(() => {
-        i++;
-        if (i < framesCofre.length) {
-          setFrameIndex(i);
-        } else {
-          clearInterval(intervalo);
-          setAbierto(true); 
-          setContador((c) => (c !== null ? Math.max(0, c - 1) : c));
-        }
-      }, 50);
+      if (animandoApertura) return;
+
+      setAnimandoApertura(true);
+      aperturaTimerRef.current = window.setTimeout(() => {
+        setAnimandoApertura(false);
+        setAbierto(true);
+        setContador((c) => (c !== null ? Math.max(0, c - 1) : c));
+        aperturaTimerRef.current = null;
+      }, 320);
       return;
     }
 
@@ -181,6 +235,52 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
     );
   }
 
+  if (!recursosListos) {
+    return (
+      <div className="flex min-h-[100dvh] w-full flex-col items-center justify-center px-4 text-center">
+        <CargadorFCC
+          mensaje={
+            errorRecursos
+              ? "No pudimos preparar la recompensa"
+              : "Preparando tu cofre"
+          }
+          detalle={
+            errorRecursos
+              ? "La conexión se interrumpió antes de completar todas las imágenes."
+              : "Cargando y decodificando la animación completa…"
+          }
+        />
+
+        {errorRecursos && (
+          <div className="relative z-10 -mt-20 flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setReintentoRecursos((actual) => actual + 1);
+              }}
+              className="rounded-xl bg-white px-5 py-2.5 font-black text-slate-900 shadow-lg"
+            >
+              Reintentar
+            </button>
+            {onFinish && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onFinish();
+                }}
+                className="rounded-xl border border-white/40 px-5 py-2.5 font-black text-white"
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative flex flex-col items-center justify-center min-h-[100dvh] w-full overflow-hidden select-none bg-transparent px-4"
@@ -194,7 +294,7 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
     >
       {/* ✨ Aura energética */}
       <motion.div
-        className="absolute rounded-full blur-[150px]"
+        className="absolute rounded-full blur-[64px]"
         style={{
           background: `radial-gradient(circle, ${auraPrincipal} 0%, transparent 70%)`,
           width: "min(600px, 120vw)",
@@ -211,7 +311,7 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
         initial={{ opacity: 0, y: -40 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -40 }}
-        transition={{ duration: 1, ease: "easeOut" }}
+        transition={{ duration: 0.48, ease: "easeOut" }}
         className="absolute top-[10%] sm:top-[18%] text-center z-20 px-4"
       >
         {tipo === "bienvenida" ? (
@@ -256,7 +356,7 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
             : { y: 0, scale: 1, opacity: 1 }
         }
         transition={{
-          duration: skipRapido ? 0 : 2.2,
+          duration: skipRapido ? 0 : 0.82,
           ease: "easeOut",
           onComplete: () => {
             setCofreVisible(true);
@@ -276,16 +376,31 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
             y: { duration: 2, repeat: Infinity, ease: "easeInOut" },
             scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
           }}
-          className="relative"
+          className="relative w-[min(280px,70vw)] aspect-[978/1024]"
         >
-          <Image
-            src={framesCofre[frameIndex]}
-            alt="Cofre"
-            width={280}
-            height={280}
-            style={{ width: "auto", height: "auto" }}
-            className="select-none"
-          />
+          {FRAMES_COFRE.map((frame, index) => (
+            <img
+              key={frame}
+              src={frame}
+              alt={index === FRAMES_COFRE.length - 1 ? "Cofre abierto" : ""}
+              aria-hidden={index !== FRAMES_COFRE.length - 1}
+              draggable={false}
+              decoding="async"
+              className={`absolute inset-0 h-full w-full select-none object-contain ${
+                animandoApertura && index > 0 ? "fcc-chest-frame-opening" : ""
+              }`}
+              style={{
+                zIndex: index,
+                opacity:
+                  abierto || index === 0
+                    ? 1
+                    : animandoApertura
+                      ? 0
+                      : 0,
+                animationDelay: `${index * 55}ms`,
+              }}
+            />
+          ))}
 
           {/* 🔢 Contador */}
           {cofreVisible && contadorVisible && contador !== null && contador >= 0 && (
@@ -345,12 +460,13 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
                             : { delay: i * 0.25, duration: 0.5 }
                         }
                       >
-                        <Image
-                          src={r.imagen}
+                        <img
+                          src={prepararImagenRecompensa(r.imagen)}
                           alt="Recompensa"
                           width={82}
                           height={82}
-                          className="rounded-lg object-contain"
+                          decoding="async"
+                          className="h-[82px] w-[82px] rounded-lg object-contain"
                         />
                       </motion.div>
                     );
@@ -405,7 +521,7 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
                 transition={{ duration: 1, ease: "easeOut" }}
               >
                 <div
-                  className="w-[200px] h-[200px] rounded-full blur-[60px]"
+                  className="w-[200px] h-[200px] rounded-full blur-[36px]"
                   style={{ background: rarezaConfig[rarezaActual].aura }}
                 />
               </motion.div>
@@ -421,17 +537,35 @@ export default function AnimacionCofre({ recompensas, nivel, tipo, onFinish }: P
                 animate={{ scale: 1, y: -120 }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
               >
-                <Image
-                  src={recompensasOrdenadas[indiceActual].imagen}
+                <img
+                  src={prepararImagenRecompensa(
+                    recompensasOrdenadas[indiceActual].imagen
+                  )}
                   alt="Recompensa"
                   width={110}
                   height={110}
-                  className="rounded-lg object-contain"
+                  decoding="async"
+                  className="h-[110px] w-[110px] rounded-lg object-contain"
                 />
               </motion.div>
             </motion.div>
           </AnimatePresence>
         )}
+      <style jsx global>{`
+        @keyframes fcc-chest-frame-reveal {
+          to { opacity: 1; }
+        }
+
+        .fcc-chest-frame-opening {
+          animation: fcc-chest-frame-reveal 1ms linear forwards;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .fcc-chest-frame-opening {
+            animation-delay: 0ms !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -9,7 +9,6 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -34,6 +33,8 @@ import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type PeriodoOpt = {
   id: string;
@@ -157,12 +158,6 @@ type DetalleEstudiante = {
   intentos: DetalleIntento[];
 };
 
-const CACHE_KEY_BASE = "fcc_academy_ranking_curso_component_v4";
-
-function getCacheKey(materiaId: string) {
-  return `${CACHE_KEY_BASE}_${materiaId}`;
-}
-
 function parseAvatarConfig(value: any): AvatarConfig | null {
   if (!value) return null;
 
@@ -175,43 +170,6 @@ function parseAvatarConfig(value: any): AvatarConfig | null {
   }
 
   return value;
-}
-
-function guardarCache(materiaId: string, data: RankingCursoCache) {
-  try {
-    sessionStorage.setItem(
-      getCacheKey(materiaId),
-      JSON.stringify({
-        ...data,
-        timestamp: Date.now(),
-      })
-    );
-  } catch {}
-}
-
-function leerCache(materiaId: string): RankingCursoCache | null {
-  try {
-    const raw = sessionStorage.getItem(getCacheKey(materiaId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed?.periodos)) return null;
-    if (!Array.isArray(parsed?.secciones)) return null;
-    if (!Array.isArray(parsed?.inscritos)) return null;
-    if (!Array.isArray(parsed?.quizzes)) return null;
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      periodos: parsed.periodos,
-      secciones: parsed.secciones,
-      inscritos: parsed.inscritos,
-      quizzes: parsed.quizzes,
-      intentosMap: parsed.intentosMap ?? {},
-    };
-  } catch {
-    return null;
-  }
 }
 
 function textoPlano(value: unknown) {
@@ -382,6 +340,8 @@ export default function AnaliticasCurso({
   filtroMatricula?: string | null;
 }) {
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [reintentoCarga, setReintentoCarga] = useState(0);
 
   const [periodos, setPeriodos] = useState<PeriodoOpt[]>([]);
   const [secciones, setSecciones] = useState<SeccionOpt[]>([]);
@@ -426,16 +386,6 @@ export default function AnaliticasCurso({
     setIntentosMap(data.intentosMap);
   };
 
-  useLayoutEffect(() => {
-    if (!materiaId) return;
-
-    const cache = leerCache(materiaId);
-    if (!cache) return;
-
-    aplicarDatos(cache);
-    setCargando(false);
-  }, [materiaId]);
-
   const cargarDatosRanking = async (): Promise<RankingCursoCache> => {
     const {
       data: { session },
@@ -447,8 +397,8 @@ export default function AnaliticasCurso({
     }
 
     const [
-      { data: cursoCarreras },
-      { data: quizzesRows },
+      { data: cursoCarreras, error: cursoCarrerasError },
+      { data: quizzesRows, error: quizzesError },
       inscritosResponse,
     ] = await Promise.all([
       supabase
@@ -486,6 +436,10 @@ export default function AnaliticasCurso({
         }
       ),
     ]);
+
+    if (cursoCarrerasError || quizzesError) {
+      throw cursoCarrerasError ?? quizzesError;
+    }
 
     const inscritosPayload = await inscritosResponse.json();
 
@@ -545,7 +499,7 @@ export default function AnaliticasCurso({
 
     const quizIds = quizzesData.map((q) => q.id);
 
-    const { data: intentosRows } =
+    const intentosResponse =
       quizIds.length > 0
         ? await supabase
             .from("intentos_quiz")
@@ -553,7 +507,13 @@ export default function AnaliticasCurso({
               "quiz_id, usuario_id, puntaje, numero_intento, created_at"
             )
             .in("quiz_id", quizIds)
-        : { data: [] as any[] };
+        : { data: [] as any[], error: null };
+
+    if (intentosResponse.error) {
+      throw intentosResponse.error;
+    }
+
+    const intentosRows = intentosResponse.data;
 
     const intentosData: Record<string, Record<string, IntentoStats>> = {};
 
@@ -620,27 +580,24 @@ export default function AnaliticasCurso({
   useEffect(() => {
     const run = async () => {
       try {
-        const cache = leerCache(materiaId);
-
-        if (cache) {
-          aplicarDatos(cache);
-          setCargando(false);
-        } else {
-          setCargando(true);
-        }
-
+        setCargando(true);
+        setErrorCarga("");
         const data = await cargarDatosRanking();
         aplicarDatos(data);
-        guardarCache(materiaId, data);
       } catch (e) {
         console.error("Error cargando analíticas del curso:", e);
+        setErrorCarga(
+          e instanceof Error
+            ? e.message
+            : "No fue posible confirmar las analíticas del curso."
+        );
       } finally {
         setCargando(false);
       }
     };
 
     void run();
-  }, [materiaId]);
+  }, [materiaId, reintentoCarga]);
 
   useEffect(() => {
     setGrupoAnaliticas(null);
@@ -750,7 +707,6 @@ export default function AnaliticasCurso({
         if (cancelado) return;
 
         aplicarDatos(rankingData);
-        guardarCache(materiaId, rankingData);
 
         if (grupoResponse.ok && grupoData?.ok) {
           setGrupoAnaliticas(grupoData.datos as GrupoAnaliticas);
@@ -1433,6 +1389,25 @@ export default function AnaliticasCurso({
       </div>
     );
   };
+
+  if (cargando) {
+    return (
+      <CargadorFCC
+        mensaje="Construyendo analíticas"
+        detalle="Validando estudiantes, quizzes e intentos antes de mostrar resultados…"
+      />
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoErrorCargaFCC
+        titulo="No se pudieron confirmar las analíticas"
+        detalle={errorCarga}
+        onRetry={() => setReintentoCarga((valor) => valor + 1)}
+      />
+    );
+  }
 
   const estilos = (
     <style>{`

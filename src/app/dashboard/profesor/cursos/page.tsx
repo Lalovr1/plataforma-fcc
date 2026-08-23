@@ -4,12 +4,14 @@
 
 "use client";
 
-import { useState, useEffect, useLayoutEffect } from "react";
+import { useState, useEffect } from "react";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import FiltrosCursos from "@/components/FiltrosCursos";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { ChevronRight, GraduationCap, UserRound } from "lucide-react";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 interface CursoPeriodo {
   id: string;
@@ -33,8 +35,6 @@ interface Materia {
   curso_carreras: CursoCarrera[];
 }
 
-const CACHE_KEY = "fcc_academy_cursos_profesor_v1";
-
 export default function ProfesorCursosPage() {
   const [cursos, setCursos] = useState<Materia[]>([]);
   const [filters, setFilters] = useState({
@@ -48,44 +48,8 @@ export default function ProfesorCursosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [buscando, setBuscando] = useState(false);
-  const [cacheCargado, setCacheCargado] = useState(false);
-
-  const guardarCache = (cursosData: Materia[]) => {
-    try {
-      sessionStorage.setItem(
-        CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          cursos: cursosData,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCache = (): Materia[] | null => {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.cursos)) return null;
-
-      return parsed.cursos;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    const cursosCache = leerCache();
-
-    if (!cursosCache) return;
-
-    setCursos(cursosCache);
-    setCacheCargado(true);
-    setCargandoInicial(false);
-  }, []);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const fetchCursos = async (nombre?: string) => {
     let query = supabase
@@ -118,8 +82,7 @@ export default function ProfesorCursosPage() {
     const { data, error } = await query;
 
     if (error) {
-      console.error("Error cargando cursos de profesor:", error);
-      return;
+      throw error;
     }
 
     const cursosData = ((data as Materia[]) ?? []).map((curso) => ({
@@ -129,41 +92,41 @@ export default function ProfesorCursosPage() {
 
     setCursos(cursosData);
 
-    if (!nombre) {
-      guardarCache(cursosData);
-    }
   };
 
   useEffect(() => {
     const init = async () => {
+      setCargandoInicial(true);
+      setErrorCarga(false);
+
       try {
-        const cursosCache = leerCache();
-
-        if (cursosCache && !cacheCargado) {
-          setCursos(cursosCache);
-          setCargandoInicial(false);
-        }
-
         await fetchCursos();
       } catch (e) {
         console.error("Error inicializando cursos de profesor:", e);
+        setErrorCarga(true);
       } finally {
         setCargandoInicial(false);
       }
     };
 
     init();
-  }, []);
+  }, [reintento]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
 
     setBuscando(true);
+    setCargandoInicial(true);
+    setErrorCarga(false);
 
     try {
       await fetchCursos(searchTerm.trim());
+    } catch (error) {
+      console.error("Error buscando cursos de profesor:", error);
+      setErrorCarga(true);
     } finally {
       setBuscando(false);
+      setCargandoInicial(false);
     }
   };
 
@@ -233,6 +196,29 @@ export default function ProfesorCursosPage() {
         });
       }
     });
+  }
+
+  if (cargandoInicial) {
+    return (
+      <LayoutGeneral rol="profesor">
+        <CargadorFCC
+          mensaje="Actualizando cursos"
+          detalle="Confirmando el catálogo vigente antes de mostrarlo…"
+        />
+      </LayoutGeneral>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <LayoutGeneral rol="profesor">
+        <EstadoErrorCargaFCC
+          titulo="No se pudieron confirmar los cursos"
+          detalle="No se mostró un catálogo anterior ni un resultado parcial."
+          onRetry={() => setReintento((valor) => valor + 1)}
+        />
+      </LayoutGeneral>
+    );
   }
 
   const renderCursoCard = (c: Materia) => (

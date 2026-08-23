@@ -10,7 +10,6 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -23,6 +22,8 @@ import RenderizadorAvatar, {
 } from "@/components/RenderizadorAvatar";
 import toast from "react-hot-toast";
 import { CheckCircle2, RotateCcw, Search, UserPlus, X } from "lucide-react";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type Usuario = {
   id: string;
@@ -55,10 +56,6 @@ type Materia = {
   }[];
   progresoEstado?: ProgresoEstado;
 };
-
-const PROFESORES_CACHE_KEY = "fcc_academy_profesores_estudiante_v1";
-const CURSOS_PROFESOR_CACHE_KEY_BASE =
-  "fcc_academy_profesor_cursos_estudiante_v1";
 
 const defaultAvatar: AvatarConfig = {
   gender: "masculino",
@@ -127,12 +124,15 @@ export default function ProfesoresPage() {
   const [profesores, setProfesores] = useState<Usuario[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const [selectedProfesor, setSelectedProfesor] = useState<Usuario | null>(
     null
   );
   const [cursos, setCursos] = useState<Materia[]>([]);
   const [loadingCursos, setLoadingCursos] = useState(false);
+  const [errorCursos, setErrorCursos] = useState(false);
 
   const [selectedCurso, setSelectedCurso] = useState<Materia | null>(null);
   const [periodos, setPeriodos] = useState<PeriodoConCarrera[]>([]);
@@ -145,107 +145,32 @@ export default function ProfesoresPage() {
   const [visitante, setVisitante] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const getCursosProfesorCacheKey = (usuarioId: string, profesorId: string) =>
-    `${CURSOS_PROFESOR_CACHE_KEY_BASE}_${usuarioId}_${profesorId}`;
-
-  const guardarProfesoresCache = (profesoresData: Usuario[]) => {
-    try {
-      sessionStorage.setItem(
-        PROFESORES_CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          profesores: profesoresData,
-        })
-      );
-    } catch {}
-  };
-
-  const leerProfesoresCache = (): Usuario[] | null => {
-    try {
-      const raw = sessionStorage.getItem(PROFESORES_CACHE_KEY);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.profesores)) return null;
-
-      return parsed.profesores;
-    } catch {
-      return null;
-    }
-  };
-
-  const guardarCursosProfesorCache = (
-    usuarioId: string,
-    profesorId: string,
-    cursosData: Materia[]
-  ) => {
-    try {
-      sessionStorage.setItem(
-        getCursosProfesorCacheKey(usuarioId, profesorId),
-        JSON.stringify({
-          timestamp: Date.now(),
-          cursos: cursosData,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCursosProfesorCache = (
-    usuarioId: string,
-    profesorId: string
-  ): Materia[] | null => {
-    try {
-      const raw = sessionStorage.getItem(
-        getCursosProfesorCacheKey(usuarioId, profesorId)
-      );
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.cursos)) return null;
-
-      return parsed.cursos;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    const cache = leerProfesoresCache();
-
-    if (!cache) return;
-
-    setProfesores(cache);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
     const init = async () => {
+      setLoading(true);
+      setErrorCarga(false);
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (user) setMeId(user.id);
+        if (authError || !user) throw authError ?? new Error("Sesión no disponible");
 
-        const cache = leerProfesoresCache();
-
-        if (cache) {
-          setProfesores(cache);
-          setLoading(false);
-        }
+        setMeId(user.id);
 
         await loadProfesores("");
       } catch (e) {
         console.error("Error inicializando profesores:", e);
+        setErrorCarga(true);
       } finally {
         setLoading(false);
       }
     };
 
     init();
-  }, []);
+  }, [reintento]);
 
   const loadProfesores = async (term: string) => {
     let q = supabase
@@ -260,8 +185,7 @@ export default function ProfesoresPage() {
     const { data, error } = await q.order("nombre", { ascending: true });
 
     if (error) {
-      console.error("Error cargando profesores:", error);
-      return;
+      throw error;
     }
 
     const parsed = ((data as any[]) ?? [])
@@ -270,13 +194,20 @@ export default function ProfesoresPage() {
 
     setProfesores(parsed);
 
-    if (!term.trim()) {
-      guardarProfesoresCache(parsed);
-    }
   };
 
   const doSearch = async () => {
-    await loadProfesores(search);
+    setLoading(true);
+    setErrorCarga(false);
+
+    try {
+      await loadProfesores(search);
+    } catch (error) {
+      console.error("Error buscando profesores:", error);
+      setErrorCarga(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const cerrarModalProfesor = () => {
@@ -294,10 +225,6 @@ export default function ProfesoresPage() {
     setCursos((prev) => {
       const next = updater(prev);
 
-      if (meId && selectedProfesor) {
-        guardarCursosProfesorCache(meId, selectedProfesor.id, next);
-      }
-
       return next;
     });
   };
@@ -311,15 +238,9 @@ export default function ProfesoresPage() {
     setVisitante(false);
     setSecciones([]);
 
-    const cache = meId ? leerCursosProfesorCache(meId, p.id) : null;
-
-    if (cache) {
-      setCursos(cache);
-      setLoadingCursos(false);
-    } else {
-      setCursos([]);
-      setLoadingCursos(true);
-    }
+    setCursos([]);
+    setLoadingCursos(true);
+    setErrorCursos(false);
 
     const cursosPromise = supabase
       .from("materias")
@@ -346,11 +267,15 @@ export default function ProfesoresPage() {
 
     const [
       { data: materiasData, error: materiasError },
-      { data: progresoRows },
+      { data: progresoRows, error: progresoError },
     ] = await Promise.all([cursosPromise, progresoPromise]);
 
-    if (materiasError) {
-      console.error("Error cargando cursos del profesor:", materiasError);
+    if (materiasError || progresoError) {
+      console.error(
+        "Error cargando cursos del profesor:",
+        materiasError ?? progresoError
+      );
+      setErrorCursos(true);
       setLoadingCursos(false);
       return;
     }
@@ -370,10 +295,6 @@ export default function ProfesoresPage() {
     }));
 
     setCursos(cursosConEstado);
-
-    if (meId) {
-      guardarCursosProfesorCache(meId, p.id, cursosConEstado);
-    }
 
     setLoadingCursos(false);
   };
@@ -1391,20 +1312,16 @@ export default function ProfesoresPage() {
         </section>
 
         {loading ? (
-          <section className="profesores-skeleton-panel animate-pulse">
-            <div className="profesores-grid">
-              {[1, 2, 3, 4, 5, 6].map((item) => (
-                <div key={item} className="profesores-card">
-                  <div className="profesores-skeleton-line h-24 w-24 rounded-full" />
-
-                  <div className="space-y-3 w-full">
-                    <div className="profesores-skeleton-line h-5 w-2/3" />
-                    <div className="profesores-skeleton-line h-4 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <CargadorFCC
+            mensaje="Actualizando profesores"
+            detalle="Confirmando perfiles y avatares antes de mostrar la lista…"
+          />
+        ) : errorCarga ? (
+          <EstadoErrorCargaFCC
+            titulo="No se pudo confirmar la lista de profesores"
+            detalle="No se mostraron perfiles anteriores ni resultados parciales."
+            onRetry={() => setReintento((valor) => valor + 1)}
+          />
         ) : (
           <section className="profesores-panel">
             {profesores.length === 0 ? (
@@ -1476,14 +1393,13 @@ export default function ProfesoresPage() {
                 <h4 className="profesores-section-title">Cursos</h4>
 
                 {loadingCursos ? (
-                  <div className="profesores-course-list animate-pulse">
-                    {[1, 2, 3].map((item) => (
-                      <div key={item} className="profesores-course-card">
-                        <div className="profesores-skeleton-line h-5 w-2/3 mb-3" />
-                        <div className="profesores-skeleton-line h-4 w-1/2" />
-                      </div>
-                    ))}
-                  </div>
+                  <CargadorFCC compacto mensaje="Confirmando cursos" />
+                ) : errorCursos ? (
+                  <EstadoErrorCargaFCC
+                    compacto
+                    titulo="No se pudieron confirmar los cursos"
+                    detalle="Cierra el perfil y vuelve a intentarlo cuando la conexión sea estable."
+                  />
                 ) : cursos.length === 0 ? (
                   <div className="profesores-empty">
                     <p className="profesores-empty-text">

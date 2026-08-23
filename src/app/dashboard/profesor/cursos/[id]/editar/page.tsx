@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter, useParams } from "next/navigation";
 import toast from "react-hot-toast";
@@ -32,81 +32,18 @@ type CursoCache = {
   cursoCarreras?: unknown[];
 };
 
-const CACHE_KEY_BASE = "fcc_academy_editar_curso_profesor_v1";
-
-function getEditarCursoCacheKey(usuarioId: string, cursoId: string) {
-  return `${CACHE_KEY_BASE}_${usuarioId}_${cursoId}`;
-}
-
-function leerEditarCursoCache(usuarioId: string, cursoId: string): CursoCache | null {
-  try {
-    const raw = sessionStorage.getItem(getEditarCursoCacheKey(usuarioId, cursoId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.nombre) return null;
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      profesorId: parsed.profesorId,
-      nombre: parsed.nombre,
-      visible: Boolean(parsed.visible),
-      carreras: Array.isArray(parsed.carreras) ? parsed.carreras : [],
-      cursoCarreras: Array.isArray(parsed.cursoCarreras) ? parsed.cursoCarreras : [],
-    };
-  } catch {
-    return null;
-  }
-}
-
 function guardarEditarCursoCache(
   usuarioId: string,
   cursoId: string,
   data: Partial<Omit<CursoCache, "timestamp">>
 ) {
-  try {
-    const previous = leerEditarCursoCache(usuarioId, cursoId);
-
-    sessionStorage.setItem(
-      getEditarCursoCacheKey(usuarioId, cursoId),
-      JSON.stringify({
-        timestamp: Date.now(),
-        ...(previous ?? {}),
-        ...data,
-      })
-    );
-  } catch {}
+  void usuarioId;
+  void cursoId;
+  void data;
 }
 
 function limpiarCachesRelacionados(cursoId: string) {
-  try {
-    const prefixes = [
-      "fcc_academy_cursos_profesor_v1",
-      "fcc_academy_cursos_estudiante_v2_",
-      "fcc_academy_profesores_estudiante_v1",
-      "fcc_academy_profesor_cursos_estudiante_v1_",
-      "fcc_academy_widget_ranking_top5_v1",
-      "fcc_academy_visualizador_curso",
-    ];
-
-    const keysToRemove: string[] = [];
-
-    for (let i = 0; i < sessionStorage.length; i += 1) {
-      const key = sessionStorage.key(i);
-      if (!key) continue;
-
-      const esCacheEditorActual = key.startsWith(CACHE_KEY_BASE);
-
-      if (
-        prefixes.some((prefix) => key.startsWith(prefix)) ||
-        (key.includes(cursoId) && !esCacheEditorActual)
-      ) {
-        keysToRemove.push(key);
-      }
-    }
-
-    keysToRemove.forEach((key) => sessionStorage.removeItem(key));
-  } catch {}
+  void cursoId;
 }
 
 export default function EditarCursoPage() {
@@ -120,21 +57,6 @@ export default function EditarCursoPage() {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [publicando, setPublicando] = useState(false);
-
-  useLayoutEffect(() => {
-    if (!id) return;
-
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerEditarCursoCache(usuarioLocal, id);
-    if (!cache) return;
-
-    setProfesorId(cache.profesorId);
-    setNombre(cache.nombre);
-    setVisible(cache.visible);
-    setLoading(false);
-  }, [id]);
 
   useEffect(() => {
     const fetchData = async () => {

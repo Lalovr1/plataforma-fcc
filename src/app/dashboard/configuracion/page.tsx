@@ -9,6 +9,9 @@ import {
 } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import CargadorFCC from "@/components/CargadorFCC";
+import { precargarImagenes } from "@/lib/imagenes";
+import toast from "react-hot-toast";
 import {
   Check,
   Circle,
@@ -51,6 +54,18 @@ const ICONOS_TEMA: Record<Tema, LucideIcon> = {
   indigo: Cpu,
   rojo: Flame,
   rosa: Heart,
+};
+
+const LOGO_POR_TEMA: Record<Tema, string> = {
+  claro: "/ui/logos/logo-azul.webp",
+  blanco: "/ui/logos/logo-blanco.webp",
+  oscuro: "/ui/logos/logo-negro.webp",
+  gris: "/ui/logos/logo-gris.webp",
+  esmeralda: "/ui/logos/logo-esmeralda.webp",
+  morado: "/ui/logos/logo-morado.webp",
+  indigo: "/ui/logos/logo-indigo.webp",
+  rojo: "/ui/logos/logo-rojo.webp",
+  rosa: "/ui/logos/logo-rosa.webp",
 };
 
 function leerTemaDesdeLocalStorage(): Tema | null {
@@ -98,6 +113,7 @@ function aplicarClaseTema(nuevoTema: Tema) {
 
 function aplicarTemaEnApp(nuevoTema: Tema) {
   aplicarClaseTema(nuevoTema);
+  document.documentElement.setAttribute("data-fcc-logo-ready", nuevoTema);
 
   try {
     const saved = localStorage.getItem("preferencias_usuario");
@@ -177,10 +193,12 @@ export default function PaginaConfiguracion() {
   });
 
   const [tema, setTema] = useState<Tema | null>(null);
+  const [temaPreparando, setTemaPreparando] = useState<Tema | null>(null);
 
   const temaActualRef = useRef<Tema | null>(null);
   const temaGuardadoRef = useRef<Tema | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const solicitudTemaRef = useRef(0);
 
   useLayoutEffect(() => {
     const temaInicial = leerTemaActual();
@@ -230,9 +248,16 @@ export default function PaginaConfiguracion() {
           temaGuardadoRef.current = temaSupabase;
 
           if (!temaLocal) {
-            setTema(temaSupabase);
-            temaActualRef.current = temaSupabase;
-            aplicarTemaEnApp(temaSupabase);
+            const logoListo = await precargarImagenes(
+              [LOGO_POR_TEMA[temaSupabase]],
+              12_000
+            );
+
+            if (logoListo) {
+              setTema(temaSupabase);
+              temaActualRef.current = temaSupabase;
+              aplicarTemaEnApp(temaSupabase);
+            }
           }
         } else {
           temaGuardadoRef.current = temaActualRef.current ?? leerTemaActual();
@@ -284,10 +309,29 @@ export default function PaginaConfiguracion() {
     }
   }
 
-  function aplicarTemaSeleccionado(nuevoTema: Tema) {
+  async function aplicarTemaSeleccionado(nuevoTema: Tema) {
+    const solicitud = ++solicitudTemaRef.current;
+    setTemaPreparando(nuevoTema);
+
+    const [logoListo] = await Promise.all([
+      precargarImagenes([LOGO_POR_TEMA[nuevoTema]], 12_000),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 900)),
+    ]);
+
+    if (solicitud !== solicitudTemaRef.current) return;
+
+    if (!logoListo) {
+      setTemaPreparando(null);
+      toast.error(
+        "No se cambió el tema porque su logo todavía no terminó de cargar."
+      );
+      return;
+    }
+
     setTema(nuevoTema);
     temaActualRef.current = nuevoTema;
     aplicarTemaEnApp(nuevoTema);
+    setTemaPreparando(null);
   }
 
   function renderTemaCard(temaItem: (typeof TEMAS_DISPONIBLES)[number]) {
@@ -298,7 +342,7 @@ export default function PaginaConfiguracion() {
       <button
         key={temaItem.id}
         type="button"
-        onClick={() => aplicarTemaSeleccionado(temaItem.id)}
+        onClick={() => void aplicarTemaSeleccionado(temaItem.id)}
         className={`fcc-config-theme-card ${activo ? "is-active" : ""}`}
         style={
           {
@@ -728,6 +772,14 @@ export default function PaginaConfiguracion() {
           }
         }
       `}</style>
+
+      {temaPreparando && (
+        <CargadorFCC
+          flotante
+          mensaje="Preparando el nuevo tema"
+          detalle=""
+        />
+      )}
 
       <div className="fcc-config-page">
         <section className="fcc-config-hero">

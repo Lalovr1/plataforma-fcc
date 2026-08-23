@@ -50,43 +50,8 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const [mostrarFormularioInscripcion, setMostrarFormularioInscripcion] = useState(false);
 
   useEffect(() => {
-    let cancelado = false;
-
-    const base = prepararMateriasIniciales(materias);
-    setMateriasConEstado(base);
-
-    const fetchProgresos = async () => {
-      if (!userId || !materias || materias.length === 0) return;
-
-      const { data: progresos } = await supabase
-        .from("progreso")
-        .select("materia_id, visible")
-        .eq("usuario_id", userId);
-
-      if (cancelado) return;
-
-      if (progresos) {
-        const materiasActualizadas = materias.map((m) => {
-          const progresoRow = progresos.find((p) => p.materia_id === m.id);
-
-          return {
-            ...m,
-            progresoEstado: progresoRow
-              ? { exists: true, visible: progresoRow.visible }
-              : { exists: false, visible: false },
-          };
-        });
-
-        setMateriasConEstado(materiasActualizadas);
-      }
-    };
-
-    fetchProgresos();
-
-    return () => {
-      cancelado = true;
-    };
-  }, [materias, userId]);
+    setMateriasConEstado(prepararMateriasIniciales(materias));
+  }, [materias]);
 
   useEffect(() => {
     const fetchSecciones = async () => {
@@ -95,10 +60,16 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         return;
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("curso_secciones")
         .select("id, nombre")
         .eq("periodo_id", selectedPeriodo);
+
+      if (error) {
+        toast.error("No se pudieron confirmar las secciones");
+        setSecciones([]);
+        return;
+      }
 
       if (data) setSecciones(data);
     };
@@ -110,11 +81,16 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
     if (!selected) return;
 
     if (selected.progresoEstado?.exists) {
-      await supabase
+      const { error } = await supabase
         .from("progreso")
         .update({ visible: true })
         .eq("usuario_id", userId)
         .eq("materia_id", selected.id);
+
+      if (error) {
+        toast.error("No se pudo reactivar el curso");
+        return;
+      }
 
       toast.success(`${selected.nombre} movido a inicio`);
 
@@ -182,12 +158,17 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   };
 
   const abrirCurso = async (m: any) => {
-    const { data: progresoRow } = await supabase
+    const { data: progresoRow, error } = await supabase
       .from("progreso")
       .select("id, visible")
       .eq("usuario_id", userId)
       .eq("materia_id", m.id)
       .maybeSingle();
+
+    if (error) {
+      toast.error("No se pudo confirmar tu estado en este curso");
+      return;
+    }
 
     setSelected({
       ...m,

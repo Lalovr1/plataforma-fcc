@@ -10,7 +10,6 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -23,6 +22,8 @@ import RenderizadorAvatar, {
 } from "@/components/RenderizadorAvatar";
 import toast from "react-hot-toast";
 import GridLogros from "@/components/GridLogros";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import { Check, Search, UserPlus, X } from "lucide-react";
 
 type Usuario = {
@@ -49,18 +50,6 @@ type LogroModal = {
   descripcion?: string;
   icono_url: string;
 };
-
-type AmigosCache = {
-  timestamp: number;
-  me: Usuario | null;
-  friends: Usuario[];
-  pending: Solicitud[];
-  sentRequests: string[];
-  results: Usuario[];
-};
-
-const CACHE_KEY_BASE = "fcc_academy_amigos_estudiante_v1";
-const LOGROS_CACHE_KEY_BASE = "fcc_academy_amigo_logros_v1";
 
 const defaultAvatar: AvatarConfig = {
   gender: "masculino",
@@ -132,6 +121,8 @@ export default function AmigosPage() {
   const [results, setResults] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [buscando, setBuscando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const [selectedAmigo, setSelectedAmigo] = useState<Usuario | null>(null);
   const [logros, setLogros] = useState<LogroModal[]>([]);
@@ -146,132 +137,26 @@ export default function AmigosPage() {
 
   const logrosRevisadosRef = useRef(false);
 
-  const getCacheKey = (usuarioId: string) => `${CACHE_KEY_BASE}_${usuarioId}`;
-  const getLogrosCacheKey = (usuarioId: string) =>
-    `${LOGROS_CACHE_KEY_BASE}_${usuarioId}`;
-
-  const guardarCache = (
-    usuarioId: string,
-    data: {
-      me: Usuario | null;
-      friends: Usuario[];
-      pending: Solicitud[];
-      sentRequests: Set<string> | string[];
-      results: Usuario[];
-    }
-  ) => {
-    try {
-      sessionStorage.setItem(
-        getCacheKey(usuarioId),
-        JSON.stringify({
-          timestamp: Date.now(),
-          me: data.me,
-          friends: data.friends,
-          pending: data.pending,
-          sentRequests: Array.isArray(data.sentRequests)
-            ? data.sentRequests
-            : Array.from(data.sentRequests),
-          results: data.results,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCache = (usuarioId: string): AmigosCache | null => {
-    try {
-      const raw = sessionStorage.getItem(getCacheKey(usuarioId));
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.friends)) return null;
-      if (!Array.isArray(parsed?.pending)) return null;
-      if (!Array.isArray(parsed?.sentRequests)) return null;
-      if (!Array.isArray(parsed?.results)) return null;
-
-      return {
-        timestamp: Number(parsed.timestamp) || Date.now(),
-        me: parsed.me ?? null,
-        friends: parsed.friends,
-        pending: parsed.pending,
-        sentRequests: parsed.sentRequests,
-        results: parsed.results,
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  const aplicarCache = (cache: AmigosCache) => {
-    setMe(cache.me);
-    setFriends(cache.friends);
-    setPending(cache.pending);
-    setSentRequests(new Set(cache.sentRequests));
-    setResults(cache.results);
-  };
-
-  const guardarLogrosCache = (usuarioId: string, data: LogroModal[]) => {
-    try {
-      sessionStorage.setItem(
-        getLogrosCacheKey(usuarioId),
-        JSON.stringify({
-          timestamp: Date.now(),
-          logros: data,
-        })
-      );
-    } catch {}
-  };
-
-  const leerLogrosCache = (usuarioId: string): LogroModal[] | null => {
-    try {
-      const raw = sessionStorage.getItem(getLogrosCacheKey(usuarioId));
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.logros)) return null;
-
-      return parsed.logros;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerCache(usuarioLocal);
-    if (!cache) return;
-
-    aplicarCache(cache);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
     const init = async () => {
+      setLoading(true);
+      setErrorCarga(false);
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
-          setLoading(false);
-          return;
-        }
+        if (authError || !user) throw authError ?? new Error("Sesión no disponible");
 
-        const cache = leerCache(user.id);
-
-        if (cache) {
-          aplicarCache(cache);
-          setLoading(false);
-        }
-
-        const { data: meRow } = await supabase
+        const { data: meRow, error: meError } = await supabase
           .from("usuarios")
           .select("id,nombre,rol,nivel,puntos,avatar_config")
           .eq("id", user.id)
           .maybeSingle();
+
+        if (meError || !meRow) throw meError ?? new Error("Perfil no disponible");
 
         const meData = normalizarUsuario(meRow);
 
@@ -282,13 +167,14 @@ export default function AmigosPage() {
         await refreshAll(user.id, meData);
       } catch (e) {
         console.error("Error inicializando amigos:", e);
+        setErrorCarga(true);
       } finally {
         setLoading(false);
       }
     };
 
     init();
-  }, []);
+  }, [reintento]);
 
   const fetchFriends = async (myId: string): Promise<Usuario[]> => {
     const { data, error } = await supabase
@@ -303,8 +189,7 @@ export default function AmigosPage() {
       .or(`usuario_id.eq.${myId},amigo_id.eq.${myId}`);
 
     if (error) {
-      console.error("Error cargando amigos:", error);
-      return [];
+      throw error;
     }
 
     const amigos = ((data as any[]) ?? [])
@@ -334,7 +219,7 @@ export default function AmigosPage() {
   };
 
   const fetchPending = async (myId: string): Promise<Solicitud[]> => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("solicitudes_amistad")
       .select(
         `id,solicitante_id,destinatario_id,estado,created_at,
@@ -344,6 +229,8 @@ export default function AmigosPage() {
       .eq("estado", "pendiente")
       .order("created_at", { ascending: true });
 
+    if (error) throw error;
+
     return ((data as any[]) ?? []).map((req) => ({
       ...req,
       solicitante: normalizarUsuario(req.solicitante) ?? undefined,
@@ -351,23 +238,27 @@ export default function AmigosPage() {
   };
 
   const fetchSentRequests = async (myId: string): Promise<Set<string>> => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("solicitudes_amistad")
       .select("id,destinatario_id,estado")
       .eq("solicitante_id", myId)
       .eq("estado", "pendiente");
 
+    if (error) throw error;
+
     return new Set((data ?? []).map((r) => r.destinatario_id));
   };
 
   const fetchDefaultResults = async (myId: string): Promise<Usuario[]> => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("usuarios")
       .select("id,nombre,rol,nivel,puntos,avatar_config")
       .eq("rol", "estudiante")
       .neq("id", myId)
       .order("puntos", { ascending: false })
       .limit(24);
+
+    if (error) throw error;
 
     return ((data as any[]) ?? [])
       .map((u) => normalizarUsuario(u))
@@ -382,26 +273,19 @@ export default function AmigosPage() {
       fetchDefaultResults(myId),
     ]);
 
-    const meData = meOverride ?? me;
-
     setFriends(friendsData);
     setPending(pendingData);
     setSentRequests(sentData);
     setResults(resultsData);
 
-    guardarCache(myId, {
-      me: meData,
-      friends: friendsData,
-      pending: pendingData,
-      sentRequests: sentData,
-      results: resultsData,
-    });
   };
 
   const doSearch = async () => {
     if (!me) return;
 
     setBuscando(true);
+    setLoading(true);
+    setErrorCarga(false);
 
     try {
       const term = search.trim();
@@ -410,18 +294,10 @@ export default function AmigosPage() {
         const defaultResults = await fetchDefaultResults(me.id);
         setResults(defaultResults);
 
-        guardarCache(me.id, {
-          me,
-          friends,
-          pending,
-          sentRequests,
-          results: defaultResults,
-        });
-
         return;
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("usuarios")
         .select("id,nombre,rol,nivel,puntos,avatar_config")
         .eq("rol", "estudiante")
@@ -430,13 +306,19 @@ export default function AmigosPage() {
         .order("puntos", { ascending: false })
         .limit(50);
 
+      if (error) throw error;
+
       const parsed = ((data as any[]) ?? [])
         .map((u) => normalizarUsuario(u))
         .filter(Boolean) as Usuario[];
 
       setResults(parsed);
+    } catch (error) {
+      console.error("Error buscando estudiantes:", error);
+      setErrorCarga(true);
     } finally {
       setBuscando(false);
+      setLoading(false);
     }
   };
 
@@ -531,19 +413,7 @@ export default function AmigosPage() {
 
       toast.success("Solicitud enviada.");
 
-      setSentRequests((prev) => {
-        const next = new Set([...Array.from(prev), toUser.id]);
-
-        guardarCache(me.id, {
-          me,
-          friends,
-          pending,
-          sentRequests: next,
-          results,
-        });
-
-        return next;
-      });
+      setSentRequests((prev) => new Set([...Array.from(prev), toUser.id]));
     } finally {
       setEnviandoSolicitudId(null);
     }
@@ -634,15 +504,8 @@ export default function AmigosPage() {
   const openAmigo = async (u: Usuario) => {
     setSelectedAmigo(u);
 
-    const cache = leerLogrosCache(u.id);
-
-    if (cache) {
-      setLogros(cache);
-      setLoadingLogros(false);
-    } else {
-      setLogros([]);
-      setLoadingLogros(true);
-    }
+    setLogros([]);
+    setLoadingLogros(true);
 
     const { data: relaciones, error: errorRelaciones } = await supabase
       .from("logros_usuarios")
@@ -657,7 +520,6 @@ export default function AmigosPage() {
 
     if (!relaciones || relaciones.length === 0) {
       setLogros([]);
-      guardarLogrosCache(u.id, []);
       setLoadingLogros(false);
       return;
     }
@@ -683,7 +545,6 @@ export default function AmigosPage() {
     }));
 
     setLogros(parsed);
-    guardarLogrosCache(u.id, parsed);
     setLoadingLogros(false);
   };
 
@@ -1472,20 +1333,16 @@ export default function AmigosPage() {
         </section>
 
         {loading ? (
-          <section className="amigos-skeleton-panel animate-pulse">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="amigos-user-card">
-                  <div className="amigos-skeleton-line h-20 w-20 rounded-full" />
-
-                  <div className="space-y-3 w-full">
-                    <div className="amigos-skeleton-line h-5 w-2/3" />
-                    <div className="amigos-skeleton-line h-4 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <CargadorFCC
+            mensaje="Actualizando tu red"
+            detalle="Confirmando amistades, solicitudes, perfiles y avatares…"
+          />
+        ) : errorCarga ? (
+          <EstadoErrorCargaFCC
+            titulo="No se pudo confirmar la información social"
+            detalle="No se mostraron listas anteriores ni resultados parciales."
+            onRetry={() => setReintento((valor) => valor + 1)}
+          />
         ) : (
           <>
             <div className="amigos-main-grid">

@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -14,13 +14,8 @@ import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import ModalEditorAvatar from "@/components/ModalEditorAvatar";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import toast from "react-hot-toast";
-
-const CACHE_KEY_BASE = "fcc_academy_perfil_profesor_v1";
-
-function getCacheKey(usuarioId: string) {
-  return `${CACHE_KEY_BASE}_${usuarioId}`;
-}
 
 function parseAvatarConfig(value: any): AvatarConfig | null {
   if (!value) return null;
@@ -34,37 +29,6 @@ function parseAvatarConfig(value: any): AvatarConfig | null {
   }
 
   return value;
-}
-
-function guardarPerfilCache(usuario: any) {
-  try {
-    if (!usuario?.id) return;
-
-    sessionStorage.setItem(
-      getCacheKey(usuario.id),
-      JSON.stringify({
-        timestamp: Date.now(),
-        usuario,
-      })
-    );
-  } catch {}
-}
-
-function leerPerfilCache(usuarioId: string) {
-  try {
-    const raw = sessionStorage.getItem(getCacheKey(usuarioId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.usuario) return null;
-
-    return {
-      ...parsed.usuario,
-      avatar_config: parseAvatarConfig(parsed.usuario.avatar_config),
-    };
-  } catch {
-    return null;
-  }
 }
 
 function ModalEditarNombre({
@@ -235,6 +199,8 @@ function ModalEditarNombre({
 export default function PerfilProfesorPage() {
   const [usuario, setUsuario] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
   const [open, setOpen] = useState(false);
   const [openNombre, setOpenNombre] = useState(false);
 
@@ -254,35 +220,18 @@ export default function PerfilProfesorPage() {
     accessory: "none",
   };
 
-  useLayoutEffect(() => {
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerPerfilCache(usuarioLocal);
-    if (!cache) return;
-
-    setUsuario(cache);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
     const run = async () => {
+      setLoading(true);
+      setErrorCarga(false);
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
-          setLoading(false);
-          return;
-        }
-
-        const cache = leerPerfilCache(user.id);
-
-        if (cache) {
-          setUsuario(cache);
-          setLoading(false);
-        }
+        if (authError || !user) throw authError ?? new Error("Sesión no disponible");
 
         const { data, error } = await supabase
           .from("usuarios")
@@ -291,8 +240,7 @@ export default function PerfilProfesorPage() {
           .single();
 
         if (error) {
-          console.error("Error cargando perfil profesor:", error);
-          return;
+          throw error;
         }
 
         const usuarioData = {
@@ -301,22 +249,16 @@ export default function PerfilProfesorPage() {
         };
 
         setUsuario(usuarioData);
-        guardarPerfilCache(usuarioData);
       } catch (e) {
         console.error("Error inicializando perfil profesor:", e);
+        setErrorCarga(true);
       } finally {
         setLoading(false);
       }
     };
 
     run();
-  }, []);
-
-  useEffect(() => {
-    if (usuario?.id) {
-      guardarPerfilCache(usuario);
-    }
-  }, [usuario]);
+  }, [reintento]);
 
   const estilos = (
     <style>{`
@@ -969,11 +911,15 @@ export default function PerfilProfesorPage() {
   if (!usuario) {
     return (
       <LayoutGeneral rol="profesor">
-        {estilos}
-
-        <p style={{ color: "var(--color-muted)" }}>
-          No se pudo cargar el perfil.
-        </p>
+        <EstadoErrorCargaFCC
+          titulo="No se pudo confirmar tu perfil"
+          detalle={
+            errorCarga
+              ? "No se mostró información anterior ni un avatar incompleto."
+              : "El perfil solicitado no está disponible."
+          }
+          onRetry={() => setReintento((valor) => valor + 1)}
+        />
       </LayoutGeneral>
     );
   }

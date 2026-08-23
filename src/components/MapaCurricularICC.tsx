@@ -5,8 +5,11 @@
  * Permite visualizar, marcar avance, elegir optativas y descargar el mapa.
  */
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import CargadorFCC from "@/components/CargadorFCC";
+import AvisoModoRespaldo from "@/components/AvisoModoRespaldo";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type EstadoMateria = "pendiente" | "cursando" | "cursada";
 type MarcaCursada = "verde" | "rayado" | "check";
@@ -49,6 +52,7 @@ type MapaCurricularICCProps = {
   modo?: "vista" | "editor";
   carreraNombre?: string | null;
   className?: string;
+  onReady?: () => void;
 };
 
 const MAPA_STORAGE_KEY = "fcc-academy-mapa-curricular-icc-2017-v1";
@@ -347,10 +351,10 @@ function extraerUrlCss(valor: string) {
 function obtenerLogoActual() {
   const raw = obtenerVariableCss(
     "--fcc-sidebar-logo-image",
-    'url("/logos/logo-azul.png")'
+    'url("/ui/logos/logo-azul.webp")'
   );
 
-  return extraerUrlCss(raw) ?? "/logos/logo-azul.png";
+  return extraerUrlCss(raw) ?? "/ui/logos/logo-azul.webp";
 }
 
 function cargarImagen(src: string) {
@@ -400,6 +404,7 @@ export default function MapaCurricularICC({
   modo = "vista",
   carreraNombre,
   className = "",
+  onReady,
 }: MapaCurricularICCProps) {
   const carreraNormalizada = (carreraNombre ?? "").toLowerCase();
   const carreraCompatible =
@@ -410,17 +415,36 @@ export default function MapaCurricularICC({
   const [datos, setDatos] = useState<DatosMapa>(() => obtenerMapaInicialRapido());
   const [userId, setUserId] = useState<string | null>(null);
   const [cargado, setCargado] = useState(false);
+  const [usandoRespaldo, setUsandoRespaldo] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintentoCarga, setReintentoCarga] = useState(0);
+  const omitirPrimerGuardadoRef = useRef(true);
   const [mensaje, setMensaje] = useState("");
   const editable = modo === "editor";
 
   useEffect(() => {
+    if (!cargado) return;
+
+    const frame = window.requestAnimationFrame(() => onReady?.());
+    return () => window.cancelAnimationFrame(frame);
+  }, [cargado, onReady]);
+
+  useEffect(() => {
     let activo = true;
 
+    setCargado(false);
+    setErrorCarga(false);
+    omitirPrimerGuardadoRef.current = true;
+
     async function cargarMapa() {
+      let habiaCopiaLocal = false;
+      let huboErrorRemoto = false;
+
       try {
         const guardado = localStorage.getItem(MAPA_STORAGE_KEY);
 
         if (guardado) {
+          habiaCopiaLocal = true;
           setDatos(normalizarDatosMapa(guardado));
         }
       } catch {
@@ -430,13 +454,18 @@ export default function MapaCurricularICC({
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
+
+        if (authError) throw authError;
 
         if (!activo) return;
 
         setUserId(user?.id ?? null);
 
-        if (user?.id) {
+        if (!user?.id) {
+          setUsandoRespaldo(habiaCopiaLocal);
+        } else {
           const { data, error } = await supabase
             .from(DB_MAPA_TABLE)
             .select("datos")
@@ -445,17 +474,33 @@ export default function MapaCurricularICC({
 
           if (!activo) return;
 
-          if (!error && data?.datos) {
+          if (!error && data?.datos != null) {
             setDatos(normalizarDatosMapa(data.datos));
-            localStorage.setItem(MAPA_STORAGE_KEY, JSON.stringify(data.datos));
+
+            try {
+              localStorage.setItem(MAPA_STORAGE_KEY, JSON.stringify(data.datos));
+            } catch {
+              // La versión remota sigue siendo válida aunque falle la copia local.
+            }
+
+            setUsandoRespaldo(false);
           } else if (error) {
             console.warn("No se pudo cargar mapa curricular:", error);
+            huboErrorRemoto = true;
+            setUsandoRespaldo(habiaCopiaLocal);
+          } else {
+            setUsandoRespaldo(habiaCopiaLocal);
           }
         }
       } catch (error) {
         console.warn("No se pudo consultar el mapa curricular:", error);
+        huboErrorRemoto = true;
+        setUsandoRespaldo(habiaCopiaLocal);
       } finally {
-        if (activo) setCargado(true);
+        if (activo) {
+          setErrorCarga(huboErrorRemoto && !habiaCopiaLocal);
+          setCargado(true);
+        }
       }
     }
 
@@ -464,7 +509,7 @@ export default function MapaCurricularICC({
     return () => {
       activo = false;
     };
-  }, []);
+  }, [reintentoCarga]);
 
   useEffect(() => {
     const descargar = () => {
@@ -491,6 +536,11 @@ export default function MapaCurricularICC({
   useEffect(() => {
     if (!cargado || !editable) return;
 
+    if (omitirPrimerGuardadoRef.current) {
+      omitirPrimerGuardadoRef.current = false;
+      return;
+    }
+
     const datosMapa = datos;
 
     localStorage.setItem(MAPA_STORAGE_KEY, JSON.stringify(datosMapa));
@@ -509,6 +559,9 @@ export default function MapaCurricularICC({
 
       if (error) {
         console.warn("No se pudo guardar mapa curricular:", error);
+      } else {
+        setUsandoRespaldo(false);
+        setErrorCarga(false);
       }
     }, 500);
 
@@ -1057,6 +1110,32 @@ export default function MapaCurricularICC({
     );
   }
 
+  if (!cargado) {
+    return (
+      <div className={`curriculum-tool ${className}`}>
+        <CargadorFCC
+          compacto
+          mensaje="Sincronizando mapa curricular"
+          detalle="Verificando el avance guardado antes de dibujar el mapa…"
+        />
+        <EstilosMapa />
+      </div>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <div className={`curriculum-tool ${className}`}>
+        <EstadoErrorCargaFCC
+          titulo="No se pudo confirmar el mapa curricular"
+          detalle="No existe una copia local completa que pueda mostrarse como respaldo."
+          onRetry={() => setReintentoCarga((valor) => valor + 1)}
+        />
+        <EstilosMapa />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`curriculum-tool ${modo === "editor" ? "is-editor" : "is-preview"} ${className}`}
@@ -1064,6 +1143,10 @@ export default function MapaCurricularICC({
         ["--curriculum-done-color" as keyof CSSProperties]: datos.preferencias.colorCursada,
       } as CSSProperties}
     >
+      {usandoRespaldo && (
+        <AvisoModoRespaldo mensaje="No se pudo confirmar el mapa con Supabase. Esta copia local se muestra como respaldo y no como información vigente." />
+      )}
+
       <div className="curriculum-toolbar">
         <div className="curriculum-heading-line">
           {modo === "editor" && <h2>Mapa curricular</h2>}

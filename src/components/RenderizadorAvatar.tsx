@@ -5,7 +5,19 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  obtenerUrlImagenOptimizada,
+  precargarImagenes,
+} from "@/lib/imagenes";
 
 export type AvatarConfig = {
   gender: "masculino" | "femenino";
@@ -27,6 +39,8 @@ export type AvatarConfig = {
 interface Props {
   config?: AvatarConfig | null;
   size?: number;
+  mantenerAnteriorDuranteCarga?: boolean;
+  onReady?: () => void;
 }
 
 const defaultConfig: AvatarConfig = {
@@ -107,47 +121,9 @@ function getConfigKey(config: AvatarConfig | null) {
   ].join("|");
 }
 
-function getImageCache(): Map<string, Promise<void>> {
-  if (typeof window === "undefined") {
-    return new Map();
-  }
-
-  const w = window as any;
-
-  if (!w.__avatarImageCache) {
-    w.__avatarImageCache = new Map<string, Promise<void>>();
-  }
-
-  return w.__avatarImageCache;
-}
-
-function preloadImage(src: string) {
-  if (typeof window === "undefined") {
-    return Promise.resolve();
-  }
-
-  const cache = getImageCache();
-
-  if (cache.has(src)) {
-    return cache.get(src)!;
-  }
-
-  const promise = new Promise<void>((resolve) => {
-    const img = new Image();
-
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-
-    img.src = src;
-
-    if (img.decode) {
-      img.decode().then(() => resolve()).catch(() => {});
-    }
-  });
-
-  cache.set(src, promise);
-  return promise;
-}
+const AvatarImageResolverContext = createContext<(src: string) => string>(
+  (src) => src
+);
 
 function getVisibleSources(config: AvatarConfig) {
   const sources: string[] = [];
@@ -215,6 +191,30 @@ function getVisibleSources(config: AvatarConfig) {
   return sources;
 }
 
+function getAnchoOptimizado(size: number) {
+  return Math.min(640, Math.max(96, Math.ceil(size * 2)));
+}
+
+/**
+ * Prepara exclusivamente las capas de la configuración que se va a mostrar.
+ * No descarga el catálogo completo del editor y, por tanto, evita gastar
+ * datos en prendas que el usuario quizá nunca seleccione.
+ */
+export async function prepararRecursosAvatarFCC(
+  config?: AvatarConfig | null,
+  size = 150
+) {
+  const normalizada = normalizeConfig(config);
+  if (!normalizada) return false;
+
+  const ancho = getAnchoOptimizado(size);
+  const sources = getVisibleSources(normalizada).map((src) =>
+    obtenerUrlImagenOptimizada(src, ancho, 82)
+  );
+
+  return precargarImagenes(sources);
+}
+
 function LayerImage({
   src,
   alt,
@@ -224,13 +224,16 @@ function LayerImage({
   alt: string;
   zIndex?: number;
 }) {
+  const resolver = useContext(AvatarImageResolverContext);
+
   return (
     <img
-      src={src}
+      src={resolver(src)}
       className="absolute inset-0 w-full h-full object-contain"
       style={{ zIndex }}
       alt={alt}
       draggable={false}
+      decoding="async"
     />
   );
 }
@@ -246,6 +249,9 @@ function MaskTint({
   opacity?: number;
   zIndex?: number;
 }) {
+  const resolver = useContext(AvatarImageResolverContext);
+  const resolvedSrc = resolver(src);
+
   return (
     <div
       className="absolute inset-0 w-full h-full pointer-events-none"
@@ -253,8 +259,8 @@ function MaskTint({
         zIndex,
         backgroundColor: color,
         opacity,
-        maskImage: `url(${src})`,
-        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${resolvedSrc})`,
+        WebkitMaskImage: `url(${resolvedSrc})`,
         maskSize: "contain",
         maskRepeat: "no-repeat",
         maskPosition: "center",
@@ -267,6 +273,8 @@ function MaskTint({
 }
 
 function PlayeraLayer({ config }: { config: AvatarConfig }) {
+  const resolver = useContext(AvatarImageResolverContext);
+
   if (isNone(config.playera)) return null;
 
   const gender = config.gender;
@@ -282,7 +290,7 @@ function PlayeraLayer({ config }: { config: AvatarConfig }) {
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: `url(${relleno})`,
+            backgroundImage: `url(${resolver(relleno)})`,
             backgroundRepeat: "no-repeat",
             backgroundPosition: "center",
             backgroundSize: "contain",
@@ -309,6 +317,8 @@ function PlayeraLayer({ config }: { config: AvatarConfig }) {
 }
 
 function SueterLayer({ config }: { config: AvatarConfig }) {
+  const resolver = useContext(AvatarImageResolverContext);
+
   if (isNone(config.sueter)) return null;
 
   const gender = config.gender;
@@ -334,7 +344,7 @@ function SueterLayer({ config }: { config: AvatarConfig }) {
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: `url(${relleno})`,
+            backgroundImage: `url(${resolver(relleno)})`,
             backgroundRepeat: "no-repeat",
             backgroundPosition: "center",
             backgroundSize: "contain",
@@ -360,43 +370,300 @@ function SueterLayer({ config }: { config: AvatarConfig }) {
   );
 }
 
-export default function RenderizadorAvatar({ config, size = 150 }: Props) {
+type AvatarFrame = {
+  key: string;
+  config: AvatarConfig;
+  resolver: (src: string) => string;
+};
+
+function CapasAvatar({ frame }: { frame: AvatarFrame }) {
+  const gender = frame.config.gender;
+  const skinSrc = `/elementos_avatar/base/${gender}/piel.png`;
+  const contornoSrc = `/elementos_avatar/base/${gender}/contorno.png`;
+
+  return (
+    <AvatarImageResolverContext.Provider value={frame.resolver}>
+      <div className="relative h-full w-full fcc-avatar-completo">
+        <div className="absolute inset-0 z-0">
+          <LayerImage src={skinSrc} alt="base piel" />
+
+          <MaskTint
+            src={skinSrc}
+            color={frame.config.skinColor ?? "#f1c27d"}
+            opacity={0.5}
+          />
+
+          <LayerImage src={contornoSrc} alt="contorno" />
+        </div>
+
+        {!isNone(frame.config.mouth) && (
+          <LayerImage
+            src={`/elementos_avatar/cara/bocas/${frame.config.mouth}`}
+            alt="boca"
+          />
+        )}
+
+        {!isNone(frame.config.nose) && (
+          <LayerImage
+            src={`/elementos_avatar/cara/narices/${frame.config.nose}`}
+            alt="nariz"
+          />
+        )}
+
+        {!isNone(frame.config.eyes) && (
+          <LayerImage
+            src={
+              ["Ojos5.png", "Ojos6.png", "Ojos7.png"].includes(
+                frame.config.eyes
+              )
+                ? `/elementos_avatar/cara/ojos/${frame.config.eyes}`
+                : `/elementos_avatar/cara/ojos/${gender}/${frame.config.eyes}`
+            }
+            alt="ojos"
+          />
+        )}
+
+        {!isNone(frame.config.glasses) && (
+          <LayerImage
+            src={`/elementos_avatar/cara/lentes/${frame.config.glasses}`}
+            alt="lentes"
+          />
+        )}
+
+        {!isNone(frame.config.hair) && (
+          <LayerImage
+            src={`/elementos_avatar/cabello/${gender}/${frame.config.hair}`}
+            alt="cabello"
+          />
+        )}
+
+        <PlayeraLayer config={frame.config} />
+        <SueterLayer config={frame.config} />
+
+        {!isNone(frame.config.accessory) && (
+          <LayerImage
+            src={`/elementos_avatar/accesorios/${frame.config.accessory}`}
+            alt="accesorio"
+          />
+        )}
+      </div>
+    </AvatarImageResolverContext.Provider>
+  );
+}
+
+function PlaceholderAvatar({ fallo }: { fallo: boolean }) {
+  return (
+    <div className="fcc-avatar-placeholder" aria-hidden="true">
+      <span className="fcc-avatar-placeholder-head" />
+      <span className="fcc-avatar-placeholder-body" />
+      {!fallo && <span className="fcc-avatar-placeholder-shimmer" />}
+
+      <style jsx>{`
+        .fcc-avatar-placeholder {
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          overflow: hidden;
+          border-radius: 28%;
+          background:
+            radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--fcc-premium-cyan) 11%, transparent), transparent 34%),
+            color-mix(in srgb, var(--fcc-premium-surface-soft) 88%, transparent);
+          border: 1px solid color-mix(in srgb, var(--fcc-premium-accent) 14%, var(--fcc-premium-border));
+        }
+
+        .fcc-avatar-placeholder-head,
+        .fcc-avatar-placeholder-body {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          background: color-mix(in srgb, var(--fcc-premium-muted) 28%, transparent);
+        }
+
+        .fcc-avatar-placeholder-head {
+          top: 24%;
+          width: 30%;
+          aspect-ratio: 1;
+          border-radius: 50%;
+        }
+
+        .fcc-avatar-placeholder-body {
+          bottom: 17%;
+          width: 58%;
+          height: 34%;
+          border-radius: 50% 50% 22% 22%;
+        }
+
+        .fcc-avatar-placeholder-shimmer {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
+          transform: translateX(-110%);
+          animation: fcc-avatar-shimmer 1.45s ease-in-out infinite;
+        }
+
+        @keyframes fcc-avatar-shimmer {
+          to { transform: translateX(110%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .fcc-avatar-placeholder-shimmer { animation: none; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default function RenderizadorAvatar({
+  config,
+  size = 150,
+  mantenerAnteriorDuranteCarga = false,
+  onReady,
+}: Props) {
   const normalizedConfig = useMemo(() => normalizeConfig(config), [config]);
   const configKey = useMemo(() => getConfigKey(normalizedConfig), [normalizedConfig]);
-
-  const [displayConfig, setDisplayConfig] = useState<AvatarConfig | null>(
-    normalizedConfig
+  const anchoOptimizado = useMemo(
+    () => getAnchoOptimizado(size),
+    [size]
   );
+  const resolver = useMemo(
+    () => (src: string) => obtenerUrlImagenOptimizada(src, anchoOptimizado, 82),
+    [anchoOptimizado]
+  );
+
+  const [frames, setFrames] = useState<AvatarFrame[]>([]);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [stagedKey, setStagedKey] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(Boolean(normalizedConfig));
+  const [falloCarga, setFalloCarga] = useState(false);
+  const activeKeyRef = useRef<string | null>(null);
+  const latestRequestRef = useRef("");
+  const onReadyRef = useRef(onReady);
+
+  onReadyRef.current = onReady;
 
   useEffect(() => {
     if (!normalizedConfig) {
-      setDisplayConfig(null);
+      latestRequestRef.current = "";
+      activeKeyRef.current = null;
+      setFrames([]);
+      setActiveKey(null);
+      setStagedKey(null);
+      setCargando(false);
+      setFalloCarga(false);
       return;
     }
 
     let active = true;
+    const requestKey = `${configKey}@${anchoOptimizado}`;
+    latestRequestRef.current = requestKey;
+    setCargando(true);
+    setFalloCarga(false);
+    setStagedKey(null);
 
-    const sources = getVisibleSources(normalizedConfig);
+    if (activeKeyRef.current === requestKey) {
+      setCargando(false);
+      onReadyRef.current?.();
+      return;
+    }
 
-    Promise.allSettled(sources.map((src) => preloadImage(src))).then(() => {
-      if (!active) return;
-      setDisplayConfig(normalizedConfig);
+    if (!mantenerAnteriorDuranteCarga) {
+      activeKeyRef.current = null;
+      setActiveKey(null);
+      setFrames([]);
+    } else {
+      setFrames((actuales) =>
+        actuales.filter((frame) => frame.key === activeKeyRef.current)
+      );
+    }
+
+    const sources = getVisibleSources(normalizedConfig).map(resolver);
+
+    void precargarImagenes(sources).then((completo) => {
+      if (!active || latestRequestRef.current !== requestKey) return;
+
+      if (completo) {
+        const siguiente: AvatarFrame = {
+          key: requestKey,
+          config: normalizedConfig,
+          resolver,
+        };
+
+        setFrames((actuales) => {
+          const vigente = actuales.find(
+            (frame) => frame.key === activeKeyRef.current
+          );
+          return vigente ? [vigente, siguiente] : [siguiente];
+        });
+        setStagedKey(requestKey);
+      } else {
+        setFalloCarga(true);
+        setCargando(false);
+      }
     });
 
     return () => {
       active = false;
     };
-  }, [configKey, normalizedConfig]);
+  }, [
+    anchoOptimizado,
+    configKey,
+    normalizedConfig,
+    resolver,
+    mantenerAnteriorDuranteCarga,
+  ]);
 
-  if (!displayConfig) return null;
+  useLayoutEffect(() => {
+    if (!stagedKey) return;
 
-  const gender = displayConfig.gender;
-  const skinSrc = `/elementos_avatar/base/${gender}/piel.png`;
-  const contornoSrc = `/elementos_avatar/base/${gender}/contorno.png`;
+    let activo = true;
+    let primerFrame = 0;
+    let segundoFrame = 0;
+
+    primerFrame = window.requestAnimationFrame(() => {
+      segundoFrame = window.requestAnimationFrame(() => {
+        if (!activo || latestRequestRef.current !== stagedKey) return;
+
+        activeKeyRef.current = stagedKey;
+        setActiveKey(stagedKey);
+        setStagedKey(null);
+        setCargando(false);
+        onReadyRef.current?.();
+
+        window.setTimeout(() => {
+          if (latestRequestRef.current !== stagedKey) return;
+          setFrames((actuales) =>
+            actuales.filter((frame) => frame.key === stagedKey)
+          );
+        }, 120);
+      });
+    });
+
+    return () => {
+      activo = false;
+      window.cancelAnimationFrame(primerFrame);
+      window.cancelAnimationFrame(segundoFrame);
+    };
+  }, [stagedKey]);
+
+  const activeFrame = frames.find((frame) => frame.key === activeKey) ?? null;
+  const estadoAvatar = activeFrame
+    ? cargando
+      ? "updating"
+      : "ready"
+    : falloCarga
+      ? "error"
+      : "loading";
 
   return (
     <div
-      className="relative"
+      className="relative fcc-avatar-atomic"
+      data-avatar-status={estadoAvatar}
+      role="img"
+      aria-label={
+        falloCarga && !activeFrame
+          ? "Avatar no disponible temporalmente"
+          : "Avatar completo"
+      }
       style={{
         width: size,
         height: size,
@@ -404,67 +671,52 @@ export default function RenderizadorAvatar({ config, size = 150 }: Props) {
         minHeight: size,
       }}
     >
-      <div className="absolute inset-0 z-0">
-        <LayerImage src={skinSrc} alt="base piel" />
+      {!activeFrame && <PlaceholderAvatar fallo={falloCarga} />}
 
-        <MaskTint
-          src={skinSrc}
-          color={displayConfig.skinColor ?? "#f1c27d"}
-          opacity={0.5}
-        />
+      {frames.map((frame) => {
+        const esActivo = frame.key === activeKey;
 
-        <LayerImage src={contornoSrc} alt="contorno" />
-      </div>
+        return (
+          <div
+            key={frame.key}
+            className={`fcc-avatar-frame ${
+              esActivo ? "is-active" : "is-staging"
+            }`}
+            aria-hidden={!esActivo}
+          >
+            <CapasAvatar frame={frame} />
+          </div>
+        );
+      })}
 
-      {!isNone(displayConfig.mouth) && (
-        <LayerImage
-          src={`/elementos_avatar/cara/bocas/${displayConfig.mouth}`}
-          alt="boca"
-        />
-      )}
+      <style jsx>{`
+        .fcc-avatar-atomic {
+          isolation: isolate;
+        }
 
-      {!isNone(displayConfig.nose) && (
-        <LayerImage
-          src={`/elementos_avatar/cara/narices/${displayConfig.nose}`}
-          alt="nariz"
-        />
-      )}
+        .fcc-avatar-frame {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          contain: layout paint style;
+          transform: translateZ(0);
+          backface-visibility: hidden;
+          pointer-events: none;
+        }
 
-      {!isNone(displayConfig.eyes) && (
-        <LayerImage
-          src={
-            ["Ojos5.png", "Ojos6.png", "Ojos7.png"].includes(displayConfig.eyes)
-              ? `/elementos_avatar/cara/ojos/${displayConfig.eyes}`
-              : `/elementos_avatar/cara/ojos/${gender}/${displayConfig.eyes}`
-          }
-          alt="ojos"
-        />
-      )}
+        .fcc-avatar-frame.is-active {
+          z-index: 2;
+          opacity: 1;
+          visibility: visible;
+        }
 
-      {!isNone(displayConfig.glasses) && (
-        <LayerImage
-          src={`/elementos_avatar/cara/lentes/${displayConfig.glasses}`}
-          alt="lentes"
-        />
-      )}
-
-      {!isNone(displayConfig.hair) && (
-        <LayerImage
-          src={`/elementos_avatar/cabello/${gender}/${displayConfig.hair}`}
-          alt="cabello"
-        />
-      )}
-
-      <PlayeraLayer config={displayConfig} />
-
-      <SueterLayer config={displayConfig} />
-
-      {!isNone(displayConfig.accessory) && (
-        <LayerImage
-          src={`/elementos_avatar/accesorios/${displayConfig.accessory}`}
-          alt="accesorio"
-        />
-      )}
+        .fcc-avatar-frame.is-staging {
+          z-index: 1;
+          opacity: 0.001;
+          visibility: visible;
+        }
+      `}</style>
     </div>
   );
 }

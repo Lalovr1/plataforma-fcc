@@ -1,78 +1,54 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import ModalEditorAvatar from "./ModalEditorAvatar";
 import { AvatarConfig } from "./RenderizadorAvatar";
 import { supabase } from "@/utils/supabaseClient";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+import { precargarImagenes } from "@/lib/imagenes";
+import { prepararRecursosCofreFCC } from "@/lib/recursosCofre";
+import toast from "react-hot-toast";
 
+const RECURSOS_TUTORIAL = [
+  "/ui/mascota/Saludando.webp",
+  "/ui/mascota/Posando.webp",
+  "/ui/mascota/ApuntandoFeliz.webp",
+  "/ui/mascota/ApuntandoSerio.webp",
+  "/ui/mascota/ExplicandoFeliz.webp",
+  "/ui/cofre/frame1.webp",
+  "/ui/cofre/frame2.webp",
+  "/ui/cofre/frame3.webp",
+  "/ui/cofre/frame4.webp",
+  "/ui/cofre/frame5.webp",
+];
 
 export default function TutorialInicio() {
-  const [yaVisto, setYaVisto] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [visible, setVisible] = useState(false);
+  const [errorRecursos, setErrorRecursos] = useState(false);
+  const [reintentoRecursos, setReintentoRecursos] = useState(0);
 
   useEffect(() => {
-    const rol = localStorage.getItem("rol_usuario");
-    if (rol === "profesor") {
-      setYaVisto(true);
+    let activo = true;
+
+    setCargando(true);
+    setErrorRecursos(false);
+
+    void precargarImagenes(RECURSOS_TUTORIAL, 30_000).then((completo) => {
+      if (!activo) return;
+
+      setErrorRecursos(!completo);
+      setVisible(completo);
       setCargando(false);
-      return;
-    }
-  }, []);
+    });
 
-  useEffect(() => {
-    async function verificarLogroTutorial() {
-      try {
-        const { data: user } = await supabase.auth.getUser();
-        if (!user?.user) {
-          setCargando(false);
-          return;
-        }
-
-        const { data: logros, error } = await supabase
-          .from("logros_usuarios")
-          .select("logro_id")
-          .eq("usuario_id", user.user.id);
-
-        if (error) {
-          console.error("Error al verificar logros del tutorial:", error);
-          setCargando(false);
-          return;
-        }
-
-        const yaTieneTutorial = logros?.some(
-          (l) =>
-            l.logro_id === "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
-            l.logro_id === "tutorial"
-        );
-
-        //  Primero actualizamos el estado (para no mostrar el tutorial)
-        setYaVisto(!!yaTieneTutorial);
-
-        //  Solo si no lo tiene, marcamos tutorial_visto = true
-        if (!yaTieneTutorial) {
-          await supabase
-            .from("usuarios")
-            .update({ tutorial_visto: true })
-            .eq("id", user.user.id);
-
-          setVisible(true);
-        }else {
-          (window as any).__tutorialActivo = false;
-          window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
-        }
-
-        setCargando(false);
-      } catch (e) {
-        console.error("Error general al verificar logro tutorial:", e);
-        setCargando(false);
-      }
-    }
-
-    verificarLogroTutorial();
-  }, []);
+    return () => {
+      activo = false;
+    };
+  }, [reintentoRecursos]);
 
   useEffect(() => {
     if (!visible) {
@@ -96,27 +72,6 @@ export default function TutorialInicio() {
     };
   }, [visible]);
 
-  useEffect(() => {
-    const imagenes = [
-      "/mascota/Saludando.png",
-      "/mascota/Posando.png",
-      "/mascota/ApuntandoFeliz.png",
-      "/mascota/ApuntandoSerio.png",
-      "/mascota/ExplicandoFeliz.png",
-
-      "/cofre/frame1.png",
-      "/cofre/frame2.png",
-      "/cofre/frame3.png",
-      "/cofre/frame4.png",
-      "/cofre/frame5.png",
-    ];
-
-    imagenes.forEach((src) => {
-      const img = new Image();
-      img.src = src;
-    });
-  }, []);
-
   const [step, setStep] = useState(0);
   const [ready, setReady] = useState(false);
   const [esMobile, setEsMobile] = useState(false);
@@ -139,6 +94,7 @@ export default function TutorialInicio() {
   }, []);
 
   const [mostrarEditor, setMostrarEditor] = useState(false);
+  const [montarEditor, setMontarEditor] = useState(false);
   const [animandoEditor, setAnimandoEditor] = useState(false);
   const [transicionSuave, setTransicionSuave] = useState(false);
   const [ocultandoEditor, setOcultandoEditor] = useState(false); 
@@ -147,7 +103,6 @@ export default function TutorialInicio() {
   const [resaltadoVisibleMovil, setResaltadoVisibleMovil] = useState(true);
   const [mostrarCofre, setMostrarCofre] = useState(false);
   const [recompensasCofre, setRecompensasCofre] = useState<any[]>([]);
-  const mostrarCofreRef = useRef(mostrarCofre);
 
   useEffect(() => {
     if (!visible) return;
@@ -166,10 +121,6 @@ export default function TutorialInicio() {
       window.removeEventListener("touchmove", bloquearScroll);
     };
   }, [visible, mostrarEditor]);
-
-  useEffect(() => {
-    mostrarCofreRef.current = mostrarCofre;
-  }, [mostrarCofre]);
 
   const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>({
     gender: "masculino",
@@ -402,11 +353,7 @@ export default function TutorialInicio() {
       setMostrarTooltip(false);
 
       const abrir = setTimeout(() => {
-        setMostrarEditor(true);
-
-        if (!esMobile) {
-          setTimeout(() => setMostrarTooltip(true), 800);
-        }
+        setMontarEditor(true);
       }, 400);
 
       return () => clearTimeout(abrir);
@@ -423,19 +370,55 @@ export default function TutorialInicio() {
   }, [step]);
   
 
-  if (cargando || yaVisto || !visible || !ready) return null;
+  if (cargando || !ready) {
+    return (
+      <CargadorFCC
+        flotante
+        mensaje="Preparando tu bienvenida"
+        detalle=""
+      />
+    );
+  }
+
+  if (errorRecursos || !visible) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          right: "max(18px, env(safe-area-inset-right))",
+          bottom: "max(18px, env(safe-area-inset-bottom))",
+          zIndex: 31000,
+          width: "min(560px, calc(100vw - 36px))",
+        }}
+      >
+        <EstadoErrorCargaFCC
+          compacto
+          titulo="La bienvenida todavía no está completa"
+          detalle="La conexión se interrumpió mientras preparábamos sus imágenes. El tutorial seguirá oculto para no mostrar elementos a medias."
+          onRetry={() => setReintentoRecursos((actual) => actual + 1)}
+        />
+      </div>
+    );
+  }
 
   async function guardarAvatar(newConfig: AvatarConfig) {
     try {
-      const { data: user } = await supabase.auth.getUser();
-      if (user?.user) {
-        await supabase
-          .from("usuarios")
-          .update({
-            avatar_config: newConfig,
-          })
-          .eq("id", user.user.id);
-      }
+      const {
+        data: { user },
+        error: errorSesion,
+      } = await supabase.auth.getUser();
+
+      if (errorSesion) throw errorSesion;
+      if (!user) throw new Error("No se pudo confirmar la sesión activa.");
+
+      const { error: errorActualizacion } = await supabase
+        .from("usuarios")
+        .update({
+          avatar_config: newConfig,
+        })
+        .eq("id", user.id);
+
+      if (errorActualizacion) throw errorActualizacion;
 
       localStorage.setItem("avatar_config", JSON.stringify(newConfig));
       window.dispatchEvent(new Event("avatarActualizado"));
@@ -448,6 +431,7 @@ export default function TutorialInicio() {
 
           setTimeout(() => {
             setMostrarEditor(false);
+            setMontarEditor(false);
 
             setTimeout(() => {
               setStep((s) => s + 1);
@@ -461,10 +445,14 @@ export default function TutorialInicio() {
 
         setTimeout(() => {
           setMostrarEditor(false);
+          setMontarEditor(false);
         }, 250);
       }, 500);
+
+      return true;
     } catch (error) {
       console.error("Error guardando avatar:", error);
+      return false;
     }
   }
 
@@ -481,49 +469,117 @@ export default function TutorialInicio() {
   }
 
   async function finalizar() {
-    console.log("✅ Finalizar llamado");
     if (finalizado) return;
     setFinalizado(true);
-    console.log("🚀 Ejecutando verificación de logro...");
 
-    await new Promise((r) => setTimeout(r, 200));
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-    const { data: user } = await supabase.auth.getUser();
-    console.log("👤 Usuario:", user);
+      const { data: sesion, error: errorSesion } =
+        await supabase.auth.getUser();
 
-    if (user?.user) {
+      if (errorSesion) throw errorSesion;
+      if (!sesion.user) {
+        throw new Error("No se pudo confirmar la sesión activa.");
+      }
+
       const { verificarLogros } = await import("@/utils/verificarLogros");
-      const nuevos = await verificarLogros(user.user.id, "tutorial", 1);
-      console.log("🎯 Logros detectados:", nuevos);
+      const nuevos = await verificarLogros(
+        sesion.user.id,
+        "tutorial",
+        1
+      );
 
       if (nuevos.length > 0) {
-        setLogrosDesbloqueados((prev) => {
-          const idsPrev = prev.map((x) => x.id);
-          const nuevosUnicos = nuevos.filter((x) => !idsPrev.includes(x.id));
-          return [...prev, ...nuevosUnicos];
-        });
-
-        // Esperar a que el logro se cierre antes del cofre
         const esperaCierre = new Promise<void>((resolve) => {
           const listener = () => {
             window.removeEventListener("logroCerrado", listener);
             resolve();
           };
+
           window.addEventListener("logroCerrado", listener);
+        });
+
+        setLogrosDesbloqueados((prev) => {
+          const idsPrev = prev.map((logro) => logro.id);
+          const nuevosUnicos = nuevos.filter(
+            (logro) => !idsPrev.includes(logro.id)
+          );
+          return [...prev, ...nuevosUnicos];
         });
 
         await esperaCierre;
       }
 
-      // Cofre de bienvenida (forzar rareza legendaria)
-    const { obtenerRecompensasAleatorias } = await import("@/lib/obtenerRecompensas");
-    const { recompensas } = await obtenerRecompensasAleatorias(user.user.id, "bienvenida");
-    setRecompensasCofre(recompensas);
-    setMostrarCofre(true);
-      return; 
+      const { obtenerRecompensasAleatorias } = await import(
+        "@/lib/obtenerRecompensas"
+      );
+      const resultado = await obtenerRecompensasAleatorias(
+        sesion.user.id,
+        "bienvenida"
+      );
+
+      if (resultado.error) {
+        throw new Error(resultado.error);
+      }
+
+      if (resultado.recompensas.length === 0) {
+        if (resultado.agotado || resultado.bloqueadoHistorico) {
+          const confirmado = await confirmarYCerrarTutorial();
+
+          if (!confirmado) {
+            setFinalizado(false);
+          }
+
+          return;
+        }
+
+        throw new Error(
+          "El cofre no devolvió recompensas y no se marcará el tutorial como terminado."
+        );
+      }
+
+      const recursosListos = await prepararRecursosCofreFCC(
+        resultado.recompensas
+      );
+
+      if (!recursosListos) {
+        throw new Error(
+          "No se pudieron descargar completamente las imágenes del cofre."
+        );
+      }
+
+      setRecompensasCofre(resultado.recompensas);
+      setMostrarCofre(true);
+    } catch (error: any) {
+      console.error("No se pudo finalizar la bienvenida:", error);
+      setFinalizado(false);
+      setMostrarCofre(false);
+      setRecompensasCofre([]);
+
+      toast.error(
+        error?.message ||
+          "La bienvenida sigue pendiente. Intenta finalizarla nuevamente."
+      );
+    }
+  }
+
+  async function confirmarYCerrarTutorial() {
+    const { confirmarFinalizacionTutorial } = await import(
+      "@/lib/finalizarTutorial"
+    );
+    const resultado = await confirmarFinalizacionTutorial();
+
+    if (!resultado.ok) {
+      toast.error(
+        resultado.error ||
+          "No se pudo confirmar el cierre del tutorial. Intenta nuevamente."
+      );
+      return false;
     }
 
     finalizarTutorial();
+    return true;
   }
 
   const tooltipStyle: React.CSSProperties = (() => {
@@ -705,21 +761,21 @@ export default function TutorialInicio() {
   function obtenerImagenMascota(idPaso: string): string {
     switch (idPaso) {
       case "bienvenida":
-        return "/mascota/Saludando.png";
+        return "/ui/mascota/Saludando.webp";
       case "crear-avatar":
-        return "/mascota/ExplicandoFeliz.png";
+        return "/ui/mascota/ExplicandoFeliz.webp";
       case "avatar-explicacion":
-        return "/mascota/Posando.png";
+        return "/ui/mascota/Posando.webp";
       case "menu-lateral":
-        return "/mascota/ApuntandoSerio.png";
+        return "/ui/mascota/ApuntandoSerio.webp";
       case "cursos":
-        return "/mascota/ExplicandoFeliz.png";
+        return "/ui/mascota/ExplicandoFeliz.webp";
       case "ranking":
-        return "/mascota/ApuntandoFeliz.png";
+        return "/ui/mascota/ApuntandoFeliz.webp";
       case "xp":
-        return "/mascota/ApuntandoSerio.png";
+        return "/ui/mascota/ApuntandoSerio.webp";
       default:
-        return "/mascota/Posando.png";
+        return "/ui/mascota/Posando.webp";
     }
   }
 
@@ -783,6 +839,11 @@ export default function TutorialInicio() {
       window.dispatchEvent(new CustomEvent("tutorial:estado", { detail: { activo: false } }));
       localStorage.setItem("tutorial_visto_finalizado", "1"); 
       localStorage.setItem("tutorial_visto", "true"); 
+      const usuarioLocal = localStorage.getItem("user_id");
+      if (usuarioLocal) {
+        localStorage.setItem(`fcc_tutorial_completo_${usuarioLocal}`, "1");
+      }
+      window.dispatchEvent(new Event("tutorial:completado"));
     }
 
   return (
@@ -834,6 +895,7 @@ export default function TutorialInicio() {
       {/* 🔹 Tooltip con mascota */}
       {mostrarTooltip && (
         <div
+          className="fcc-reward-overlay"
           style={{
             ...tooltipStyle,
             opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
@@ -893,20 +955,26 @@ export default function TutorialInicio() {
             <div style={{ textAlign: "center" }}>
               <button
                 onClick={siguiente}
+                disabled={finalizado}
                 style={{
                   backgroundColor: "#2ecc71",
                   color: "white",
                   border: "none",
                   padding: "10px 30px",
                   borderRadius: "8px",
-                  cursor: "pointer",
+                  cursor: finalizado ? "wait" : "pointer",
                   fontWeight: 600,
                   boxShadow:
                     "0 0 40px rgba(255,255,255,0.9), 0 0 30px var(--color-accent)",
-                  transition: "transform 0.3s ease",
+                  transition: "transform 0.3s ease, opacity 0.2s ease",
+                  opacity: finalizado ? 0.72 : 1,
                 }}
               >
-                {step < pasos.length - 1 ? "Siguiente" : "Finalizar"}
+                {step < pasos.length - 1
+                  ? "Siguiente"
+                  : finalizado
+                  ? "Preparando bienvenida..."
+                  : "Finalizar"}
               </button>
             </div>
           )}
@@ -930,13 +998,22 @@ export default function TutorialInicio() {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        {mostrarEditor && (
+        {montarEditor && (
           <ModalEditorAvatar
-            open={mostrarEditor}
+            open={montarEditor}
             onClose={() => {}}
             initialConfig={avatarConfig}
             onSave={guardarAvatar}
             forzado={true}
+            onReady={() => {
+              if (mostrarEditor) return;
+
+              setMostrarEditor(true);
+
+              if (!esMobile) {
+                window.setTimeout(() => setMostrarTooltip(true), 800);
+              }
+            }}
           />
         )}
       </div>
@@ -972,38 +1049,25 @@ export default function TutorialInicio() {
         }
       `}</style>
 
+      {finalizado &&
+        logrosDesbloqueados.length === 0 &&
+        !mostrarCofre && (
+          <CargadorFCC
+            flotante
+            mensaje="Preparando tu cofre de bienvenida"
+            detalle=""
+          />
+        )}
+
       {logrosDesbloqueados.map((l) =>
       createPortal(
         <ModalLogroDesbloqueado
           key={l.id}
           logro={l}
           onClose={() =>
-            setLogrosDesbloqueados((prev) => {
-              const arr = prev.filter((x) => x.id !== l.id);
-
-              if (arr.length === 0) {
-                console.log("⏳ Esperando cofre antes de cerrar tutorial...");
-
-                let intentos = 0;
-                const intervalo = setInterval(() => {
-                  const cofreVisible = mostrarCofreRef.current;
-                  console.log(`🔍 Intento ${intentos}: mostrarCofre =`, cofreVisible);
-
-                  if (cofreVisible) {
-                    console.log("🚫 No se cierra, cofre activo");
-                    clearInterval(intervalo);
-                  } else if (intentos >= 15) {
-                    console.log("✅ Cerrando tutorial (no hay cofre visible tras 3s)");
-                    clearInterval(intervalo);
-                    finalizarTutorial();
-                  }
-
-                  intentos++;
-                }, 200); 
-              }
-
-              return arr;
-            })
+            setLogrosDesbloqueados((prev) =>
+              prev.filter((x) => x.id !== l.id)
+            )
           }
         />,
         document.body
@@ -1033,10 +1097,14 @@ export default function TutorialInicio() {
           recompensas={recompensasCofre}
           nivel={1}
           tipo="bienvenida"
+          recursosPrecargados
           onFinish={async () => {
             await new Promise((r) => setTimeout(r, 800));
-            setMostrarCofre(false);
-            finalizarTutorial();
+            const confirmado = await confirmarYCerrarTutorial();
+
+            if (confirmado) {
+              setMostrarCofre(false);
+            }
           }}
         />
         </div>

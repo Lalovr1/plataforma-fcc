@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, BarChart3 } from "lucide-react";
@@ -15,44 +15,13 @@ import LayoutGeneral from "@/components/LayoutGeneral";
 import { supabase } from "@/utils/supabaseClient";
 import toast from "react-hot-toast";
 import AnaliticasCurso from "@/components/AnaliticasCurso";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type CursoRanking = {
   id: string;
   nombre: string;
 };
-
-const CACHE_KEY_BASE = "fcc_academy_ranking_curso_profesor_v1";
-
-function getCacheKey(usuarioId: string, cursoId: string) {
-  return `${CACHE_KEY_BASE}_${usuarioId}_${cursoId}`;
-}
-
-function guardarCache(usuarioId: string, cursoId: string, curso: CursoRanking) {
-  try {
-    sessionStorage.setItem(
-      getCacheKey(usuarioId, cursoId),
-      JSON.stringify({
-        timestamp: Date.now(),
-        curso,
-      })
-    );
-  } catch {}
-}
-
-function leerCache(usuarioId: string, cursoId: string): CursoRanking | null {
-  try {
-    const raw = sessionStorage.getItem(getCacheKey(usuarioId, cursoId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!parsed?.curso?.id || !parsed?.curso?.nombre) return null;
-
-    return parsed.curso;
-  } catch {
-    return null;
-  }
-}
 
 export default function AnaliticasCursoPage() {
   const params = useParams();
@@ -63,40 +32,22 @@ export default function AnaliticasCursoPage() {
   const [curso, setCurso] = useState<CursoRanking | null>(null);
   const [filtroMatricula, setFiltroMatricula] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
-
-  useLayoutEffect(() => {
-    if (!id) return;
-
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerCache(usuarioLocal, id);
-    if (!cache) return;
-
-    setCurso(cache);
-    setCargando(false);
-  }, [id]);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [reintento, setReintento] = useState(0);
 
   useEffect(() => {
     const run = async () => {
-      if (!id) return;
+      if (!id) {
+        setErrorCarga("El identificador del curso no es válido.");
+        setCargando(false);
+        return;
+      }
 
       try {
-        const usuarioLocal = localStorage.getItem("user_id");
-
-        if (usuarioLocal) {
-          const cache = leerCache(usuarioLocal, id);
-
-          if (cache) {
-            setCurso(cache);
-            setCargando(false);
-          }
-        }
-
+        setCargando(true);
+        setErrorCarga("");
         const [
-          {
-            data: { user },
-          },
+          authResponse,
           { data: materia, error: materiaError },
         ] = await Promise.all([
           supabase.auth.getUser(),
@@ -107,10 +58,13 @@ export default function AnaliticasCursoPage() {
             .single(),
         ]);
 
-        if (materiaError || !materia) {
-          toast.error("No se pudo cargar el curso");
-          router.push("/dashboard/profesor");
-          return;
+        const {
+          data: { user },
+          error: authError,
+        } = authResponse;
+
+        if (authError || materiaError || !materia) {
+          throw authError ?? materiaError ?? new Error("El curso no está disponible.");
         }
 
         if (!user || user.id !== materia.profesor_id) {
@@ -125,18 +79,20 @@ export default function AnaliticasCursoPage() {
         };
 
         setCurso(cursoData);
-        guardarCache(user.id, id, cursoData);
       } catch (e) {
         console.error("Error cargando analí­ticas del curso:", e);
-        toast.error("No se pudo cargar el analí­ticas del curso");
-        router.push("/dashboard/profesor");
+        setErrorCarga(
+          e instanceof Error
+            ? e.message
+            : "No se pudo confirmar el curso para abrir sus analíticas."
+        );
       } finally {
         setCargando(false);
       }
     };
 
     run();
-  }, [id, router]);
+  }, [id, router, reintento]);
 
   const estilos = (
     <style>{`
@@ -455,59 +411,25 @@ export default function AnaliticasCursoPage() {
     `}</style>
   );
 
-  if (cargando && !curso) {
+  if (cargando) {
     return (
       <LayoutGeneral rol="profesor">
-        {estilos}
+        <CargadorFCC
+          mensaje="Validando analíticas"
+          detalle="Confirmando el curso y los permisos antes de mostrar información…"
+        />
+      </LayoutGeneral>
+    );
+  }
 
-        <div className="ranking-curso-page">
-          <section className="ranking-curso-card ranking-curso-header ranking-curso-skeleton">
-            <div className="ranking-curso-card-content ranking-curso-header-content">
-              <div
-                className="ranking-curso-skeleton-block"
-                style={{
-                  width: "150px",
-                  height: "16px",
-                  marginBottom: 8,
-                }}
-              />
-
-              <div
-                className="ranking-curso-skeleton-block"
-                style={{
-                  width: "min(760px, 82%)",
-                  height: "44px",
-                }}
-              />
-
-              <div
-                className="ranking-curso-skeleton-block"
-                style={{
-                  width: "min(540px, 72%)",
-                  height: "18px",
-                }}
-              />
-            </div>
-          </section>
-
-          <section className="ranking-curso-card ranking-curso-search-card no-line ranking-curso-skeleton">
-            <div className="ranking-curso-card-content ranking-curso-search-form">
-              <div
-                className="ranking-curso-skeleton-block"
-                style={{ height: 44 }}
-              />
-              <div
-                className="ranking-curso-skeleton-block"
-                style={{ width: 96, height: 44 }}
-              />
-            </div>
-          </section>
-
-          <section
-            className="ranking-curso-card no-line ranking-curso-skeleton"
-            style={{ minHeight: 260 }}
-          />
-        </div>
+  if (errorCarga) {
+    return (
+      <LayoutGeneral rol="profesor">
+        <EstadoErrorCargaFCC
+          titulo="No se pudieron abrir las analíticas"
+          detalle={errorCarga}
+          onRetry={() => setReintento((valor) => valor + 1)}
+        />
       </LayoutGeneral>
     );
   }

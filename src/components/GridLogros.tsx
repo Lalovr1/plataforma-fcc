@@ -7,8 +7,13 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import CargadorFCC from "@/components/CargadorFCC";
+import {
+  obtenerUrlImagenOptimizada,
+  precargarImagenes,
+} from "@/lib/imagenes";
 
 interface Logro {
   id: string;
@@ -25,9 +30,26 @@ type TooltipState = {
   y: number;
 };
 
+const prepararIconoLogro = (src?: string | null) =>
+  obtenerUrlImagenOptimizada(src || "/ui/trophy-default.svg", 256, 75);
+
 export default function GridLogros({ logros }: { logros: Logro[] }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [imagenesListas, setImagenesListas] = useState(false);
+  const [usarIconoRespaldo, setUsarIconoRespaldo] = useState(false);
   const tooltipTimeoutRef = useRef<number | null>(null);
+  const fuentesIconos = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (logros ?? []).map(
+            (logro) => prepararIconoLogro(logro.icono_url)
+          )
+        )
+      ),
+    [logros]
+  );
+  const claveIconos = fuentesIconos.join("|");
 
   const hideTooltip = () => {
     if (tooltipTimeoutRef.current) {
@@ -60,12 +82,43 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
     };
   }, []);
 
+  useEffect(() => {
+    let activo = true;
+
+    if (fuentesIconos.length === 0) {
+      setImagenesListas(true);
+      setUsarIconoRespaldo(false);
+      return;
+    }
+
+    setImagenesListas(false);
+    setUsarIconoRespaldo(false);
+
+    void precargarImagenes(
+      [...fuentesIconos, prepararIconoLogro(null)],
+      20_000
+    ).then((completo) => {
+      if (!activo) return;
+
+      setUsarIconoRespaldo(!completo);
+      setImagenesListas(true);
+    });
+
+    return () => {
+      activo = false;
+    };
+  }, [claveIconos]);
+
   if (!logros || logros.length === 0) {
     return (
       <p className="text-sm" style={{ color: "var(--color-muted)" }}>
         No hay logros para mostrar.
       </p>
     );
+  }
+
+  if (!imagenesListas) {
+    return <CargadorFCC compacto mensaje="Preparando logros" />;
   }
 
   const showTooltip = (logro: Logro, element: HTMLElement) => {
@@ -133,8 +186,13 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
             {/* Imagen */}
             <div className="flex items-center justify-center w-full h-full">
               <img
-                src={l.icono_url || "/icons/trophy_default.png"}
+                src={
+                  usarIconoRespaldo
+                    ? prepararIconoLogro(null)
+                    : prepararIconoLogro(l.icono_url)
+                }
                 alt={l.titulo}
+                decoding="async"
                 className="w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] object-contain transition-transform duration-200"
               />
             </div>

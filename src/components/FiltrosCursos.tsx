@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/utils/supabaseClient";
+import { useMemo } from "react";
 
 interface Carrera {
   id: number;
@@ -27,16 +26,12 @@ interface Props {
 }
 
 export default function FiltrosCursos({ filters, setFilters, materias }: Props) {
-  const [carreras, setCarreras] = useState<Carrera[]>([]);
-  const [periodos, setPeriodos] = useState<Periodo[]>([]);
-  const [areas, setAreas] = useState<string[]>([]);
+  const { carreras, periodos, areas } = useMemo(() => {
+    const lista = materias ?? [];
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (materias && materias.length > 0) {
-        const carrerasLocal: Carrera[] = Array.from(
+    const carrerasLocal: Carrera[] = Array.from(
           new Map(
-            materias
+            lista
               .flatMap(
                 (m) =>
                   m.curso_carreras
@@ -47,11 +42,9 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
           ).values()
         );
 
-        setCarreras(carrerasLocal);
-
-        const periodosLocal: Periodo[] = Array.from(
+    const periodosLocal: Periodo[] = Array.from(
           new Map(
-            materias
+            lista
               .flatMap(
                 (m) =>
                   m.curso_carreras?.flatMap(
@@ -62,11 +55,9 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
           ).values()
         );
 
-        setPeriodos(periodosLocal);
-
-        const areasLocal: string[] = Array.from(
+    const areasLocal: string[] = Array.from(
           new Set(
-            materias.flatMap(
+            lista.flatMap(
               (m) =>
                 m.curso_carreras
                   ?.map((cc: any) => cc.area)
@@ -75,41 +66,11 @@ export default function FiltrosCursos({ filters, setFilters, materias }: Props) 
           )
         );
 
-        setAreas(areasLocal);
-      } else {
-        const { data: cData } = await supabase
-          .from("carreras")
-          .select("id, nombre");
-
-        if (cData) setCarreras(cData);
-
-        const { data: pData } = await supabase
-          .from("curso_periodos")
-          .select("id, nombre, anio");
-
-        if (pData) {
-          const unique = Array.from(
-            new Map(pData.map((p) => [`${p.nombre}-${p.anio}`, p])).values()
-          );
-
-          setPeriodos(unique);
-        }
-
-        const { data: aData } = await supabase
-          .from("curso_carreras")
-          .select("area");
-
-        if (aData) {
-          const uniqueAreas = Array.from(
-            new Set(aData.map((a) => a.area).filter(Boolean))
-          );
-
-          setAreas(uniqueAreas);
-        }
-      }
+    return {
+      carreras: carrerasLocal,
+      periodos: periodosLocal,
+      areas: areasLocal,
     };
-
-    fetchData();
   }, [materias]);
 
   return (

@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { UserRound } from "lucide-react";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 interface Usuario {
   id: string;
@@ -13,8 +15,6 @@ interface Usuario {
   puntos: number;
   avatar_config?: AvatarConfig | null;
 }
-
-const CACHE_KEY = "fcc_academy_widget_ranking_top5_v1";
 
 function parseAvatarConfig(value: any): AvatarConfig | null {
   if (!value) return null;
@@ -38,6 +38,8 @@ function nombreCorto(nombre?: string) {
 export default function WidgetRanking() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargandoInicial, setCargandoInicial] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const defaultConfig: AvatarConfig = {
     gender: "masculino",
@@ -55,51 +57,12 @@ export default function WidgetRanking() {
     accessory: "none",
   };
 
-  const guardarCache = (rankingUsuarios: Usuario[]) => {
-    try {
-      sessionStorage.setItem(
-        CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          usuarios: rankingUsuarios,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCache = (): Usuario[] | null => {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed?.usuarios)) return null;
-
-      return parsed.usuarios;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    const cache = leerCache();
-
-    if (!cache) return;
-
-    setUsuarios(cache);
-    setCargandoInicial(false);
-  }, []);
-
   useEffect(() => {
     const fetchRanking = async () => {
+      setCargandoInicial(true);
+      setErrorCarga(false);
+
       try {
-        const cache = leerCache();
-
-        if (cache) {
-          setUsuarios(cache);
-          setCargandoInicial(false);
-        }
-
         const { data, error } = await supabase
           .from("usuarios")
           .select("id, nombre, puntos, avatar_config")
@@ -108,8 +71,7 @@ export default function WidgetRanking() {
           .limit(5);
 
         if (error) {
-          console.error("Error cargando widget ranking:", error);
-          return;
+          throw error;
         }
 
         const parsed = ((data as any[]) ?? []).map((u) => ({
@@ -118,14 +80,16 @@ export default function WidgetRanking() {
         }));
 
         setUsuarios(parsed);
-        guardarCache(parsed);
+      } catch (error) {
+        console.error("Error cargando widget ranking:", error);
+        setErrorCarga(true);
       } finally {
         setCargandoInicial(false);
       }
     };
 
     fetchRanking();
-  }, []);
+  }, [reintento]);
 
   function UsuarioPodio({
     rank,
@@ -201,6 +165,27 @@ export default function WidgetRanking() {
           {tieneUsuario ? `${user.puntos} pts` : "— pts"}
         </span>
       </li>
+    );
+  }
+
+  if (cargandoInicial) {
+    return (
+      <CargadorFCC
+        compacto
+        mensaje="Actualizando ranking"
+        detalle="Consultando posiciones y avatares vigentes…"
+      />
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoErrorCargaFCC
+        compacto
+        titulo="No se pudo confirmar el ranking"
+        detalle="No se mostraron posiciones anteriores. Reintenta cuando la conexión esté estable."
+        onRetry={() => setReintento((valor) => valor + 1)}
+      />
     );
   }
 

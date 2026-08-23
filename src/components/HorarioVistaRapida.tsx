@@ -7,6 +7,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import CargadorFCC from "@/components/CargadorFCC";
+import AvisoModoRespaldo from "@/components/AvisoModoRespaldo";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type Dia = "lunes" | "martes" | "miercoles" | "jueves" | "viernes" | "sabado";
 type ModoRango = "inteligente" | "compacto" | "personalizado";
@@ -224,10 +227,10 @@ function extraerUrlCss(valor: string) {
 function obtenerLogoActual() {
   const raw = obtenerVariableCss(
     "--fcc-sidebar-logo-image",
-    'url("/logos/logo-azul.png")'
+    'url("/ui/logos/logo-azul.webp")'
   );
 
-  return extraerUrlCss(raw) ?? "/logos/logo-azul.png";
+  return extraerUrlCss(raw) ?? "/ui/logos/logo-azul.webp";
 }
 
 function cargarImagenCanvas(src: string) {
@@ -428,43 +431,16 @@ function detallesMateria(
 
 export default function HorarioVistaRapida({
   initialHorarioDatos,
+  onReady,
 }: {
   initialHorarioDatos?: unknown | null;
+  onReady?: () => void;
 }) {
   function obtenerHorarioInicialRapido() {
     const inicial = normalizarDatosHorario(initialHorarioDatos);
 
     if (Array.isArray(inicial?.materias) && inicial.materias.length > 0) {
       return inicial;
-    }
-
-    if (typeof window === "undefined") return inicial;
-
-    try {
-      const llaves = new Set(HORARIO_STORAGE_KEYS);
-
-      for (let index = 0; index < localStorage.length; index += 1) {
-        const llave = localStorage.key(index);
-
-        if (llave?.toLowerCase().includes("horario")) {
-          llaves.add(llave);
-        }
-      }
-
-      for (const llave of llaves) {
-        const guardado = localStorage.getItem(llave);
-        const parsed = normalizarDatosHorario(guardado);
-
-        if (Array.isArray(parsed?.materias) && parsed.materias.length > 0) {
-          if (llave !== HORARIO_STORAGE_KEY) {
-            localStorage.setItem(HORARIO_STORAGE_KEY, guardado ?? "");
-          }
-
-          return parsed;
-        }
-      }
-    } catch {
-      // Si localStorage no está disponible, seguimos con lo que venga de props.
     }
 
     return inicial;
@@ -505,7 +481,17 @@ export default function HorarioVistaRapida({
   const [agruparBloquesContinuos, setAgruparBloquesContinuos] =
     useState(agruparInicial);
   const [confirmarDescarga, setConfirmarDescarga] = useState(false);
-  const [cargado, setCargado] = useState(materiasIniciales.length > 0);
+  const [cargado, setCargado] = useState(false);
+  const [usandoRespaldo, setUsandoRespaldo] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
+
+  useEffect(() => {
+    if (!cargado) return;
+
+    const frame = window.requestAnimationFrame(() => onReady?.());
+    return () => window.cancelAnimationFrame(frame);
+  }, [cargado, onReady]);
 
   function normalizarDatosHorario(raw: any) {
     if (!raw) return null;
@@ -618,6 +604,10 @@ export default function HorarioVistaRapida({
 
   useEffect(() => {
     let activo = true;
+    let huboErrorRemoto = false;
+
+    setCargado(false);
+    setErrorCarga(false);
 
     async function leerHorarioSupabasePorSesion() {
       const {
@@ -627,6 +617,7 @@ export default function HorarioVistaRapida({
 
       if (sessionError) {
         console.warn("No se pudo obtener sesión para Mi horario:", sessionError);
+        huboErrorRemoto = true;
       }
 
       if (!session?.user?.id) return null;
@@ -639,6 +630,7 @@ export default function HorarioVistaRapida({
 
       if (error) {
         console.warn("No se pudo cargar horario por sesión:", error);
+        huboErrorRemoto = true;
       }
 
       return data?.datos ?? null;
@@ -654,27 +646,31 @@ export default function HorarioVistaRapida({
 
       if (error) {
         console.warn("No se pudo cargar horario por RLS:", error);
+        huboErrorRemoto = true;
       }
 
       return data?.datos ?? null;
     }
 
     async function cargarHorario() {
-      let encontroDatos = false;
+      let encontroDatosRemotos = false;
+      let tieneRespaldo = false;
 
       if (initialHorarioDatos) {
-        const tieneMateriasIniciales = aplicarDatosHorario(initialHorarioDatos, {
-          permitirVacio: false,
+        const datosInicialesValidos = aplicarDatosHorario(initialHorarioDatos, {
+          permitirVacio: true,
         });
 
-        if (tieneMateriasIniciales) {
-          localStorage.setItem(
-            HORARIO_STORAGE_KEY,
-            JSON.stringify(initialHorarioDatos),
-          );
-          encontroDatos = true;
-
-          if (activo) setCargado(true);
+        if (datosInicialesValidos || normalizarDatosHorario(initialHorarioDatos)) {
+          try {
+            localStorage.setItem(
+              HORARIO_STORAGE_KEY,
+              JSON.stringify(initialHorarioDatos),
+            );
+          } catch {
+            // Los datos iniciales siguen siendo un respaldo válido.
+          }
+          tieneRespaldo = true;
         }
       }
 
@@ -683,52 +679,63 @@ export default function HorarioVistaRapida({
 
         if (!activo) return;
 
-        if (datosPorSesion) {
-          const tieneMaterias = aplicarDatosHorario(datosPorSesion, {
-            permitirVacio: false,
+        if (datosPorSesion !== null) {
+          aplicarDatosHorario(datosPorSesion, {
+            permitirVacio: true,
           });
 
-          if (tieneMaterias) {
+          try {
             localStorage.setItem(
               HORARIO_STORAGE_KEY,
               JSON.stringify(datosPorSesion),
             );
-            encontroDatos = true;
+          } catch {
+            // La versión remota sigue siendo válida aunque falle la copia local.
           }
+          encontroDatosRemotos = true;
         }
 
-        if (!encontroDatos) {
+        if (!encontroDatosRemotos) {
           const datosPorRls = await leerHorarioSupabasePorRls();
 
           if (!activo) return;
 
-          if (datosPorRls) {
-            const tieneMaterias = aplicarDatosHorario(datosPorRls, {
-              permitirVacio: false,
+          if (datosPorRls !== null) {
+            aplicarDatosHorario(datosPorRls, {
+              permitirVacio: true,
             });
 
-            if (tieneMaterias) {
+            try {
               localStorage.setItem(
                 HORARIO_STORAGE_KEY,
                 JSON.stringify(datosPorRls),
               );
-              encontroDatos = true;
+            } catch {
+              // La versión remota sigue siendo válida aunque falle la copia local.
             }
+            encontroDatosRemotos = true;
           }
         }
       } catch (error) {
         console.warn("No se pudo consultar Supabase para Mi horario:", error);
+        huboErrorRemoto = true;
       }
 
-      if (!encontroDatos) {
+      if (!encontroDatosRemotos && !tieneRespaldo) {
         try {
-          encontroDatos = cargarHorarioLocal();
+          tieneRespaldo = cargarHorarioLocal();
         } catch (error) {
           console.warn("No se pudo cargar horario local:", error);
         }
       }
 
-      if (activo) setCargado(true);
+      if (activo) {
+        setUsandoRespaldo(!encontroDatosRemotos && tieneRespaldo);
+        setErrorCarga(
+          huboErrorRemoto && !encontroDatosRemotos && !tieneRespaldo
+        );
+        setCargado(true);
+      }
     }
 
     cargarHorario();
@@ -736,7 +743,7 @@ export default function HorarioVistaRapida({
     return () => {
       activo = false;
     };
-  }, [initialHorarioDatos]);
+  }, [initialHorarioDatos, reintento]);
 
   useEffect(() => {
     const refrescar = () => {
@@ -1054,18 +1061,31 @@ export default function HorarioVistaRapida({
 
   if (!cargado) {
     return (
-      <div className="fcc-schedule-quick">
-        <div className="fcc-schedule-scroll is-loading">
-          <div className="fcc-schedule-empty stable">
-            <span>Cargando horario...</span>
-          </div>
-        </div>
-      </div>
+      <CargadorFCC
+        compacto
+        mensaje="Sincronizando horario"
+        detalle="Verificando la versión más reciente antes de mostrarla…"
+      />
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoErrorCargaFCC
+        compacto
+        titulo="No se pudo confirmar tu horario"
+        detalle="No existe una copia local completa que pueda mostrarse como respaldo."
+        onRetry={() => setReintento((valor) => valor + 1)}
+      />
     );
   }
 
   return (
     <div className="fcc-schedule-quick">
+      {usandoRespaldo && (
+        <AvisoModoRespaldo mensaje="No se pudo confirmar tu horario con Supabase. Se muestra la última copia local disponible como respaldo." />
+      )}
+
       <div className="fcc-schedule-scroll">
         <div
           className="fcc-schedule-grid"

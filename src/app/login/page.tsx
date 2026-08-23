@@ -14,6 +14,8 @@ import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { Lock, LogIn, Mail } from "lucide-react";
+import { precargarImagenes } from "@/lib/imagenes";
+import { iniciarIndicadorNavegacionFCC } from "@/components/IndicadorNavegacionFCC";
 
 type TipoMensaje = "error" | "success" | "info";
 
@@ -30,6 +32,18 @@ const temasValidos = [
 ] as const;
 
 type Tema = (typeof temasValidos)[number];
+
+const LOGO_POR_TEMA: Record<Tema, string> = {
+  claro: "/ui/logos/logo-azul.webp",
+  blanco: "/ui/logos/logo-blanco.webp",
+  oscuro: "/ui/logos/logo-negro.webp",
+  gris: "/ui/logos/logo-gris.webp",
+  esmeralda: "/ui/logos/logo-esmeralda.webp",
+  morado: "/ui/logos/logo-morado.webp",
+  indigo: "/ui/logos/logo-indigo.webp",
+  rojo: "/ui/logos/logo-rojo.webp",
+  rosa: "/ui/logos/logo-rosa.webp",
+};
 
 const HORARIO_STORAGE_KEY = "fcc-academy-mi-horario-v5";
 const DB_HORARIO_TABLE = "horarios_usuario";
@@ -193,13 +207,35 @@ export default function LoginPage() {
         ? preferencias.tema
         : "claro";
 
+      const logoListo = await precargarImagenes(
+        [LOGO_POR_TEMA[temaUsuario]],
+        12_000
+      );
+
       aplicarTemaAntesDeEntrar(temaUsuario);
+
+      if (logoListo) {
+        document.documentElement.setAttribute(
+          "data-fcc-logo-ready",
+          temaUsuario
+        );
+      } else {
+        document.documentElement.removeAttribute("data-fcc-logo-ready");
+      }
 
       localStorage.setItem("rol_usuario", usuario.rol);
 
       if (usuario.rol === "estudiante") {
+        iniciarIndicadorNavegacionFCC("Abriendo tu panel de estudiante", {
+          pantallaCompleta: true,
+          destino: "/dashboard/estudiante",
+        });
         window.location.href = "/dashboard/estudiante";
       } else if (usuario.rol === "profesor") {
+        iniciarIndicadorNavegacionFCC("Abriendo tu panel de profesor", {
+          pantallaCompleta: true,
+          destino: "/dashboard/profesor",
+        });
         window.location.href = "/dashboard/profesor";
       } else {
         mostrarMensaje(
@@ -848,7 +884,15 @@ export default function LoginPage() {
         <section className="login-card">
           <div className="login-content">
             <div className="login-logo-wrap">
-              <img src="/logo.png" alt="FCC Academy" className="login-logo" />
+              <img
+                src="/ui/logo-login.webp"
+                alt="FCC Academy"
+                width={512}
+                height={512}
+                decoding="async"
+                fetchPriority="high"
+                className="login-logo"
+              />
             </div>
 
             <div className="login-title-wrap">

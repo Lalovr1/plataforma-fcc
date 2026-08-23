@@ -5,7 +5,7 @@
  * acceso al perfil y accesos rápidos académicos.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -16,6 +16,7 @@ import { CalendarDays, ChevronRight, Clock3, Download, Map as MapIcon, Settings,
 import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
+import CargadorFCC from "@/components/CargadorFCC";
 
 interface TarjetaUsuarioProps {
   name?: string;
@@ -33,6 +34,7 @@ const HORARIO_MODAL_VALUE = "horario";
 const MAPA_MODAL_VALUE = "mapa";
 const MAPA_PERSONALIZACION_URL =
   "/dashboard/estudiante/herramientas/mapa-curricular?volver=modal-mapa";
+const DURACION_MINIMA_ACCION_RAPIDA_MS = 950;
 
 export default function TarjetaUsuario({
   name = "Usuario",
@@ -62,6 +64,11 @@ export default function TarjetaUsuario({
   );
 
   const [accionAbierta, setAccionAbierta] = useState<AccionRapida | null>(null);
+  const [accionPreparando, setAccionPreparando] =
+    useState<AccionRapida | null>(null);
+  const accionObjetivoRef = useRef<AccionRapida | null>(null);
+  const accionInicioRef = useRef(0);
+  const accionConfirmacionRef = useRef<number | null>(null);
   const [salidaHerramienta, setSalidaHerramienta] =
     useState<AccionRapida | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -72,8 +79,15 @@ export default function TarjetaUsuario({
   function cerrarModalRapido() {
     if (salidaHerramienta) return;
 
+    if (accionConfirmacionRef.current !== null) {
+      window.clearTimeout(accionConfirmacionRef.current);
+      accionConfirmacionRef.current = null;
+    }
+
     setSalidaHerramienta(null);
     setAccionAbierta(null);
+    setAccionPreparando(null);
+    accionObjetivoRef.current = null;
 
     const modalQuery = searchParams.get(HORARIO_MODAL_QUERY);
 
@@ -84,6 +98,57 @@ export default function TarjetaUsuario({
       router.replace(pathname, { scroll: false });
     }
   }
+
+  function prepararAccionRapida(accion: AccionRapida) {
+    if (accionConfirmacionRef.current !== null) {
+      window.clearTimeout(accionConfirmacionRef.current);
+      accionConfirmacionRef.current = null;
+    }
+
+    accionObjetivoRef.current = accion;
+    accionInicioRef.current = performance.now();
+    setSalidaHerramienta(null);
+    setAccionAbierta(null);
+    setAccionPreparando(accion);
+  }
+
+  const confirmarAccionLista = useCallback((accion: AccionRapida) => {
+    if (accionConfirmacionRef.current !== null) {
+      window.clearTimeout(accionConfirmacionRef.current);
+    }
+
+    const transcurrido = performance.now() - accionInicioRef.current;
+    const espera = Math.max(
+      0,
+      DURACION_MINIMA_ACCION_RAPIDA_MS - transcurrido
+    );
+
+    accionConfirmacionRef.current = window.setTimeout(() => {
+      accionConfirmacionRef.current = null;
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (accionObjetivoRef.current !== accion) return;
+
+          setAccionAbierta(accion);
+          setAccionPreparando(null);
+        });
+      });
+    }, espera);
+  }, []);
+
+  const confirmarHorarioListo = useCallback(
+    () => confirmarAccionLista("horario"),
+    [confirmarAccionLista]
+  );
+  const confirmarCalendarioListo = useCallback(
+    () => confirmarAccionLista("calendario"),
+    [confirmarAccionLista]
+  );
+  const confirmarMapaListo = useCallback(
+    () => confirmarAccionLista("mapa"),
+    [confirmarAccionLista]
+  );
 
   function prepararSalidaPersonalizarHorario() {
     setSalidaHerramienta("horario");
@@ -111,6 +176,12 @@ export default function TarjetaUsuario({
 
   useEffect(() => {
     setMounted(true);
+
+    return () => {
+      if (accionConfirmacionRef.current !== null) {
+        window.clearTimeout(accionConfirmacionRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -123,13 +194,13 @@ export default function TarjetaUsuario({
 
     if (modalQuery === HORARIO_MODAL_VALUE) {
       setSalidaHerramienta(null);
-      setAccionAbierta("horario");
+      prepararAccionRapida("horario");
       return;
     }
 
     if (modalQuery === MAPA_MODAL_VALUE) {
       setSalidaHerramienta(null);
-      setAccionAbierta("mapa");
+      prepararAccionRapida("mapa");
     }
   }, [searchParams]);
 
@@ -207,15 +278,21 @@ export default function TarjetaUsuario({
     }
   >;
 
-  const modalActual = accionAbierta ? contenidoModal[accionAbierta] : null;
+  const accionRenderizada = accionAbierta ?? accionPreparando;
+  const modalActual = accionRenderizada
+    ? contenidoModal[accionRenderizada]
+    : null;
   const IconoModal = modalActual?.icono;
 
   const modalRapido =
     modalActual && IconoModal ? (
       <div
-        className="fcc-quick-modal-overlay"
-        role="dialog"
-        aria-modal="true"
+        className={`fcc-quick-modal-overlay ${
+          accionAbierta ? "is-visible" : "is-preparing"
+        }`}
+        role={accionAbierta ? "dialog" : undefined}
+        aria-modal={accionAbierta ? "true" : undefined}
+        aria-hidden={!accionAbierta}
         aria-label={modalActual.titulo}
       >
         <button
@@ -228,11 +305,11 @@ export default function TarjetaUsuario({
 
         <div
           className={`fcc-quick-modal ${
-            accionAbierta === "horario"
+            accionRenderizada === "horario"
               ? "is-schedule"
-              : accionAbierta === "mapa"
+              : accionRenderizada === "mapa"
               ? "is-curriculum"
-              : accionAbierta === "calendario"
+              : accionRenderizada === "calendario"
               ? "is-calendar"
               : ""
           }`}
@@ -259,25 +336,25 @@ export default function TarjetaUsuario({
                     onClick={() =>
                       window.dispatchEvent(
                         new Event(
-                          accionAbierta === "horario"
+                          accionRenderizada === "horario"
                             ? "solicitarDescargaHorario"
-                            : accionAbierta === "mapa"
+                            : accionRenderizada === "mapa"
                             ? "solicitarDescargaMapaCurricular"
                             : "solicitarDescargaCalendarioEscolar"
                         )
                       )
                     }
                     aria-label={
-                      accionAbierta === "horario"
+                      accionRenderizada === "horario"
                         ? "Descargar horario"
-                        : accionAbierta === "mapa"
+                        : accionRenderizada === "mapa"
                         ? "Descargar mapa curricular"
                         : "Descargar calendario escolar"
                     }
                     title={
-                      accionAbierta === "horario"
+                      accionRenderizada === "horario"
                         ? "Descargar horario"
-                        : accionAbierta === "mapa"
+                        : accionRenderizada === "mapa"
                         ? "Descargar mapa curricular"
                         : "Descargar calendario escolar"
                     }
@@ -285,7 +362,7 @@ export default function TarjetaUsuario({
                     <Download size={18} strokeWidth={2.35} />
                   </button>
 
-                  {accionAbierta === "calendario" ? (
+                  {accionRenderizada === "calendario" ? (
                     <button
                       type="button"
                       className="fcc-schedule-customize"
@@ -303,24 +380,24 @@ export default function TarjetaUsuario({
                   ) : (
                     <Link
                       href={
-                        accionAbierta === "horario"
+                        accionRenderizada === "horario"
                           ? HORARIO_PERSONALIZACION_URL
                           : MAPA_PERSONALIZACION_URL
                       }
                       className="fcc-schedule-customize"
                       aria-disabled={!!salidaHerramienta}
                       onClick={
-                        accionAbierta === "horario"
+                        accionRenderizada === "horario"
                           ? prepararSalidaPersonalizarHorario
                           : prepararSalidaPersonalizarMapa
                       }
                       aria-label={
-                        accionAbierta === "horario"
+                        accionRenderizada === "horario"
                           ? "Personalizar horario"
                           : "Personalizar mapa curricular"
                       }
                       title={
-                        accionAbierta === "horario"
+                        accionRenderizada === "horario"
                           ? "Personalizar horario"
                           : "Personalizar mapa curricular"
                       }
@@ -353,12 +430,20 @@ export default function TarjetaUsuario({
               )}
             </div>
 
-            {accionAbierta === "horario" ? (
-              <HorarioVistaRapida initialHorarioDatos={initialHorarioDatos} />
-            ) : accionAbierta === "mapa" ? (
-              <MapaCurricularICC modo="vista" />
-            ) : accionAbierta === "calendario" ? (
-              <CalendarioEscolar2026 />
+            {accionRenderizada === "horario" ? (
+              <HorarioVistaRapida
+                initialHorarioDatos={initialHorarioDatos}
+                onReady={confirmarHorarioListo}
+              />
+            ) : accionRenderizada === "mapa" ? (
+              <MapaCurricularICC
+                modo="vista"
+                onReady={confirmarMapaListo}
+              />
+            ) : accionRenderizada === "calendario" ? (
+              <CalendarioEscolar2026
+                onReady={confirmarCalendarioListo}
+              />
             ) : (
               <div className="fcc-quick-modal-placeholder">
                 <span>Vista rápida preparada</span>
@@ -821,6 +906,23 @@ export default function TarjetaUsuario({
           align-items: center;
           justify-content: center;
           padding: 18px;
+        }
+
+        .fcc-quick-modal-overlay.is-preparing {
+          visibility: hidden;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .fcc-quick-modal-overlay.is-visible {
+          visibility: visible;
+          opacity: 1;
+          animation: fcc-quick-modal-ready 180ms ease-out both;
+        }
+
+        @keyframes fcc-quick-modal-ready {
+          from { opacity: 0; transform: scale(0.992); }
+          to { opacity: 1; transform: scale(1); }
         }
 
         .fcc-quick-modal-backdrop {
@@ -1621,7 +1723,7 @@ export default function TarjetaUsuario({
                   <button
                     type="button"
                     className="fcc-quick-action"
-                    onClick={() => setAccionAbierta("horario")}
+                    onClick={() => prepararAccionRapida("horario")}
                   >
                     <Clock3 size={17} strokeWidth={2.3} />
                     <span>Horario</span>
@@ -1630,7 +1732,7 @@ export default function TarjetaUsuario({
                   <button
                     type="button"
                     className="fcc-quick-action"
-                    onClick={() => setAccionAbierta("calendario")}
+                    onClick={() => prepararAccionRapida("calendario")}
                   >
                     <CalendarDays size={17} strokeWidth={2.3} />
                     <span>Calendario</span>
@@ -1639,7 +1741,7 @@ export default function TarjetaUsuario({
                   <button
                     type="button"
                     className="fcc-quick-action"
-                    onClick={() => setAccionAbierta("mapa")}
+                    onClick={() => prepararAccionRapida("mapa")}
                   >
                     <MapIcon size={17} strokeWidth={2.3} />
                     <span>Mapa curricular</span>
@@ -1650,6 +1752,20 @@ export default function TarjetaUsuario({
           </div>
         </div>
       </div>
+
+      {accionPreparando && (
+        <CargadorFCC
+          flotante
+          mensaje={`Preparando ${
+            accionPreparando === "horario"
+              ? "tu horario"
+              : accionPreparando === "calendario"
+              ? "el calendario"
+              : "el mapa curricular"
+          }`}
+          detalle=""
+        />
+      )}
 
       {mounted && modalRapido && createPortal(modalRapido, document.body)}
     </>

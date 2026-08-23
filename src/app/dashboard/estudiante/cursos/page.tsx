@@ -5,11 +5,13 @@
 
 "use client";
 
-import { useState, useEffect, useLayoutEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import FiltrosCursos from "@/components/FiltrosCursos";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import CuadriculaCursos from "@/components/CuadriculaCursos";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 interface CursoPeriodo {
   id: string;
@@ -40,8 +42,6 @@ interface Materia {
   progresoEstado?: ProgresoEstado;
 }
 
-const CACHE_KEY_BASE = "fcc_academy_cursos_estudiante_v2";
-
 export default function CursosPage() {
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [filters, setFilters] = useState({
@@ -56,51 +56,8 @@ export default function CursosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [buscando, setBuscando] = useState(false);
-  const [cacheCargado, setCacheCargado] = useState(false);
-
-  const getCacheKey = (usuarioId: string) => `${CACHE_KEY_BASE}_${usuarioId}`;
-
-  const guardarCache = (usuarioId: string, cursos: Materia[]) => {
-    try {
-      sessionStorage.setItem(
-        getCacheKey(usuarioId),
-        JSON.stringify({
-          timestamp: Date.now(),
-          materias: cursos,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCache = (usuarioId: string): Materia[] | null => {
-    try {
-      const raw = sessionStorage.getItem(getCacheKey(usuarioId));
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.materias)) return null;
-
-      return parsed.materias;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    try {
-      const usuarioLocal = localStorage.getItem("user_id");
-      if (!usuarioLocal) return;
-
-      const cursosCache = leerCache(usuarioLocal);
-      if (!cursosCache) return;
-
-      setUserId(usuarioLocal);
-      setMaterias(cursosCache);
-      setCacheCargado(true);
-      setCargandoInicial(false);
-    } catch {}
-  }, []);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const cargarMaterias = async (usuarioId: string, nombre?: string) => {
     let query = supabase
@@ -130,8 +87,10 @@ export default function CursosPage() {
       query = query.ilike("nombre", `%${nombre}%`);
     }
 
-    const [{ data: materiasData, error: materiasError }, { data: progresoRows }] =
-      await Promise.all([
+    const [
+      { data: materiasData, error: materiasError },
+      { data: progresoRows, error: progresoError },
+    ] = await Promise.all([
         query,
         supabase
           .from("progreso")
@@ -139,9 +98,8 @@ export default function CursosPage() {
           .eq("usuario_id", usuarioId),
       ]);
 
-    if (materiasError) {
-      console.error("Error cargando cursos:", materiasError);
-      return;
+    if (materiasError || progresoError) {
+      throw materiasError ?? progresoError;
     }
 
     const progresoPorMateria = new Map<string, { visible: boolean }>();
@@ -166,44 +124,35 @@ export default function CursosPage() {
 
     setMaterias(conEstado);
 
-    if (!nombre) {
-      guardarCache(usuarioId, conEstado);
-    }
   };
 
   useEffect(() => {
     const init = async () => {
+      setCargandoInicial(true);
+      setErrorCarga(false);
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
-          setMaterias([]);
-          setCargandoInicial(false);
-          return;
-        }
+        if (authError || !user) throw authError ?? new Error("Sesión no disponible");
 
         setUserId(user.id);
-
-        const cursosCache = leerCache(user.id);
-
-        if (cursosCache && !cacheCargado) {
-          setMaterias(cursosCache);
-          setCargandoInicial(false);
-        }
 
         await cargarMaterias(user.id);
       } catch (e) {
         console.error("Error inicializando cursos:", e);
         setMaterias([]);
+        setErrorCarga(true);
       } finally {
         setCargandoInicial(false);
       }
     };
 
     init();
-  }, []);
+  }, [reintento]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,11 +160,17 @@ export default function CursosPage() {
     if (!userId) return;
 
     setBuscando(true);
+    setCargandoInicial(true);
+    setErrorCarga(false);
 
     try {
       await cargarMaterias(userId, searchTerm.trim());
+    } catch (error) {
+      console.error("Error buscando cursos:", error);
+      setErrorCarga(true);
     } finally {
       setBuscando(false);
+      setCargandoInicial(false);
     }
   };
 
@@ -246,6 +201,29 @@ export default function CursosPage() {
 
     return bySemestre && byCarrera && byPeriodo && byArea;
   });
+
+  if (cargandoInicial) {
+    return (
+      <LayoutGeneral rol="estudiante">
+        <CargadorFCC
+          mensaje="Actualizando cursos"
+          detalle="Confirmando catálogo, filtros e inscripciones vigentes…"
+        />
+      </LayoutGeneral>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <LayoutGeneral rol="estudiante">
+        <EstadoErrorCargaFCC
+          titulo="No se pudieron confirmar los cursos"
+          detalle="El catálogo anterior no se mostró como si estuviera vigente."
+          onRetry={() => setReintento((valor) => valor + 1)}
+        />
+      </LayoutGeneral>
+    );
+  }
 
   return (
     <LayoutGeneral rol="estudiante">

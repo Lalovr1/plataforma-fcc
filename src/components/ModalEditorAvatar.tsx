@@ -6,11 +6,112 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import RenderizadorAvatar, { AvatarConfig } from "./RenderizadorAvatar";
+import RenderizadorAvatar, {
+  AvatarConfig,
+  prepararRecursosAvatarFCC,
+} from "./RenderizadorAvatar";
 import { supabase } from "@/utils/supabaseClient";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+import {
+  obtenerUrlImagenOptimizada,
+  precargarImagenes,
+} from "@/lib/imagenes";
+
+const DURACION_MINIMA_PREPARACION_EDITOR_MS = 950;
+
+function VistaPreviaCapasAtomica({
+  sources,
+  children,
+}: {
+  sources: string[];
+  children: ReactNode;
+}) {
+  const contenedorRef = useRef<HTMLDivElement | null>(null);
+  const [cercana, setCercana] = useState(false);
+  const [montada, setMontada] = useState(false);
+  const [lista, setLista] = useState(false);
+  const clave = sources.join("|");
+
+  useEffect(() => {
+    const elemento = contenedorRef.current;
+    if (!elemento) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setCercana(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setCercana(true);
+        observer.disconnect();
+      },
+      { rootMargin: "160px" }
+    );
+
+    observer.observe(elemento);
+    return () => observer.disconnect();
+  }, [clave]);
+
+  useEffect(() => {
+    setMontada(false);
+    setLista(false);
+    if (!cercana) return;
+
+    let activa = true;
+    let primerFrame = 0;
+    let segundoFrame = 0;
+
+    void precargarImagenes(sources).then((completo) => {
+      if (!activa || !completo) return;
+
+      setMontada(true);
+      primerFrame = window.requestAnimationFrame(() => {
+        segundoFrame = window.requestAnimationFrame(() => {
+          if (activa) setLista(true);
+        });
+      });
+    });
+
+    return () => {
+      activa = false;
+      window.cancelAnimationFrame(primerFrame);
+      window.cancelAnimationFrame(segundoFrame);
+    };
+  }, [cercana, clave]);
+
+  return (
+    <div ref={contenedorRef} className="relative h-full w-full">
+      {!lista && <span className="avatar-editor-preview-placeholder" />}
+      {montada && (
+        <div
+          className="absolute inset-0"
+          style={{ opacity: lista ? 1 : 0.001 }}
+        >
+          {children}
+        </div>
+      )}
+
+      <style jsx>{`
+        .avatar-editor-preview-placeholder {
+          position: absolute;
+          inset: 12%;
+          border-radius: 18px;
+          background: color-mix(
+            in srgb,
+            var(--fcc-premium-muted) 12%,
+            transparent
+          );
+        }
+      `}</style>
+    </div>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -18,6 +119,7 @@ interface Props {
   initialConfig: AvatarConfig;
   onSave: (newConfig: AvatarConfig) => void | boolean | Promise<void | boolean>;
   forzado?: boolean;
+  onReady?: () => void;
 }
 
 export default function ModalEditorAvatar({
@@ -26,6 +128,7 @@ export default function ModalEditorAvatar({
   initialConfig,
   onSave,
   forzado = false,
+  onReady,
 }: Props) {
   const rolUsuario =
     typeof window !== "undefined"
@@ -40,14 +143,31 @@ export default function ModalEditorAvatar({
   const [currentTab, setCurrentTab] = useState("gender");
   const [desbloqueados, setDesbloqueados] = useState<string[]>([]);
   const [cargandoDesbloqueos, setCargandoDesbloqueos] = useState(true);
+  const [errorDesbloqueos, setErrorDesbloqueos] = useState(false);
+  const [reintentoDesbloqueos, setReintentoDesbloqueos] = useState(0);
   const [mensaje, setMensaje] = useState("");
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const [guardandoSalida, setGuardandoSalida] = useState(false);
+  const [guardandoAvatar, setGuardandoAvatar] = useState(false);
+  const [cargandoRecursosAvatar, setCargandoRecursosAvatar] = useState(true);
+  const [errorRecursosAvatar, setErrorRecursosAvatar] = useState(false);
+  const [avatarInicialListo, setAvatarInicialListo] = useState(false);
+  const onReadyRef = useRef(onReady);
+  const readyNotificadoRef = useRef(false);
+  const claveConfigInicial = JSON.stringify({
+    ...initialConfig,
+    sueterColor: initialConfig.sueterColor ?? "#ffffff",
+  });
+
+  onReadyRef.current = onReady;
 
   useEffect(() => {
     let intentos = 0;
 
     async function cargarDesbloqueados() {
+      setCargandoDesbloqueos(true);
+      setErrorDesbloqueos(false);
+
       // Si es profesor, desbloquear todo y salir
       if (rolUsuario === "profesor") {
         console.log("🎓 Modo profesor — todos los elementos desbloqueados");
@@ -57,7 +177,9 @@ export default function ModalEditorAvatar({
       }
 
       try {
-        const { data: user } = await supabase.auth.getUser();
+        const { data: user, error: errorSesion } = await supabase.auth.getUser();
+        if (errorSesion) throw errorSesion;
+
         let userId = user?.user?.id || localStorage.getItem("user_id");
 
         while (!userId && intentos < 5) {
@@ -67,10 +189,7 @@ export default function ModalEditorAvatar({
         }
 
         if (!userId) {
-          console.warn("⚠️ No se encontró user_id, modo sin restricciones");
-          setDesbloqueados([]);
-          setCargandoDesbloqueos(false);
-          return;
+          throw new Error("No se pudo confirmar el usuario del editor.");
         }
 
         const { data, error } = await supabase
@@ -78,18 +197,20 @@ export default function ModalEditorAvatar({
           .select("nombre")
           .eq("user_id", userId);
 
-        if (error) console.error("❌ Error al cargar recompensas:", error);
+        if (error) throw error;
 
         setDesbloqueados(data?.map((d) => d.nombre) || []);
       } catch (err) {
         console.error("⚠️ Error inesperado al cargar desbloqueados:", err);
+        setDesbloqueados([]);
+        setErrorDesbloqueos(true);
       } finally {
         setCargandoDesbloqueos(false);
       }
     }
 
     if (open) cargarDesbloqueados();
-  }, [open, rolUsuario]);
+  }, [open, rolUsuario, reintentoDesbloqueos]);
 
   useEffect(() => {
     if (open) {
@@ -98,12 +219,43 @@ export default function ModalEditorAvatar({
         sueterColor: initialConfig.sueterColor ?? "#ffffff",
       });
       setConfirmarSalida(false);
+      setAvatarInicialListo(false);
+      readyNotificadoRef.current = false;
     }
-  }, [open]);
+  }, [open, claveConfigInicial]);
 
   useEffect(() => {
-    setConfig((prev) => ({ ...prev }));
-  }, [config.skinColor]);
+    if (!open) return;
+
+    let activo = true;
+    setCargandoRecursosAvatar(true);
+    setErrorRecursosAvatar(false);
+
+    const configInicial = {
+      ...initialConfig,
+      sueterColor: initialConfig.sueterColor ?? "#ffffff",
+    };
+
+    async function prepararAvatarInicial() {
+      const [completo] = await Promise.all([
+        prepararRecursosAvatarFCC(configInicial, 300),
+        new Promise<void>((resolve) =>
+          window.setTimeout(resolve, DURACION_MINIMA_PREPARACION_EDITOR_MS)
+        ),
+      ]);
+
+      if (!activo) return;
+
+      setErrorRecursosAvatar(!completo);
+      setCargandoRecursosAvatar(false);
+    }
+
+    void prepararAvatarInicial();
+
+    return () => {
+      activo = false;
+    };
+  }, [open, claveConfigInicial, reintentoDesbloqueos]);
 
   useEffect(() => {
     if (rolUsuario === "profesor") {
@@ -111,6 +263,35 @@ export default function ModalEditorAvatar({
       setCargandoDesbloqueos(false);
     }
   }, [rolUsuario]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      cargandoDesbloqueos ||
+      cargandoRecursosAvatar ||
+      errorDesbloqueos ||
+      errorRecursosAvatar ||
+      !avatarInicialListo ||
+      readyNotificadoRef.current
+    ) {
+      return;
+    }
+
+    readyNotificadoRef.current = true;
+
+    const frame = window.requestAnimationFrame(() => {
+      onReadyRef.current?.();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    open,
+    cargandoDesbloqueos,
+    cargandoRecursosAvatar,
+    errorDesbloqueos,
+    errorRecursosAvatar,
+    avatarInicialListo,
+  ]);
 
   const configInicialNormalizada: AvatarConfig = {
     ...initialConfig,
@@ -143,7 +324,47 @@ export default function ModalEditorAvatar({
   }, [open, forzado, rolUsuario, hayCambiosSinGuardar]);
 
   if (!open) return null;
-  if (cargandoDesbloqueos) return null;
+  if (errorDesbloqueos || errorRecursosAvatar) {
+    const errorEditor = (
+      <div
+        className="fixed bottom-4 right-4 z-[31000] w-[min(560px,calc(100vw-32px))]"
+      >
+        <div className="w-full overflow-hidden rounded-[22px] bg-white/95 shadow-2xl">
+          <EstadoErrorCargaFCC
+            compacto
+            titulo="No pudimos preparar el editor"
+            detalle="No mostraremos opciones bloqueadas ni capas incompletas hasta confirmar todos los recursos del editor."
+            onRetry={() => {
+              setErrorDesbloqueos(false);
+              setErrorRecursosAvatar(false);
+              setReintentoDesbloqueos((actual) => actual + 1);
+            }}
+          />
+        </div>
+      </div>
+    );
+
+    return typeof document === "undefined"
+      ? errorEditor
+      : createPortal(errorEditor, document.body);
+  }
+
+  if (cargandoDesbloqueos || cargandoRecursosAvatar) {
+    const cargador = (
+      <CargadorFCC
+        flotante
+        mensaje="Preparando el editor de avatar"
+        detalle=""
+      />
+    );
+
+    return typeof document === "undefined"
+      ? cargador
+      : createPortal(cargador, document.body);
+  }
+
+  const optimizarPreview = (src: string) =>
+    obtenerUrlImagenOptimizada(src, 256, 78);
 
   const SKIN_TONES = ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#5a3825"];
 
@@ -222,9 +443,11 @@ export default function ModalEditorAvatar({
                   return (
                     <div className="avatar-editor-option-inner">
                       <img
-                        src={basePath}
+                        src={optimizarPreview(basePath)}
                         className="absolute inset-0 h-full w-full object-contain"
                         alt={file}
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   );
@@ -276,9 +499,11 @@ export default function ModalEditorAvatar({
           return (
             <div className="avatar-editor-option-inner">
               <img
-                src={basePath}
+                src={optimizarPreview(basePath)}
                 className="absolute inset-0 h-full w-full object-contain"
                 alt={file}
+                loading="lazy"
+                decoding="async"
               />
             </div>
           );
@@ -291,11 +516,17 @@ export default function ModalEditorAvatar({
         return (
           <div className="avatar-editor-option-inner">
             {hasDoubleLayer ? (
-              <>
+              <VistaPreviaCapasAtomica
+                key={`${config.gender}-${config.sueterColor}-${file}`}
+                sources={[
+                  optimizarPreview(`${basePath}_Relleno.png`),
+                  optimizarPreview(`${basePath}_Contorno.png`),
+                ]}
+              >
                 <div
                   className="absolute inset-0"
                   style={{
-                    backgroundImage: `url(${basePath}_Relleno.png)`,
+                    backgroundImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
                     backgroundSize: "contain",
@@ -306,8 +537,8 @@ export default function ModalEditorAvatar({
                   style={{
                     backgroundColor: config.sueterColor ?? "#ffffff",
                     opacity: 0.6,
-                    maskImage: `url(${basePath}_Relleno.png)`,
-                    WebkitMaskImage: `url(${basePath}_Relleno.png)`,
+                    maskImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
+                    WebkitMaskImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
                     maskSize: "contain",
                     maskRepeat: "no-repeat",
                     maskPosition: "center",
@@ -318,16 +549,19 @@ export default function ModalEditorAvatar({
                   }}
                 />
                 <img
-                  src={`${basePath}_Contorno.png`}
+                  src={optimizarPreview(`${basePath}_Contorno.png`)}
                   className="absolute inset-0 h-full w-full object-contain"
                   alt="contorno"
+                  decoding="async"
                 />
-              </>
+              </VistaPreviaCapasAtomica>
             ) : (
               <img
-                src={`${basePath}.png`}
+                src={optimizarPreview(`${basePath}.png`)}
                 className="absolute inset-0 h-full w-full object-contain"
                 alt="sueter"
+                loading="lazy"
+                decoding="async"
               />
             )}
           </div>
@@ -355,10 +589,36 @@ export default function ModalEditorAvatar({
       return false;
     }
 
+    const confirmarGuardado = async () => {
+      if (guardandoAvatar) return false;
+
+      setGuardandoAvatar(true);
+
+      try {
+        const resultado = await onSave(config);
+
+        if (resultado === false) {
+          setMensaje(
+            "⚠️ No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo."
+          );
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Error guardando configuración de avatar:", error);
+        setMensaje(
+          "⚠️ No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo."
+        );
+        return false;
+      } finally {
+        setGuardandoAvatar(false);
+      }
+    };
+
     // Si el usuario es profesor, omitir validaciones de desbloqueo
     if (rolUsuario === "profesor") {
-      const resultado = await onSave(config);
-      return resultado !== false;
+      return confirmarGuardado();
     }
 
     const campos = [
@@ -409,8 +669,7 @@ export default function ModalEditorAvatar({
       return false;
     }
 
-    const resultado = await onSave(config);
-    return resultado !== false;
+    return confirmarGuardado();
   };
 
   const solicitarSalida = () => {
@@ -466,7 +725,11 @@ export default function ModalEditorAvatar({
       className="avatar-editor-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-4"
       style={{
         zIndex: 10020,
+        opacity: avatarInicialListo ? 1 : 0.001,
+        pointerEvents: avatarInicialListo ? "auto" : "none",
+        transition: "opacity 180ms ease-out",
       }}
+      aria-hidden={!avatarInicialListo}
       onClick={forzado ? undefined : solicitarSalida}
     >
       <div
@@ -495,7 +758,12 @@ export default function ModalEditorAvatar({
               <span className="avatar-editor-avatar-orbit" />
 
               <div className="avatar-editor-avatar-render relative z-[2]">
-                <RenderizadorAvatar config={config} size={300} />
+                <RenderizadorAvatar
+                  config={config}
+                  size={300}
+                  mantenerAnteriorDuranteCarga
+                  onReady={() => setAvatarInicialListo(true)}
+                />
               </div>
             </div>
 
@@ -715,11 +983,21 @@ export default function ModalEditorAvatar({
                                     sub.key === "playera" ? (
                                       <div className="avatar-editor-option-inner">
                                         {file !== "none" ? (
-                                          <>
+                                          <VistaPreviaCapasAtomica
+                                            key={`${config.gender}-${config.sueterColor}-${file}`}
+                                            sources={[
+                                              optimizarPreview(
+                                                `/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`
+                                              ),
+                                              optimizarPreview(
+                                                `/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`
+                                              ),
+                                            ]}
+                                          >
                                             <div
                                               className="absolute inset-0"
                                               style={{
-                                                backgroundImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
+                                                backgroundImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
                                                 backgroundRepeat: "no-repeat",
                                                 backgroundPosition: "center",
                                                 backgroundSize: "contain",
@@ -732,8 +1010,8 @@ export default function ModalEditorAvatar({
                                                   config.sueterColor ??
                                                   "#ffffff",
                                                 opacity: 0.6,
-                                                maskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
-                                                WebkitMaskImage: `url(/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png)`,
+                                                maskImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
+                                                WebkitMaskImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
                                                 maskSize: "contain",
                                                 maskRepeat: "no-repeat",
                                                 maskPosition: "center",
@@ -744,11 +1022,12 @@ export default function ModalEditorAvatar({
                                               }}
                                             />
                                             <img
-                                              src={`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`}
+                                              src={optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`)}
                                               className="absolute inset-0 h-full w-full object-contain"
                                               alt={file}
+                                              decoding="async"
                                             />
-                                          </>
+                                          </VistaPreviaCapasAtomica>
                                         ) : (
                                           <span className="avatar-editor-none-text">
                                             Ninguno
@@ -763,7 +1042,7 @@ export default function ModalEditorAvatar({
                                     )
                                   ) : (
                                     <img
-                                      src={
+                                      src={optimizarPreview(
                                         currentTab === "accessory"
                                           ? sub.key === "glasses"
                                             ? `/elementos_avatar/cara/lentes/previews/${file}`
@@ -776,10 +1055,12 @@ export default function ModalEditorAvatar({
                                                 ? `/elementos_avatar/cara/bocas/previews/${file}`
                                                 : currentTab === "nose"
                                                   ? `/elementos_avatar/cara/narices/previews/${file}`
-                                                  : ""
-                                      }
+                                            : ""
+                                      )}
                                       className="max-h-full max-w-full object-contain"
                                       alt={file}
+                                      loading="lazy"
+                                      decoding="async"
                                     />
                                   )}
                                 </div>
@@ -905,7 +1186,7 @@ export default function ModalEditorAvatar({
                                 </span>
                               ) : (
                                 <img
-                                  src={
+                                  src={optimizarPreview(
                                     currentTab === "hair"
                                       ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
                                       : currentTab === "eyes"
@@ -921,9 +1202,11 @@ export default function ModalEditorAvatar({
                                           : currentTab === "nose"
                                             ? `/elementos_avatar/cara/narices/previews/${file}`
                                             : ""
-                                  }
+                                  )}
                                   className="max-h-full max-w-full object-contain"
                                   alt={file}
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               )}
                             </div>
@@ -979,8 +1262,13 @@ export default function ModalEditorAvatar({
                   }`
             }
             onClick={() => void handleSave()}
+            disabled={guardandoAvatar}
           >
-            {forzado ? "Crear avatar" : "Guardar cambios"}
+            {guardandoAvatar
+              ? "Confirmando…"
+              : forzado
+                ? "Crear avatar"
+                : "Guardar cambios"}
           </button>
         </div>
       </div>
@@ -1949,6 +2237,13 @@ export default function ModalEditorAvatar({
   return (
     <>
       {modal}
+      {!avatarInicialListo && (
+        <CargadorFCC
+          flotante
+          mensaje="Preparando el editor de avatar"
+          detalle=""
+        />
+      )}
       {!forzado && rolUsuario === "profesor" && (
         <ConfirmarSalidaEdicion
           open={confirmarSalida}

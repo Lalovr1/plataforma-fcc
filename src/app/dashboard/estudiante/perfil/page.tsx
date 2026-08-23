@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -17,6 +17,7 @@ import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvata
 import ModalEditorAvatar from "@/components/ModalEditorAvatar";
 import toast from "react-hot-toast";
 import GridLogros from "@/components/GridLogros";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type LogroPerfil = {
   id: string;
@@ -36,8 +37,6 @@ type UsuarioPerfil = {
   logrosBloqueados: LogroPerfil[];
 };
 
-const CACHE_KEY_BASE = "fcc_academy_perfil_estudiante_v1";
-
 const defaultAvatar: AvatarConfig = {
   gender: "masculino",
   skin: "base/masculino/piel.png",
@@ -54,10 +53,6 @@ const defaultAvatar: AvatarConfig = {
   accessory: "none",
 };
 
-function getCacheKey(usuarioId: string) {
-  return `${CACHE_KEY_BASE}_${usuarioId}`;
-}
-
 function parseAvatarConfig(value: any): AvatarConfig | null {
   if (!value) return null;
 
@@ -70,43 +65,6 @@ function parseAvatarConfig(value: any): AvatarConfig | null {
   }
 
   return value;
-}
-
-function guardarPerfilCache(usuario: UsuarioPerfil | null) {
-  try {
-    if (!usuario?.id) return;
-
-    sessionStorage.setItem(
-      getCacheKey(usuario.id),
-      JSON.stringify({
-        timestamp: Date.now(),
-        usuario,
-      })
-    );
-  } catch {}
-}
-
-function leerPerfilCache(usuarioId: string): UsuarioPerfil | null {
-  try {
-    const raw = sessionStorage.getItem(getCacheKey(usuarioId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.usuario) return null;
-
-    return {
-      ...parsed.usuario,
-      avatar_config: parseAvatarConfig(parsed.usuario.avatar_config),
-      logrosDesbloqueados: Array.isArray(parsed.usuario.logrosDesbloqueados)
-        ? parsed.usuario.logrosDesbloqueados
-        : [],
-      logrosBloqueados: Array.isArray(parsed.usuario.logrosBloqueados)
-        ? parsed.usuario.logrosBloqueados
-        : [],
-    };
-  } catch {
-    return null;
-  }
 }
 
 function ModalEditarNombre({
@@ -205,38 +163,23 @@ function ModalEditarNombre({
 export default function PerfilEstudiantePage() {
   const [usuario, setUsuario] = useState<UsuarioPerfil | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
   const [openAvatar, setOpenAvatar] = useState(false);
   const [openNombre, setOpenNombre] = useState(false);
 
-  useLayoutEffect(() => {
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerPerfilCache(usuarioLocal);
-    if (!cache) return;
-
-    setUsuario(cache);
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
     const run = async () => {
+      setLoading(true);
+      setErrorCarga(false);
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
-          setLoading(false);
-          return;
-        }
-
-        const cache = leerPerfilCache(user.id);
-
-        if (cache) {
-          setUsuario(cache);
-          setLoading(false);
-        }
+        if (authError || !user) throw authError ?? new Error("Sesión no disponible");
 
         const { data: userData, error: userError } = await supabase
           .from("usuarios")
@@ -245,11 +188,13 @@ export default function PerfilEstudiantePage() {
           .single();
 
         if (userError || !userData) {
-          console.error("Error cargando perfil estudiante:", userError);
-          return;
+          throw userError ?? new Error("Perfil no disponible");
         }
 
-        const [{ data: desbloqueados }, { data: todosLogros }] =
+        const [
+          { data: desbloqueados, error: desbloqueadosError },
+          { data: todosLogros, error: logrosError },
+        ] =
           await Promise.all([
             supabase
               .from("logros_usuarios")
@@ -260,6 +205,10 @@ export default function PerfilEstudiantePage() {
               .from("logros")
               .select("id,nombre,descripcion,icono_url"),
           ]);
+
+        if (desbloqueadosError || logrosError) {
+          throw desbloqueadosError ?? logrosError;
+        }
 
         const idsDesbloqueados = new Set(
           (desbloqueados ?? []).map((l: any) => l.logro_id)
@@ -281,16 +230,16 @@ export default function PerfilEstudiantePage() {
         };
 
         setUsuario(perfilData);
-        guardarPerfilCache(perfilData);
       } catch (e) {
         console.error("Error inicializando perfil estudiante:", e);
+        setErrorCarga(true);
       } finally {
         setLoading(false);
       }
     };
 
     run();
-  }, []);
+  }, [reintento]);
 
   const estilos = (
     <style>{`
@@ -1050,11 +999,15 @@ export default function PerfilEstudiantePage() {
   if (!usuario) {
     return (
       <LayoutGeneral rol="estudiante">
-        {estilos}
-
-        <p style={{ color: "var(--color-muted)" }}>
-          No se pudo cargar el perfil.
-        </p>
+        <EstadoErrorCargaFCC
+          titulo="No se pudo confirmar tu perfil"
+          detalle={
+            errorCarga
+              ? "No se mostró información anterior ni un avatar incompleto."
+              : "El perfil solicitado no está disponible."
+          }
+          onRetry={() => setReintento((valor) => valor + 1)}
+        />
       </LayoutGeneral>
     );
   }

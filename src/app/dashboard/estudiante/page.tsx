@@ -13,13 +13,21 @@ import SeccionCursos from "@/components/SeccionCursos";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function EstudianteDashboard() {
   const cookieStore = await cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  if (authError) {
+    throw new Error("No se pudo confirmar la sesión del estudiante");
+  }
 
   if (!user) {
     return (
@@ -30,11 +38,11 @@ export default async function EstudianteDashboard() {
   }
 
   const [
-    { data: usuario },
-    { data: cursos },
-    { data: quizzesMateria },
-    { data: intentosUsuario },
-    { data: horarioUsuario },
+    { data: usuario, error: usuarioError },
+    { data: cursos, error: cursosError },
+    { data: quizzesMateria, error: quizzesError },
+    { data: intentosUsuario, error: intentosError },
+    { data: horarioUsuario, error: horarioError },
   ] = await Promise.all([
     supabase
       .from("usuarios")
@@ -69,6 +77,14 @@ export default async function EstudianteDashboard() {
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
+
+  const errorCarga =
+    usuarioError ?? cursosError ?? quizzesError ?? intentosError ?? horarioError;
+
+  if (errorCarga) {
+    console.error("No se pudo construir el dashboard del estudiante:", errorCarga);
+    throw new Error("No se pudieron confirmar todos los datos del panel del estudiante");
+  }
 
   const quizzesPorMateria = new Map<string, string[]>();
 
@@ -107,7 +123,6 @@ export default async function EstudianteDashboard() {
           name: materia.nombre,
           progress: progresoReal,
           progresoId: c.id,
-          progresoGuardado: Number(c.progreso ?? 0),
         };
       })
       .filter(Boolean) as {
@@ -115,12 +130,9 @@ export default async function EstudianteDashboard() {
       name: string;
       progress: number;
       progresoId: string;
-      progresoGuardado: number;
     }[];
 
-
   mappedCourses = mappedCourses
-    .map(({ progresoGuardado, ...curso }) => curso)
     .sort((a, b) => {
       if (b.progress !== a.progress) {
         return b.progress - a.progress;
@@ -180,7 +192,6 @@ export default async function EstudianteDashboard() {
           <div className="bloque-cursos rounded-[28px] min-w-0 overflow-hidden">
             <SeccionCursos
               initialCourses={mappedCourses}
-              userId={usuario?.id ?? user.id}
             />
           </div>
         </div>

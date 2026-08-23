@@ -5,11 +5,14 @@
  * Permite crear un horario visual editable, personalizable y descargable.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import CargadorFCC from "@/components/CargadorFCC";
+import AvisoModoRespaldo from "@/components/AvisoModoRespaldo";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import { supabase } from "@/utils/supabaseClient";
 import { TEMA_PREDETERMINADO, normalizarTema, type Tema } from "@/lib/temas";
 import {
@@ -324,10 +327,10 @@ function extraerUrlCss(valor: string) {
 function obtenerLogoActual() {
   const raw = obtenerVariableCss(
     "--fcc-sidebar-logo-image",
-    'url("/logos/logo-azul.png")'
+    'url("/ui/logos/logo-azul.webp")'
   );
 
-  return extraerUrlCss(raw) ?? "/logos/logo-azul.png";
+  return extraerUrlCss(raw) ?? "/ui/logos/logo-azul.webp";
 }
 
 function obtenerTemaCanvas() {
@@ -747,6 +750,10 @@ export default function MiHorarioPage() {
   const [userIdHorario, setUserIdHorario] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [datosCargados, setDatosCargados] = useState(false);
+  const [usandoRespaldo, setUsandoRespaldo] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintentoCarga, setReintentoCarga] = useState(0);
+  const omitirPrimerGuardadoRef = useRef(true);
   const [mensaje, setMensaje] = useState("");
   const [toastHorario, setToastHorario] = useState("");
 
@@ -931,12 +938,20 @@ export default function MiHorarioPage() {
   useEffect(() => {
     let activo = true;
 
+    setDatosCargados(false);
+    setErrorCarga(false);
+    omitirPrimerGuardadoRef.current = true;
+
     async function cargarHorario() {
+      let habiaCopiaLocal = false;
+      let huboErrorRemoto = false;
+
       try {
         const guardado = localStorage.getItem(STORAGE_KEY);
 
         if (guardado) {
           aplicarDatosHorario(JSON.parse(guardado));
+          habiaCopiaLocal = true;
         }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
@@ -945,7 +960,10 @@ export default function MiHorarioPage() {
       try {
         const {
           data: { user },
+          error: userError,
         } = await supabase.auth.getUser();
+
+        if (userError) throw userError;
 
         if (!activo) return;
 
@@ -960,16 +978,30 @@ export default function MiHorarioPage() {
 
           if (!activo) return;
 
-          if (!error && data?.datos) {
+          if (!error && data?.datos != null) {
             aplicarDatosHorario(data.datos);
+
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.datos));
+            } catch {
+              // El horario remoto sigue siendo válido aunque falle la copia local.
+            }
+
+            habiaCopiaLocal = false;
           } else if (error) {
             console.warn("No se pudo cargar horario desde Supabase:", error);
+            huboErrorRemoto = true;
           }
         }
       } catch (error) {
         console.warn("No se pudo consultar el usuario para Mi horario:", error);
+        huboErrorRemoto = true;
       } finally {
-        if (activo) setDatosCargados(true);
+        if (activo) {
+          setUsandoRespaldo(habiaCopiaLocal);
+          setErrorCarga(huboErrorRemoto && !habiaCopiaLocal);
+          setDatosCargados(true);
+        }
       }
     }
 
@@ -978,10 +1010,15 @@ export default function MiHorarioPage() {
     return () => {
       activo = false;
     };
-  }, []);
+  }, [reintentoCarga]);
 
   useEffect(() => {
     if (!datosCargados) return;
+
+    if (omitirPrimerGuardadoRef.current) {
+      omitirPrimerGuardadoRef.current = false;
+      return;
+    }
 
     const datosHorario = {
       materias,
@@ -1013,6 +1050,8 @@ export default function MiHorarioPage() {
 
       if (error) {
         console.warn("No se pudo guardar horario en Supabase:", error);
+      } else {
+        setUsandoRespaldo(false);
       }
     }, 500);
 
@@ -1943,6 +1982,29 @@ export default function MiHorarioPage() {
       </div>
     </div>
   ) : null;
+
+  if (!datosCargados) {
+    return (
+      <LayoutGeneral rol="estudiante">
+        <CargadorFCC
+          mensaje="Sincronizando tu horario"
+          detalle="Esperando la versión más reciente antes de habilitar el editor…"
+        />
+      </LayoutGeneral>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <LayoutGeneral rol="estudiante">
+        <EstadoErrorCargaFCC
+          titulo="No se pudo confirmar tu horario"
+          detalle="No existe una copia local completa que pueda abrirse como respaldo."
+          onRetry={() => setReintentoCarga((valor) => valor + 1)}
+        />
+      </LayoutGeneral>
+    );
+  }
 
   return (
     <LayoutGeneral rol="estudiante">
@@ -2991,6 +3053,10 @@ export default function MiHorarioPage() {
         }
 
       `}</style>
+
+      {usandoRespaldo && (
+        <AvisoModoRespaldo mensaje="No se pudo confirmar este horario con Supabase. Puedes seguir editando la copia local; se intentará sincronizar automáticamente." />
+      )}
 
       <div className="schedule-editor-shell min-w-0">
         <div

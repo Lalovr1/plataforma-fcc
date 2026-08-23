@@ -5,8 +5,11 @@
  * Vista de solo consulta, con preferencias persistentes por usuario.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import CargadorFCC from "@/components/CargadorFCC";
+import AvisoModoRespaldo from "@/components/AvisoModoRespaldo";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 
 type ModoCalendarioAcademico = "semestral" | "cuatrimestral";
 type PeriodoCalendarioAcademico = "completo" | "primavera" | "verano" | "otono";
@@ -274,10 +277,10 @@ function extraerUrlCss(valor: string) {
 function obtenerLogoActual() {
   const raw = obtenerVariableCss(
     "--fcc-sidebar-logo-image",
-    'url("/logos/logo-azul.png")',
+    'url("/ui/logos/logo-azul.webp")',
   );
 
-  return extraerUrlCss(raw) ?? "/logos/logo-azul.png";
+  return extraerUrlCss(raw) ?? "/ui/logos/logo-azul.webp";
 }
 
 function cargarImagenCanvas(src: string) {
@@ -370,7 +373,11 @@ function dibujarIconoReinicioCanvas(
   ctx.restore();
 }
 
-export default function CalendarioEscolar2026() {
+export default function CalendarioEscolar2026({
+  onReady,
+}: {
+  onReady?: () => void;
+} = {}) {
   const preferenciasIniciales = useMemo(() => leerPreferenciasLocales(), []);
 
   const [modo, setModo] = useState<ModoCalendarioAcademico>(
@@ -387,6 +394,17 @@ export default function CalendarioEscolar2026() {
     useState<PeriodoCalendarioAcademico>(preferenciasIniciales.periodo);
   const [userIdCalendario, setUserIdCalendario] = useState<string | null>(null);
   const [preferenciasCargadas, setPreferenciasCargadas] = useState(false);
+  const [usandoRespaldo, setUsandoRespaldo] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintentoCarga, setReintentoCarga] = useState(0);
+  const omitirPrimerGuardadoRef = useRef(true);
+
+  useEffect(() => {
+    if (!preferenciasCargadas) return;
+
+    const frame = window.requestAnimationFrame(() => onReady?.());
+    return () => window.cancelAnimationFrame(frame);
+  }, [preferenciasCargadas, onReady]);
 
   const anioActual = new Date().getFullYear();
   const eventosPorFecha = useMemo(() => eventosPorFechaCalendario(), []);
@@ -423,17 +441,36 @@ export default function CalendarioEscolar2026() {
   useEffect(() => {
     let activo = true;
 
+    setPreferenciasCargadas(false);
+    setErrorCarga(false);
+    omitirPrimerGuardadoRef.current = true;
+
     async function cargarPreferencias() {
+      let habiaCopiaLocal = false;
+      let huboErrorRemoto = false;
+
+      try {
+        habiaCopiaLocal = Boolean(localStorage.getItem(CALENDARIO_STORAGE_KEY));
+      } catch {
+        // El almacenamiento local puede estar bloqueado por el navegador.
+      }
+
       try {
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
+
+        if (authError) throw authError;
 
         if (!activo) return;
 
         setUserIdCalendario(user?.id ?? null);
 
-        if (!user?.id) return;
+        if (!user?.id) {
+          setUsandoRespaldo(habiaCopiaLocal);
+          return;
+        }
 
         const { data, error } = await supabase
           .from(DB_CALENDARIO_TABLE)
@@ -448,17 +485,32 @@ export default function CalendarioEscolar2026() {
 
           setModo(preferencias.modo);
           setPeriodo(preferencias.periodo);
-          localStorage.setItem(
-            CALENDARIO_STORAGE_KEY,
-            JSON.stringify(preferencias),
-          );
+          setUsandoRespaldo(false);
+
+          try {
+            localStorage.setItem(
+              CALENDARIO_STORAGE_KEY,
+              JSON.stringify(preferencias),
+            );
+          } catch {
+            // La preferencia remota sigue siendo válida aunque falle la copia local.
+          }
         } else if (error) {
           console.warn("No se pudo cargar el calendario escolar:", error);
+          huboErrorRemoto = true;
+          setUsandoRespaldo(habiaCopiaLocal);
+        } else {
+          setUsandoRespaldo(habiaCopiaLocal);
         }
       } catch (error) {
         console.warn("No se pudo consultar preferencias del calendario:", error);
+        huboErrorRemoto = true;
+        if (activo) setUsandoRespaldo(habiaCopiaLocal);
       } finally {
-        if (activo) setPreferenciasCargadas(true);
+        if (activo) {
+          setErrorCarga(huboErrorRemoto && !habiaCopiaLocal);
+          setPreferenciasCargadas(true);
+        }
       }
     }
 
@@ -467,10 +519,15 @@ export default function CalendarioEscolar2026() {
     return () => {
       activo = false;
     };
-  }, []);
+  }, [reintentoCarga]);
 
   useEffect(() => {
     if (!preferenciasCargadas) return;
+
+    if (omitirPrimerGuardadoRef.current) {
+      omitirPrimerGuardadoRef.current = false;
+      return;
+    }
 
     const datos = { modo, periodo };
 
@@ -490,6 +547,9 @@ export default function CalendarioEscolar2026() {
 
       if (error) {
         console.warn("No se pudo guardar el calendario escolar:", error);
+      } else {
+        setUsandoRespaldo(false);
+        setErrorCarga(false);
       }
     }, 500);
 
@@ -870,6 +930,27 @@ export default function CalendarioEscolar2026() {
           })}
         </div>
       </section>
+    );
+  }
+
+  if (!preferenciasCargadas) {
+    return (
+      <CargadorFCC
+        compacto
+        mensaje="Sincronizando calendario"
+        detalle="Comprobando tus preferencias antes de mostrarlo…"
+      />
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoErrorCargaFCC
+        compacto
+        titulo="No se pudo confirmar el calendario"
+        detalle="No existe una copia local de tus preferencias que pueda mostrarse como respaldo."
+        onRetry={() => setReintentoCarga((valor) => valor + 1)}
+      />
     );
   }
 
@@ -1417,6 +1498,10 @@ export default function CalendarioEscolar2026() {
           }
         }
       `}</style>
+
+      {usandoRespaldo && (
+        <AvisoModoRespaldo mensaje="No se pudo confirmar el calendario con Supabase. Se muestran tus preferencias locales como respaldo." />
+      )}
 
       <div className="fcc-calendar-control">
         <div>

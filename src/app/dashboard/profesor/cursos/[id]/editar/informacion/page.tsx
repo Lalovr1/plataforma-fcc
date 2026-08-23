@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter, useParams } from "next/navigation";
@@ -40,81 +40,18 @@ type CursoCache = {
   cursoCarreras: CursoCarrera[];
 };
 
-const CACHE_KEY_BASE = "fcc_academy_editar_curso_profesor_v1";
-
-function getEditarCursoCacheKey(usuarioId: string, cursoId: string) {
-  return `${CACHE_KEY_BASE}_${usuarioId}_${cursoId}`;
-}
-
-function leerEditarCursoCache(usuarioId: string, cursoId: string): CursoCache | null {
-  try {
-    const raw = sessionStorage.getItem(getEditarCursoCacheKey(usuarioId, cursoId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!parsed?.nombre) return null;
-    if (!Array.isArray(parsed?.carreras)) return null;
-    if (!Array.isArray(parsed?.cursoCarreras)) return null;
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      profesorId: parsed.profesorId,
-      nombre: parsed.nombre,
-      visible: Boolean(parsed.visible),
-      carreras: parsed.carreras,
-      cursoCarreras: parsed.cursoCarreras,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function guardarEditarCursoCache(
   usuarioId: string,
   cursoId: string,
   data: Omit<CursoCache, "timestamp">
 ) {
-  try {
-    sessionStorage.setItem(
-      getEditarCursoCacheKey(usuarioId, cursoId),
-      JSON.stringify({
-        timestamp: Date.now(),
-        ...data,
-      })
-    );
-  } catch {}
+  void usuarioId;
+  void cursoId;
+  void data;
 }
 
 function limpiarCachesRelacionados(cursoId: string) {
-  try {
-    const prefixes = [
-      "fcc_academy_cursos_profesor_v1",
-      "fcc_academy_cursos_estudiante_v2_",
-      "fcc_academy_profesores_estudiante_v1",
-      "fcc_academy_profesor_cursos_estudiante_v1_",
-      "fcc_academy_widget_ranking_top5_v1",
-      "fcc_academy_visualizador_curso",
-    ];
-
-    const keysToRemove: string[] = [];
-
-    for (let i = 0; i < sessionStorage.length; i += 1) {
-      const key = sessionStorage.key(i);
-      if (!key) continue;
-
-      const esCacheEditorActual = key.startsWith(CACHE_KEY_BASE);
-
-      if (
-        prefixes.some((prefix) => key.startsWith(prefix)) ||
-        (key.includes(cursoId) && !esCacheEditorActual)
-      ) {
-        keysToRemove.push(key);
-      }
-    }
-
-    keysToRemove.forEach((key) => sessionStorage.removeItem(key));
-  } catch {}
+  void cursoId;
 }
 
 function mapCursoCarreras(rows: any[] | null | undefined): CursoCarrera[] {
@@ -192,27 +129,6 @@ export default function EditarInformacionCursoPage() {
       ...override,
     });
   };
-
-  const aplicarCache = (cache: CursoCache) => {
-    setProfesorId(cache.profesorId);
-    setNombre(cache.nombre);
-    setVisible(cache.visible);
-    setCarreras(cache.carreras);
-    setCursoCarreras(cache.cursoCarreras);
-    setLoading(false);
-  };
-
-  useLayoutEffect(() => {
-    if (!id) return;
-
-    const usuarioLocal = localStorage.getItem("user_id");
-    if (!usuarioLocal) return;
-
-    const cache = leerEditarCursoCache(usuarioLocal, id);
-    if (!cache) return;
-
-    aplicarCache(cache);
-  }, [id]);
 
   const fetchData = async ({ showLoading = false }: { showLoading?: boolean } = {}) => {
     if (!id) return;
@@ -351,43 +267,229 @@ export default function EditarInformacionCursoPage() {
         return false;
       }
 
-      await supabase.from("curso_carreras").delete().eq("curso_id", id);
+      type EstructuraCarreraActual = {
+        id: string;
+        curso_periodos:
+          | {
+              id: string;
+              curso_secciones: { id: string }[] | null;
+            }[]
+          | null;
+      };
+
+      const {
+        data: estructuraActualData,
+        error: estructuraActualError,
+      } = await supabase
+        .from("curso_carreras")
+        .select(`
+          id,
+          curso_periodos (
+            id,
+            curso_secciones (
+              id
+            )
+          )
+        `)
+        .eq("curso_id", id);
+
+      if (estructuraActualError) {
+        throw estructuraActualError;
+      }
+
+      const estructuraActual =
+        (estructuraActualData ?? []) as EstructuraCarreraActual[];
+
+      const idsCarrerasConservadas = new Set<string>();
 
       for (const cc of cursoCarrerasNormalizadas) {
         if (!cc.carrera_id || !cc.semestre) continue;
 
-        const { data: insertedCarrera, error: carreraError } = await supabase
-          .from("curso_carreras")
-          .insert({
-            curso_id: id,
-            carrera_id: cc.carrera_id,
-            semestre: cc.semestre,
-            area: cc.area,
-          })
-          .select("id")
-          .single();
+        const carreraAnterior = cc.id
+          ? estructuraActual.find((actual) => actual.id === cc.id)
+          : undefined;
 
-        if (carreraError || !insertedCarrera) continue;
+        let cursoCarreraId: string;
 
-        for (const p of cc.periodos) {
-          const { data: insertedPeriodo, error: periodoError } = await supabase
-            .from("curso_periodos")
+        if (carreraAnterior) {
+          const { error: actualizarCarreraError } = await supabase
+            .from("curso_carreras")
+            .update({
+              carrera_id: cc.carrera_id,
+              semestre: cc.semestre,
+              area: cc.area,
+            })
+            .eq("id", carreraAnterior.id)
+            .eq("curso_id", id);
+
+          if (actualizarCarreraError) {
+            throw actualizarCarreraError;
+          }
+
+          cursoCarreraId = carreraAnterior.id;
+        } else {
+          const {
+            data: nuevaCarrera,
+            error: nuevaCarreraError,
+          } = await supabase
+            .from("curso_carreras")
             .insert({
-              curso_carrera_id: insertedCarrera.id,
-              nombre: p.nombre,
-              anio: p.anio,
+              curso_id: id,
+              carrera_id: cc.carrera_id,
+              semestre: cc.semestre,
+              area: cc.area,
             })
             .select("id")
             .single();
 
-          if (periodoError || !insertedPeriodo) continue;
-
-          for (const s of p.secciones) {
-            await supabase.from("curso_secciones").insert({
-              periodo_id: insertedPeriodo.id,
-              nombre: s.nombre,
-            });
+          if (nuevaCarreraError || !nuevaCarrera) {
+            throw nuevaCarreraError ?? new Error("No se pudo crear la carrera.");
           }
+
+          cursoCarreraId = nuevaCarrera.id;
+        }
+
+        idsCarrerasConservadas.add(cursoCarreraId);
+
+        const periodosAnteriores = carreraAnterior?.curso_periodos ?? [];
+        const idsPeriodosConservados = new Set<string>();
+
+        for (const periodo of cc.periodos) {
+          const periodoAnterior = periodo.id
+            ? periodosAnteriores.find((actual) => actual.id === periodo.id)
+            : undefined;
+
+          let periodoId: string;
+
+          if (periodoAnterior) {
+            const { error: actualizarPeriodoError } = await supabase
+              .from("curso_periodos")
+              .update({
+                nombre: periodo.nombre,
+                anio: periodo.anio,
+              })
+              .eq("id", periodoAnterior.id)
+              .eq("curso_carrera_id", cursoCarreraId);
+
+            if (actualizarPeriodoError) {
+              throw actualizarPeriodoError;
+            }
+
+            periodoId = periodoAnterior.id;
+          } else {
+            const {
+              data: nuevoPeriodo,
+              error: nuevoPeriodoError,
+            } = await supabase
+              .from("curso_periodos")
+              .insert({
+                curso_carrera_id: cursoCarreraId,
+                nombre: periodo.nombre,
+                anio: periodo.anio,
+              })
+              .select("id")
+              .single();
+
+            if (nuevoPeriodoError || !nuevoPeriodo) {
+              throw nuevoPeriodoError ?? new Error("No se pudo crear el periodo.");
+            }
+
+            periodoId = nuevoPeriodo.id;
+          }
+
+          idsPeriodosConservados.add(periodoId);
+
+          const seccionesAnteriores = periodoAnterior?.curso_secciones ?? [];
+          const idsSeccionesConservadas = new Set<string>();
+
+          for (const seccion of periodo.secciones) {
+            const seccionAnterior = seccion.id
+              ? seccionesAnteriores.find((actual) => actual.id === seccion.id)
+              : undefined;
+
+            let seccionId: string;
+
+            if (seccionAnterior) {
+              const { error: actualizarSeccionError } = await supabase
+                .from("curso_secciones")
+                .update({
+                  nombre: seccion.nombre,
+                })
+                .eq("id", seccionAnterior.id)
+                .eq("periodo_id", periodoId);
+
+              if (actualizarSeccionError) {
+                throw actualizarSeccionError;
+              }
+
+              seccionId = seccionAnterior.id;
+            } else {
+              const {
+                data: nuevaSeccion,
+                error: nuevaSeccionError,
+              } = await supabase
+                .from("curso_secciones")
+                .insert({
+                  periodo_id: periodoId,
+                  nombre: seccion.nombre,
+                })
+                .select("id")
+                .single();
+
+              if (nuevaSeccionError || !nuevaSeccion) {
+                throw nuevaSeccionError ?? new Error("No se pudo crear la seccion.");
+              }
+
+              seccionId = nuevaSeccion.id;
+            }
+
+            idsSeccionesConservadas.add(seccionId);
+          }
+
+          const seccionesAEliminar = seccionesAnteriores
+            .filter((seccion) => !idsSeccionesConservadas.has(seccion.id))
+            .map((seccion) => seccion.id);
+
+          if (seccionesAEliminar.length > 0) {
+            const { error: eliminarSeccionesError } = await supabase
+              .from("curso_secciones")
+              .delete()
+              .in("id", seccionesAEliminar);
+
+            if (eliminarSeccionesError) {
+              throw eliminarSeccionesError;
+            }
+          }
+        }
+
+        const periodosAEliminar = periodosAnteriores
+          .filter((periodo) => !idsPeriodosConservados.has(periodo.id))
+          .map((periodo) => periodo.id);
+
+        if (periodosAEliminar.length > 0) {
+          const { error: eliminarPeriodosError } = await supabase
+            .from("curso_periodos")
+            .delete()
+            .in("id", periodosAEliminar);
+
+          if (eliminarPeriodosError) {
+            throw eliminarPeriodosError;
+          }
+        }
+      }
+
+      const carrerasAEliminar = estructuraActual
+        .filter((carrera) => !idsCarrerasConservadas.has(carrera.id))
+        .map((carrera) => carrera.id);
+
+      if (carrerasAEliminar.length > 0) {
+        const { error: eliminarCarrerasError } = await supabase
+          .from("curso_carreras")
+          .delete()
+          .in("id", carrerasAEliminar);
+
+        if (eliminarCarrerasError) {
+          throw eliminarCarrerasError;
         }
       }
 
@@ -505,12 +607,6 @@ export default function EditarInformacionCursoPage() {
 
 
   const salirSinGuardar = () => {
-    const usuarioId = profesorId ?? localStorage.getItem("user_id");
-
-    if (usuarioId && id) {
-      sessionStorage.removeItem(getEditarCursoCacheKey(usuarioId, id));
-    }
-
     setConfirmarSalidaInfo(false);
     router.push(`/dashboard/profesor/cursos/${id}/editar`);
   };

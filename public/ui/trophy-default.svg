@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Trofeo FCC Academy</title>
+  <defs>
+    <linearGradient id="cup" x1="44" y1="28" x2="206" y2="218" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38c9f3"/>
+      <stop offset=".5" stop-color="#2474e7"/>
+      <stop offset="1" stop-color="#6947d7"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="75" y1="46" x2="165" y2="165" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".08"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#12254a" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <path fill="url(#cup)" d="M62 35h132v28h24v17c0 35-21 62-57 72-6 9-14 16-24 20v21h34v28H85v-28h34v-21c-10-4-18-11-24-20-36-10-57-37-57-72V63h24V35Zm0 47h-5c1 20 10 35 28 44-5-13-7-28-7-44H62Zm116 0c0 16-2 31-7 44 18-9 27-24 28-44h-21Z"/>
+    <path fill="url(#shine)" d="M83 50h37c-10 28-7 71 10 99-35-12-47-48-47-99Z" opacity=".7"/>
+    <path fill="#fff" d="m128 69 10 20 22 3-16 16 4 22-20-10-20 10 4-22-16-16 22-3 10-20Z"/>
+    <path fill="#fff" fill-opacity=".9" d="M101 207h54v8h-54z"/>
+  </g>
+</svg>

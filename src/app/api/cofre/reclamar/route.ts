@@ -258,10 +258,31 @@ export async function POST(req: Request) {
     const nivelActual = Number(perfil.nivel ?? 0);
 
     if (tipo === "bienvenida" && !perfil.tutorial_visto) {
-      return NextResponse.json(
-        { error: "El cofre de bienvenida aún no está disponible" },
-        { status: 403 }
+      const { data: logrosTutorial, error: errorLogrosTutorial } = await admin
+        .from("logros_usuarios")
+        .select("logro_id")
+        .eq("usuario_id", user.id);
+
+      if (errorLogrosTutorial) {
+        throw errorLogrosTutorial;
+      }
+
+      const tutorialCompletado = (logrosTutorial ?? []).some(
+        (logro) =>
+          logro.logro_id === "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
+          logro.logro_id === "tutorial"
       );
+
+      if (!tutorialCompletado) {
+        return NextResponse.json(
+          {
+            error:
+              "Primero debe completarse el tutorial para preparar el cofre de bienvenida",
+            codigo: "TUTORIAL_NO_COMPLETADO",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     if (tipo === "nivel" && nivelActual < 1) {

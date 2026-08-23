@@ -7,12 +7,19 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import katex from "katex";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+import { iniciarIndicadorNavegacionFCC } from "@/components/IndicadorNavegacionFCC";
+import {
+  extraerFuentesImagenHtml,
+  precargarImagenes,
+} from "@/lib/imagenes";
 import { AlertCircle, CheckCircle2, Sparkles, Target, Trophy } from "lucide-react";
 import "katex/dist/katex.min.css";
 
@@ -33,21 +40,6 @@ type QuizInfo = {
 };
 
 type EstadoQuiz = "intro" | "en_curso" | "finalizado";
-
-type QuizStaticCache = {
-  timestamp: number;
-  quizInfo: QuizInfo | null;
-  preguntas: Pregunta[];
-  respuestas: Record<string, Respuesta[]>;
-};
-
-type QuizUserCache = {
-  timestamp: number;
-  rol: string;
-  intentosRealizados: number;
-  mejorPuntaje: number;
-  esPreview: boolean;
-};
 
 type IntentoActivoServidor = {
   intento_id: string;
@@ -80,86 +72,8 @@ type RetroalimentacionIntento = {
   explicacion: string | null;
 };
 
-const STATIC_CACHE_KEY_BASE = "fcc_academy_quiz_static_v3";
-const USER_CACHE_KEY_BASE = "fcc_academy_quiz_user_v1";
 const ACTIVE_CACHE_KEY_BASE = "fcc_academy_quiz_active_v1";
 const AUTO_RESULT_SEEN_KEY_BASE = "fcc_academy_quiz_auto_result_seen_v1";
-
-function getStaticCacheKey(quizId: string) {
-  return `${STATIC_CACHE_KEY_BASE}_${quizId}`;
-}
-
-function getUserCacheKey(userId: string, quizId: string) {
-  return `${USER_CACHE_KEY_BASE}_${userId}_${quizId}`;
-}
-
-function guardarStaticCache(quizId: string, cache: Omit<QuizStaticCache, "timestamp">) {
-  try {
-    sessionStorage.setItem(
-      getStaticCacheKey(quizId),
-      JSON.stringify({
-        timestamp: Date.now(),
-        ...cache,
-      })
-    );
-  } catch {}
-}
-
-function leerStaticCache(quizId: string): QuizStaticCache | null {
-  try {
-    const raw = sessionStorage.getItem(getStaticCacheKey(quizId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed?.preguntas)) return null;
-    if (!parsed?.respuestas || typeof parsed.respuestas !== "object") return null;
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      quizInfo: parsed.quizInfo ?? null,
-      preguntas: parsed.preguntas,
-      respuestas: parsed.respuestas,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function guardarUserCache(
-  userId: string,
-  quizId: string,
-  cache: Omit<QuizUserCache, "timestamp">
-) {
-  try {
-    sessionStorage.setItem(
-      getUserCacheKey(userId, quizId),
-      JSON.stringify({
-        timestamp: Date.now(),
-        ...cache,
-      })
-    );
-  } catch {}
-}
-
-function leerUserCache(userId: string, quizId: string): QuizUserCache | null {
-  try {
-    const raw = sessionStorage.getItem(getUserCacheKey(userId, quizId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      rol: parsed.rol ?? "estudiante",
-      intentosRealizados: Number(parsed.intentosRealizados) || 0,
-      mejorPuntaje: Number(parsed.mejorPuntaje) || 0,
-      esPreview: Boolean(parsed.esPreview),
-    };
-  } catch {
-    return null;
-  }
-}
 
 function getActiveCacheKey(userId: string, quizId: string) {
   return `${ACTIVE_CACHE_KEY_BASE}_${userId}_${quizId}`;
@@ -242,26 +156,6 @@ function marcarResultadoAutomaticoVisto(
   } catch {}
 }
 
-function limpiarCachesDerivados() {
-  try {
-    const prefixes = [
-      "fcc_academy_visualizador_curso_",
-      "fcc_academy_cursos_estudiante_",
-      "fcc_academy_ranking_estudiante_",
-      "fcc_academy_ranking_profesor_",
-      "fcc_academy_widget_ranking_top5_",
-      "fcc_academy_perfil_estudiante_",
-      "fcc_academy_amigos_estudiante_",
-    ];
-
-    Object.keys(sessionStorage).forEach((key) => {
-      if (prefixes.some((prefix) => key.startsWith(prefix))) {
-        sessionStorage.removeItem(key);
-      }
-    });
-  } catch {}
-}
-
 export default function ResolverQuizPage() {
   const params = useParams();
   const router = useRouter();
@@ -277,6 +171,8 @@ export default function ResolverQuizPage() {
   const [mostrarAvisoTiempo, setMostrarAvisoTiempo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [verificandoIntentos, setVerificandoIntentos] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [reintentoCarga, setReintentoCarga] = useState(0);
   const [quizInfo, setQuizInfo] = useState<QuizInfo | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [rol, setRol] = useState<string>("estudiante");
@@ -585,13 +481,6 @@ export default function ResolverQuizPage() {
       setRetroalimentacionIntento({});
     }
 
-    guardarUserCache(currentUserId, quizId, {
-      rol: "estudiante",
-      intentosRealizados: numeroIntento,
-      mejorPuntaje: Math.max(mejorPuntaje, puntaje),
-      esPreview: false,
-    });
-
     marcarResultadoAutomaticoVisto(
       currentUserId,
       quizId,
@@ -603,53 +492,18 @@ export default function ResolverQuizPage() {
     return true;
   };
 
-  useLayoutEffect(() => {
-    if (!quizId) return;
-
-    const staticCache = leerStaticCache(quizId);
-
-    if (staticCache) {
-      setQuizInfo(staticCache.quizInfo);
-      setPreguntas(staticCache.preguntas);
-      setRespuestas(staticCache.respuestas);
-      setLoading(false);
-    }
-
-    const usuarioLocal = localStorage.getItem("user_id");
-
-    if (usuarioLocal) {
-      setUserId(usuarioLocal);
-
-      const userCache = leerUserCache(usuarioLocal, quizId);
-
-      if (userCache) {
-        setRol(userCache.rol);
-        setIntentosRealizados(userCache.intentosRealizados);
-        setMejorPuntaje(userCache.mejorPuntaje);
-        setEsPreview(userCache.esPreview);
-      }
-    }
-  }, [quizId]);
-
   useEffect(() => {
     const fetchData = async () => {
       try {
-        if (!quizId) return;
+        if (!quizId) throw new Error("El identificador del quiz no es válido.");
 
-        const staticCache = leerStaticCache(quizId);
-
-        if (staticCache) {
-          setQuizInfo(staticCache.quizInfo);
-          setPreguntas(staticCache.preguntas);
-          setRespuestas(staticCache.respuestas);
-          setLoading(false);
-        } else {
-          setLoading(true);
-        }
-
+        setLoading(true);
         setVerificandoIntentos(true);
+        setErrorCarga("");
 
-        const { data: userData } = await supabase.auth.getUser();
+        const { data: userData, error: authError } = await supabase.auth.getUser();
+
+        if (authError) throw authError;
 
         if (!userData?.user) {
           router.push("/login");
@@ -661,11 +515,11 @@ export default function ResolverQuizPage() {
 
 
         const [
-          { data: perfil },
+          { data: perfil, error: perfilError },
           { data: qz, error: quizError },
-          { count: intentosCount },
-          { data: bestIntento },
-          { data: ultimoIntento },
+          { count: intentosCount, error: intentosCountError },
+          { data: bestIntento, error: bestIntentoError },
+          { data: ultimoIntento, error: ultimoIntentoError },
           { data: preg, error: preguntasError },
         ] = await Promise.all([
           supabase
@@ -709,12 +563,16 @@ export default function ResolverQuizPage() {
             .order("orden", { ascending: true }),
         ]);
 
-        if (quizError) {
-          console.error("Error cargando quiz:", quizError);
-        }
+        const errorInicial =
+          perfilError ??
+          quizError ??
+          intentosCountError ??
+          bestIntentoError ??
+          ultimoIntentoError ??
+          preguntasError;
 
-        if (preguntasError) {
-          console.error("Error cargando preguntas:", preguntasError);
+        if (errorInicial || !qz) {
+          throw errorInicial ?? new Error("El quiz no está disponible.");
         }
 
         const rolUser = perfil?.rol || "estudiante";
@@ -729,7 +587,7 @@ export default function ResolverQuizPage() {
             });
 
           if (respuestasError) {
-            console.error("Error cargando respuestas:", respuestasError);
+            throw respuestasError;
           }
 
           preguntasData.forEach((p) => {
@@ -749,6 +607,24 @@ export default function ResolverQuizPage() {
                 : {}),
             });
           });
+        }
+
+        const imagenesQuiz = extraerFuentesImagenHtml(
+          ...preguntasData.map((pregunta) => pregunta.enunciado),
+          ...Object.values(mapa).flatMap((opciones) =>
+            opciones.map((respuesta) => respuesta.texto)
+          )
+        );
+
+        const imagenesQuizCompletas = await precargarImagenes(
+          imagenesQuiz,
+          30_000
+        );
+
+        if (!imagenesQuizCompletas) {
+          throw new Error(
+            "La conexión no permitió preparar todas las imágenes del quiz."
+          );
         }
 
         const intentos = intentosCount || 0;
@@ -776,19 +652,6 @@ export default function ResolverQuizPage() {
         setIntentosRealizados(intentos);
         setMejorPuntaje(best);
 
-        guardarStaticCache(quizId, {
-          quizInfo: (qz as QuizInfo) ?? null,
-          preguntas: preguntasData,
-          respuestas: mapa,
-        });
-
-        guardarUserCache(currentUserId, quizId, {
-          rol: rolUser,
-          intentosRealizados: intentos,
-          mejorPuntaje: best,
-          esPreview: preview,
-        });
-
         if (!preview) {
           const { data: intentoActivo, error: intentoActivoError } =
             await supabase.rpc("obtener_intento_activo_quiz", {
@@ -796,10 +659,7 @@ export default function ResolverQuizPage() {
             });
 
           if (intentoActivoError) {
-            console.error(
-              "Error comprobando intento activo:",
-              intentoActivoError
-            );
+            throw intentoActivoError;
           } else if (intentoActivo?.intento_id) {
             prepararIntentoActivo(
               intentoActivo as IntentoActivoServidor,
@@ -812,10 +672,7 @@ export default function ResolverQuizPage() {
               });
 
             if (ultimoResumenError) {
-              console.warn(
-                "No se pudo comprobar el último intento automático:",
-                ultimoResumenError
-              );
+              throw ultimoResumenError;
             } else if (
               ultimoResumen?.envio_automatico &&
               ultimoResumen?.intento_id &&
@@ -834,6 +691,11 @@ export default function ResolverQuizPage() {
         }
       } catch (e) {
         console.error("Error inicializando quiz:", e);
+        setErrorCarga(
+          e instanceof Error
+            ? e.message
+            : "No se pudo confirmar toda la información del quiz."
+        );
       } finally {
         setLoading(false);
         setVerificandoIntentos(false);
@@ -841,7 +703,7 @@ export default function ResolverQuizPage() {
     };
 
     fetchData();
-  }, [quizId, router]);
+  }, [quizId, router, reintentoCarga]);
 
   useEffect(() => {
     seleccionadasRef.current = seleccionadas;
@@ -1338,13 +1200,6 @@ export default function ResolverQuizPage() {
         setRetroalimentacionIntento({});
       }
 
-      guardarUserCache(userId, quizId, {
-        rol,
-        intentosRealizados: resultadoServidor.numero_intento,
-        mejorPuntaje: nuevoMejor,
-        esPreview: false,
-      });
-
       limpiarActiveLocalCache(userId, quizId);
       intentoActivoIdRef.current = null;
       setIntentoActivoId(null);
@@ -1371,8 +1226,6 @@ export default function ResolverQuizPage() {
           })
         );
       }
-
-      limpiarCachesDerivados();
 
       try {
         const { verificarLogros } = await import(
@@ -1545,6 +1398,9 @@ export default function ResolverQuizPage() {
       }
 
       if (pendiente.tipo === "navegar") {
+        iniciarIndicadorNavegacionFCC("Abriendo la sección", {
+          destino: pendiente.destino,
+        });
         router.push(pendiente.destino);
         return;
       }
@@ -2733,60 +2589,22 @@ export default function ResolverQuizPage() {
   if (loading || (!esPreview && verificandoIntentos)) {
     return (
       <LayoutGeneral rol={rol}>
-        {estilos}
+        <CargadorFCC
+          mensaje="Preparando el quiz"
+          detalle="Confirmando preguntas, respuestas, intentos y tiempo disponible…"
+        />
+      </LayoutGeneral>
+    );
+  }
 
-        <div className="quiz-page">
-          <section className="quiz-card quiz-header quiz-skeleton">
-            <div className="quiz-card-content">
-              <div
-                className="quiz-skeleton-block"
-                style={{
-                  width: "180px",
-                  height: "16px",
-                  margin: "0 auto 16px",
-                }}
-              />
-
-              <div
-                className="quiz-skeleton-block"
-                style={{
-                  width: "min(680px, 86%)",
-                  height: "44px",
-                  margin: "0 auto",
-                }}
-              />
-
-              <div
-                className="quiz-skeleton-block"
-                style={{
-                  width: "min(520px, 70%)",
-                  height: "18px",
-                  margin: "16px auto 0",
-                }}
-              />
-            </div>
-          </section>
-
-          <section className="quiz-card quiz-intro-card quiz-skeleton">
-            <div className="quiz-card-content quiz-intro-content">
-              <div
-                className="quiz-skeleton-block"
-                style={{
-                  width: "100%",
-                  height: "118px",
-                }}
-              />
-
-              <div
-                className="quiz-skeleton-block"
-                style={{
-                  width: "160px",
-                  height: "44px",
-                }}
-              />
-            </div>
-          </section>
-        </div>
+  if (errorCarga) {
+    return (
+      <LayoutGeneral rol={rol}>
+        <EstadoErrorCargaFCC
+          titulo="El quiz no se mostró incompleto"
+          detalle={errorCarga}
+          onRetry={() => setReintentoCarga((valor) => valor + 1)}
+        />
       </LayoutGeneral>
     );
   }
@@ -3174,7 +2992,13 @@ export default function ResolverQuizPage() {
                 (sinMasIntentos || resultado.correctas === resultado.total) && (
                   <button
                     type="button"
-                    onClick={() => router.push(`/curso/${materiaId}`)}
+                    onClick={() => {
+                      const destino = `/curso/${materiaId}`;
+                      iniciarIndicadorNavegacionFCC("Regresando al curso", {
+                        destino,
+                      });
+                      router.push(destino);
+                    }}
                     className="quiz-secondary-button quiz-emphasis-button"
                   >
                     Regresar al curso

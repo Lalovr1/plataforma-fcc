@@ -21,6 +21,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { iniciarIndicadorNavegacionFCC } from "@/components/IndicadorNavegacionFCC";
 
 interface Props {
   rol: string;
@@ -157,6 +158,11 @@ export default function MenuLateral({ rol }: Props) {
   }
 
   async function ejecutarCerrarSesion() {
+    iniciarIndicadorNavegacionFCC("Cerrando tu sesión", {
+      pantallaCompleta: true,
+      destino: "/login",
+    });
+
     const { supabase } = await import("@/utils/supabaseClient");
 
     try {
@@ -346,7 +352,7 @@ export default function MenuLateral({ rol }: Props) {
           aspect-ratio: 1 / 1;
           background-image: var(
             --fcc-sidebar-logo-image,
-            url("/logos/logo-azul.png")
+            url("/ui/logos/logo-azul.webp")
           );
           background-repeat: no-repeat;
           background-position: center;
@@ -354,6 +360,12 @@ export default function MenuLateral({ rol }: Props) {
           filter: drop-shadow(
             0 0 18px var(--fcc-sidebar-logo-shadow, rgba(35, 212, 255, 0.24))
           );
+          opacity: 0;
+          transition: opacity 180ms ease;
+        }
+
+        html[data-fcc-logo-ready] .fcc-logo-mark {
+          opacity: 1;
         }
 
         .fcc-nav {

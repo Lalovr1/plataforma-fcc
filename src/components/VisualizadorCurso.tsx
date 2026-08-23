@@ -7,7 +7,7 @@
 
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import CirculoProgreso from "@/components/CirculoProgreso";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
@@ -16,6 +16,11 @@ import katex from "katex";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { CheckCircle2, CircleAlert, ClipboardList, RotateCcw, Target } from "lucide-react";
+import CargadorFCC from "@/components/CargadorFCC";
+import {
+  extraerFuentesImagenHtml,
+  precargarImagenes,
+} from "@/lib/imagenes";
 
 type Rol = "estudiante" | "profesor";
 
@@ -80,23 +85,6 @@ type QuizEstadoUsuario = {
   agotado: boolean;
 };
 
-type VisualizadorCursoCache = {
-  timestamp: number;
-  materia: any;
-  progreso: number;
-  bloques: Bloque[];
-  unidades: Unidad[];
-  formulas: Formula[];
-  fileMaps: Record<string, Record<string, { name: string; url: string }>>;
-  rankingTopCurso: RankingCursoUsuario[];
-  contextoRankingCurso: ContextoRankingCurso;
-};
-
-const CURSO_CACHE_KEY_BASE = "fcc_academy_visualizador_curso_v2";
-
-const getCursoCacheKey = (materiaId: string, userId: string, rol: Rol) =>
-  `${CURSO_CACHE_KEY_BASE}_${rol}_${userId}_${materiaId}`;
-
 const parseAvatarConfig = (value: any): AvatarConfig | null => {
   if (!value) return null;
 
@@ -128,65 +116,6 @@ const normalizarMateriaCache = (materia: any) => {
       : profesor,
   };
 };
-
-const guardarCursoCache = (
-  materiaId: string,
-  userId: string,
-  rol: Rol,
-  data: Omit<VisualizadorCursoCache, "timestamp">
-) => {
-  try {
-    sessionStorage.setItem(
-      getCursoCacheKey(materiaId, userId, rol),
-      JSON.stringify({
-        timestamp: Date.now(),
-        ...data,
-      })
-    );
-  } catch {}
-};
-
-const leerCursoCache = (
-  materiaId: string,
-  userId: string,
-  rol: Rol
-): VisualizadorCursoCache | null => {
-  try {
-    const raw = sessionStorage.getItem(getCursoCacheKey(materiaId, userId, rol));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!parsed?.materia) return null;
-    if (!Array.isArray(parsed?.bloques)) return null;
-    if (!Array.isArray(parsed?.unidades)) return null;
-    if (!Array.isArray(parsed?.formulas)) return null;
-
-    return {
-      timestamp: Number(parsed.timestamp) || Date.now(),
-      materia: normalizarMateriaCache(parsed.materia),
-      progreso: Number(parsed.progreso ?? 0),
-      bloques: parsed.bloques,
-      unidades: parsed.unidades,
-      formulas: parsed.formulas,
-      fileMaps: parsed.fileMaps ?? {},
-      rankingTopCurso: Array.isArray(parsed.rankingTopCurso)
-        ? parsed.rankingTopCurso
-        : [],
-      contextoRankingCurso: parsed.contextoRankingCurso ?? {
-        esVisitante: false,
-        tieneInscripcion: false,
-        carreraNombre: null,
-        semestre: null,
-        periodoNombre: null,
-        seccionNombre: null,
-      },
-    };
-  } catch {
-    return null;
-  }
-};
-
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
 const isVideo = (name: string) => /\.(mp4|webm|ogg|mov|mkv)$/i.test(name);
@@ -292,6 +221,8 @@ export default function VisualizadorCurso({
   const [formulas, setFormulas] = useState<Formula[]>([]);
   const [flippedFormulas, setFlippedFormulas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [reintentoCarga, setReintentoCarga] = useState(0);
 
   const [previewMedia, setPreviewMedia] = useState<{
     type: "image" | "video";
@@ -316,17 +247,9 @@ export default function VisualizadorCurso({
     periodoNombre: null,
     seccionNombre: null,
   });
-  const cacheAplicadoRef = useRef(false);
-
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-
-      try {
-        sessionStorage.removeItem(
-          getCursoCacheKey(materiaId, userId, rol)
-        );
-      } catch {}
 
       window.location.reload();
     };
@@ -338,59 +261,14 @@ export default function VisualizadorCurso({
     };
   }, [materiaId, userId, rol]);
 
-  useLayoutEffect(() => {
-    const cache = leerCursoCache(materiaId, userId, rol);
-
-    if (!cache) return;
-
-    cacheAplicadoRef.current = true;
-
-    setMateria(cache.materia);
-    setProgreso(cache.progreso);
-    setBloques(cache.bloques);
-    setUnidades(cache.unidades);
-    setFormulas(cache.formulas);
-    setFileMaps(cache.fileMaps);
-    setRankingTopCurso(cache.rankingTopCurso);
-    setContextoRankingCurso(cache.contextoRankingCurso);
-    setLoading(false);
-  }, [materiaId, userId, rol]);
-
-  useEffect(() => {
-    if (loading || !materia) return;
-
-    guardarCursoCache(materiaId, userId, rol, {
-      materia,
-      progreso,
-      bloques,
-      unidades,
-      formulas,
-      fileMaps,
-      rankingTopCurso,
-      contextoRankingCurso,
-    });
-  }, [
-    materiaId,
-    userId,
-    rol,
-    loading,
-    materia,
-    progreso,
-    bloques,
-    unidades,
-    formulas,
-    fileMaps,
-    rankingTopCurso,
-    contextoRankingCurso,
-  ]);
-
   useEffect(() => {
     const fetchData = async () => {
-      if (!cacheAplicadoRef.current) {
-        setLoading(true);
-      }
+      setLoading(true);
+      setErrorCarga(null);
 
-      const { data: mat } = await supabase
+      try {
+
+      const { data: mat, error: materiaError } = await supabase
         .from("materias")
         .select(`
           id,
@@ -404,13 +282,22 @@ export default function VisualizadorCurso({
         `)
         .eq("id", materiaId)
         .single();
+
+      if (materiaError || !mat) {
+        throw new Error("No se pudo obtener la información vigente del curso.");
+      }
+
       setMateria(normalizarMateriaCache(mat));
 
             if (rol === "estudiante") {
-              const { data: quizzesMateria } = await supabase
+              const { data: quizzesMateria, error: quizzesMateriaError } = await supabase
                 .from("quizzes")
                 .select("id,intentos_max")
                 .eq("materia_id", materiaId);
+
+              if (quizzesMateriaError) {
+                throw new Error("No se pudieron confirmar los quizzes del curso.");
+              }
 
               const quizzesActuales = (quizzesMateria || []) as {
                 id: string;
@@ -425,11 +312,15 @@ export default function VisualizadorCurso({
               }[] = [];
 
               if (quizIdsMateria.length > 0) {
-                const { data: intentosData } = await supabase
+                const { data: intentosData, error: intentosError } = await supabase
                   .from("intentos_quiz")
                   .select("quiz_id,puntaje")
                   .eq("usuario_id", userId)
                   .in("quiz_id", quizIdsMateria);
+
+                if (intentosError) {
+                  throw new Error("No se pudo confirmar tu progreso en los quizzes.");
+                }
 
                 intentosUsuario =
                   (intentosData as {
@@ -487,19 +378,23 @@ export default function VisualizadorCurso({
                   : 0
               );
 
-              const { data: inscripcionActual } = await supabase
+              const { data: inscripcionActual, error: inscripcionError } = await supabase
                 .from("progreso")
                 .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
                 .eq("materia_id", materiaId)
                 .eq("usuario_id", userId)
                 .maybeSingle();
 
+              if (inscripcionError) {
+                throw new Error("No se pudo confirmar tu inscripción al curso.");
+              }
+
                       if (inscripcionActual && !inscripcionActual.es_visitante) {
           const [
-            { data: carreraActual },
-            { data: periodoActual },
-            { data: seccionActual },
-            { data: cursoCarreraActual },
+            { data: carreraActual, error: carreraError },
+            { data: periodoActual, error: periodoError },
+            { data: seccionActual, error: seccionError },
+            { data: cursoCarreraActual, error: cursoCarreraError },
           ] = await Promise.all([
             supabase
               .from("carreras")
@@ -526,6 +421,10 @@ export default function VisualizadorCurso({
               .eq("carrera_id", inscripcionActual.carrera_id)
               .maybeSingle(),
           ]);
+
+          if (carreraError || periodoError || seccionError || cursoCarreraError) {
+            throw new Error("No se pudo confirmar el grupo actual del curso.");
+          }
 
           setContextoRankingCurso({
             esVisitante: false,
@@ -554,11 +453,7 @@ export default function VisualizadorCurso({
                 });
 
               if (rankingError) {
-                console.error(
-                  "Error cargando ranking seguro del curso:",
-                  rankingError
-                );
-                setRankingTopCurso([]);
+                throw new Error("No se pudo confirmar el ranking del curso.");
               } else {
                 setRankingTopCurso(
                   ((rankingSeguro as any[]) ?? []).map((row) => ({
@@ -577,7 +472,12 @@ export default function VisualizadorCurso({
                 .select("usuario_id, carrera_id, periodo_id, seccion_id, es_visitante")
                 .eq("materia_id", materiaId);
 
-              const { data: progresoRanking } = await progresoQuery;
+              const { data: progresoRanking, error: progresoRankingError } =
+                await progresoQuery;
+
+              if (progresoRankingError) {
+                throw new Error("No se pudieron confirmar las inscripciones del curso.");
+              }
 
               const usuariosRankingIds = Array.from(
                 new Set((progresoRanking || []).map((p: any) => p.usuario_id))
@@ -595,18 +495,26 @@ export default function VisualizadorCurso({
               if (usuariosRankingIds.length === 0) {
                 setRankingTopCurso([]);
               } else {
-                const { data: usuariosRanking } = await supabase
+                const { data: usuariosRanking, error: usuariosRankingError } = await supabase
                   .from("usuarios")
                   .select("id, nombre, rol")
                   .in("id", usuariosRankingIds)
                   .eq("rol", "estudiante");
 
+                if (usuariosRankingError) {
+                  throw new Error("No se pudieron confirmar los estudiantes del ranking.");
+                }
+
                 const estudiantesIds = (usuariosRanking || []).map((u: any) => u.id);
 
-                const { data: quizzesRanking } = await supabase
+                const { data: quizzesRanking, error: quizzesRankingError } = await supabase
                   .from("quizzes")
                   .select("id, xp")
                   .eq("materia_id", materiaId);
+
+                if (quizzesRankingError) {
+                  throw new Error("No se pudieron confirmar los quizzes del ranking.");
+                }
 
                 const quizIds = (quizzesRanking || []).map((q: any) => q.id);
                 const xpPorQuiz = Object.fromEntries(
@@ -624,11 +532,15 @@ export default function VisualizadorCurso({
                       .slice(0, 3)
                   );
                 } else {
-                  const { data: intentosRanking } = await supabase
+                  const { data: intentosRanking, error: intentosRankingError } = await supabase
                     .from("intentos_quiz")
                     .select("quiz_id, usuario_id, puntaje")
                     .in("usuario_id", estudiantesIds)
                     .in("quiz_id", quizIds);
+
+                  if (intentosRankingError) {
+                    throw new Error("No se pudieron confirmar los intentos del ranking.");
+                  }
 
                   const mejoresPorUsuarioQuiz: Record<string, Record<string, number>> = {};
 
@@ -663,30 +575,42 @@ export default function VisualizadorCurso({
               }
             }
 
-      const { data: unidadesData } = await supabase
+      const { data: unidadesData, error: unidadesError } = await supabase
         .from("curso_unidades")
         .select("id, materia_id, numero, nombre, orden")
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
 
+      if (unidadesError) {
+        throw new Error("No se pudieron confirmar las unidades del curso.");
+      }
+
       setUnidades((unidadesData || []) as Unidad[]);
 
-      const { data: bl } = await supabase
+      const { data: bl, error: bloquesError } = await supabase
         .from("curso_contenido_bloques")
         .select("*")
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
+
+      if (bloquesError) {
+        throw new Error("No se pudieron confirmar los bloques de contenido.");
+      }
 
       const bloqueIds = (bl || []).map((b: any) => b.id);
 
       let quizzesPorBloque: Record<string, Bloque["quizzes"]> = {};
 
       if (bloqueIds.length > 0) {
-        const { data: quizzesBloques } = await supabase
+        const { data: quizzesBloques, error: quizzesBloquesError } = await supabase
           .from("quizzes")
           .select("id, titulo, descripcion, xp, orden, bloque_id")
           .in("bloque_id", bloqueIds)
           .order("orden", { ascending: true });
+
+        if (quizzesBloquesError) {
+          throw new Error("No se pudieron confirmar los quizzes de los bloques.");
+        }
 
         (quizzesBloques || []).forEach((q: any) => {
           if (!quizzesPorBloque[q.bloque_id]) {
@@ -709,7 +633,11 @@ export default function VisualizadorCurso({
       }));
 
       setBloques(bloquesConQuizzes);
-      const { data: fm } = await supabase
+      const imagenesContenido = extraerFuentesImagenHtml(
+        ...bloquesConQuizzes.map((bloque) => bloque.contenido)
+      );
+      const imagenesArchivos: string[] = [];
+      const { data: fm, error: formulasError } = await supabase
         .from("curso_formulas")
         .select("id, titulo, ecuacion, descripcion, bloque_id, publica, created_at, orden")
         .eq("publica", true)
@@ -721,29 +649,61 @@ export default function VisualizadorCurso({
         )
         .order("orden", { ascending: true })
         .order("created_at", { ascending: true });
+
+      if (formulasError) {
+        throw new Error("No se pudieron confirmar las fórmulas del curso.");
+      }
       setFormulas((fm || []) as Formula[]);
 
       if (bloqueIds.length) {
-        const { data: files } = await supabase
+        const { data: files, error: archivosError } = await supabase
           .from("curso_archivos")
           .select("bloque_id, nombre, url")
           .in("bloque_id", bloqueIds);
+
+        if (archivosError) {
+          throw new Error("No se pudieron confirmar los archivos del curso.");
+        }
 
         const map: Record<string, Record<string, { name: string; url: string }>> = {};
         (files || []).forEach((f: any) => {
           if (!map[f.bloque_id]) map[f.bloque_id] = {};
           map[f.bloque_id][f.nombre] = { name: f.nombre, url: f.url };
+
+          if (isImage(f.nombre) && f.url) {
+            imagenesArchivos.push(f.url);
+          }
         });
         setFileMaps(map);
       } else {
         setFileMaps({});
       }
 
-      setLoading(false);
+      const imagenesCompletas = await precargarImagenes(
+        [...imagenesContenido, ...imagenesArchivos],
+        30_000
+      );
+
+      if (!imagenesCompletas) {
+        throw new Error(
+          "La conexión no permitió preparar todas las imágenes del curso."
+        );
+      }
+
+      } catch (error) {
+        console.error("Error cargando el curso completo:", error);
+        setErrorCarga(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar el curso completo."
+        );
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchData();
-  }, [materiaId, userId, rol]);
+    void fetchData();
+  }, [materiaId, userId, rol, reintentoCarga]);
 
   const estilos = (
     <style>{`
@@ -1149,21 +1109,36 @@ export default function VisualizadorCurso({
     return (
       <>
         {estilos}
+        <CargadorFCC
+          mensaje="Sincronizando el curso"
+          detalle="Reuniendo contenido, progreso, quizzes, archivos y ranking antes de mostrarlo…"
+        />
+      </>
+    );
+  }
 
-        <div className="visualizador-curso-shell min-h-[60dvh] flex flex-col items-center justify-center gap-3 text-center">
-          <div className="curso-premium-card px-8 py-7">
-            <div className="curso-card-content flex flex-col items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-                style={{
-                  borderColor: "var(--fcc-premium-accent)",
-                  borderTopColor: "transparent",
-                }}
-              />
-
-              <p className="font-bold" style={{ color: "var(--fcc-premium-muted)" }}>
-                Cargando curso...
-              </p>
+  if (errorCarga) {
+    return (
+      <>
+        {estilos}
+        <div className="visualizador-curso-shell min-h-[60dvh] grid place-items-center px-4 text-center">
+          <div className="curso-premium-card max-w-lg px-8 py-7">
+            <div className="curso-card-content grid justify-items-center gap-4">
+              <CircleAlert size={34} style={{ color: "var(--color-danger)" }} />
+              <div>
+                <h2 className="text-xl font-black">El curso no se mostró incompleto</h2>
+                <p className="mt-2 font-semibold" style={{ color: "var(--fcc-premium-muted)" }}>
+                  {errorCarga}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReintentoCarga((actual) => actual + 1)}
+                className="rounded-xl px-5 py-2.5 font-black text-white"
+                style={{ background: "var(--fcc-premium-button)" }}
+              >
+                Reintentar
+              </button>
             </div>
           </div>
         </div>

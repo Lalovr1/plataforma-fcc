@@ -7,7 +7,6 @@
 import {
   useState,
   useEffect,
-  useLayoutEffect,
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
@@ -17,6 +16,8 @@ import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
 import GridLogros from "@/components/GridLogros";
+import CargadorFCC from "@/components/CargadorFCC";
+import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import { X } from "lucide-react";
 
 interface Usuario {
@@ -27,20 +28,12 @@ interface Usuario {
   avatar_config: AvatarConfig | null;
 }
 
-interface RankingCache {
-  timestamp: number;
-  usuarios: Usuario[];
-}
-
 interface LogroModal {
   id: string;
   titulo: string;
   descripcion?: string;
   icono_url: string;
 }
-
-const CACHE_KEY = "fcc_academy_ranking_profesor_v1";
-const LOGROS_CACHE_KEY_BASE = "fcc_academy_profesor_ranking_logros_v1";
 
 const defaultAvatar: AvatarConfig = {
   gender: "masculino",
@@ -108,81 +101,13 @@ function AvatarRanking({
 export default function ProfesorRanking() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargandoInicial, setCargandoInicial] = useState(true);
-  const [cacheCargado, setCacheCargado] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [reintento, setReintento] = useState(0);
 
   const [selectedUsuario, setSelectedUsuario] = useState<Usuario | null>(null);
   const [logros, setLogros] = useState<LogroModal[]>([]);
   const [loadingLogros, setLoadingLogros] = useState(false);
-
-  const guardarCache = (rankingUsuarios: Usuario[]) => {
-    try {
-      sessionStorage.setItem(
-        CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          usuarios: rankingUsuarios,
-        })
-      );
-    } catch {}
-  };
-
-  const leerCache = (): RankingCache | null => {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.usuarios)) return null;
-
-      return {
-        timestamp: Number(parsed.timestamp) || Date.now(),
-        usuarios: parsed.usuarios,
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  const getLogrosCacheKey = (usuarioId: string) =>
-    `${LOGROS_CACHE_KEY_BASE}_${usuarioId}`;
-
-  const guardarLogrosCache = (usuarioId: string, data: LogroModal[]) => {
-    try {
-      sessionStorage.setItem(
-        getLogrosCacheKey(usuarioId),
-        JSON.stringify({
-          timestamp: Date.now(),
-          logros: data,
-        })
-      );
-    } catch {}
-  };
-
-  const leerLogrosCache = (usuarioId: string): LogroModal[] | null => {
-    try {
-      const raw = sessionStorage.getItem(getLogrosCacheKey(usuarioId));
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed?.logros)) return null;
-
-      return parsed.logros;
-    } catch {
-      return null;
-    }
-  };
-
-  useLayoutEffect(() => {
-    const cache = leerCache();
-
-    if (!cache) return;
-
-    setUsuarios(cache.usuarios);
-    setCacheCargado(true);
-    setCargandoInicial(false);
-  }, []);
+  const [errorLogrosPerfil, setErrorLogrosPerfil] = useState(false);
 
   const fetchRanking = async () => {
     const { data: ranking, error } = await supabase
@@ -193,8 +118,7 @@ export default function ProfesorRanking() {
       .limit(20);
 
     if (error) {
-      console.error("Error cargando ranking de profesor:", error);
-      return;
+      throw error;
     }
 
     const rankingUsuarios = ((ranking as any[]) ?? [])
@@ -202,29 +126,25 @@ export default function ProfesorRanking() {
       .filter(Boolean) as Usuario[];
 
     setUsuarios(rankingUsuarios);
-    guardarCache(rankingUsuarios);
   };
 
   useEffect(() => {
     const init = async () => {
+      setCargandoInicial(true);
+      setErrorCarga(false);
+
       try {
-        const cache = leerCache();
-
-        if (cache && !cacheCargado) {
-          setUsuarios(cache.usuarios);
-          setCargandoInicial(false);
-        }
-
         await fetchRanking();
       } catch (e) {
         console.error("Error inicializando ranking de profesor:", e);
+        setErrorCarga(true);
       } finally {
         setCargandoInicial(false);
       }
     };
 
     init();
-  }, []);
+  }, [reintento]);
 
   const renderPosicion = (index: number) => {
     if (index === 0) return "1°";
@@ -245,57 +165,47 @@ export default function ProfesorRanking() {
   const abrirPerfil = async (usuario: Usuario) => {
     setSelectedUsuario(usuario);
 
-    const cache = leerLogrosCache(usuario.id);
+    setLogros([]);
+    setLoadingLogros(true);
+    setErrorLogrosPerfil(false);
 
-    if (cache) {
-      setLogros(cache);
-      setLoadingLogros(false);
-    } else {
+    try {
+      const { data: relaciones, error: errorRelaciones } = await supabase
+        .from("logros_usuarios")
+        .select("logro_id")
+        .eq("usuario_id", usuario.id);
+
+      if (errorRelaciones) throw errorRelaciones;
+
+      if (!relaciones || relaciones.length === 0) {
+        setLogros([]);
+        return;
+      }
+
+      const logroIds = relaciones.map((r: any) => r.logro_id);
+
+      const { data: logrosData, error: errorLogros } = await supabase
+        .from("logros")
+        .select("id, nombre, descripcion, icono_url")
+        .in("id", logroIds);
+
+      if (errorLogros) throw errorLogros;
+
+      const parsed = (logrosData ?? []).map((l: any) => ({
+        id: l.id,
+        titulo: l.nombre,
+        descripcion: l.descripcion,
+        icono_url: l.icono_url,
+      }));
+
+      setLogros(parsed);
+    } catch (error) {
+      console.error("Error obteniendo logros:", error);
       setLogros([]);
-      setLoadingLogros(true);
-    }
-
-    const { data: relaciones, error: errorRelaciones } = await supabase
-      .from("logros_usuarios")
-      .select("logro_id")
-      .eq("usuario_id", usuario.id);
-
-    if (errorRelaciones) {
-      console.error("Error obteniendo relaciones:", errorRelaciones);
+      setErrorLogrosPerfil(true);
+    } finally {
       setLoadingLogros(false);
-      return;
     }
-
-    if (!relaciones || relaciones.length === 0) {
-      setLogros([]);
-      guardarLogrosCache(usuario.id, []);
-      setLoadingLogros(false);
-      return;
-    }
-
-    const logroIds = relaciones.map((r: any) => r.logro_id);
-
-    const { data: logrosData, error: errorLogros } = await supabase
-      .from("logros")
-      .select("id, nombre, descripcion, icono_url")
-      .in("id", logroIds);
-
-    if (errorLogros) {
-      console.error("Error obteniendo logros:", errorLogros);
-      setLoadingLogros(false);
-      return;
-    }
-
-    const parsed = (logrosData ?? []).map((l: any) => ({
-      id: l.id,
-      titulo: l.nombre,
-      descripcion: l.descripcion,
-      icono_url: l.icono_url,
-    }));
-
-    setLogros(parsed);
-    guardarLogrosCache(usuario.id, parsed);
-    setLoadingLogros(false);
   };
 
   return (
@@ -934,19 +844,16 @@ export default function ProfesorRanking() {
         </section>
 
         {cargandoInicial ? (
-          <section className="ranking-skeleton-panel animate-pulse">
-            <div className="ranking-skeleton-list">
-              {[1, 2, 3, 4, 5].map((item) => (
-                <div key={item} className="ranking-skeleton-row">
-                  <div className="flex items-center gap-4">
-                    <div className="ranking-skeleton-line h-10 w-14" />
-                    <div className="ranking-skeleton-line h-16 w-16 rounded-full" />
-                    <div className="ranking-skeleton-line h-5 w-44" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <CargadorFCC
+            mensaje="Actualizando el ranking"
+            detalle="Confirmando puntos, posiciones y avatares…"
+          />
+        ) : errorCarga ? (
+          <EstadoErrorCargaFCC
+            titulo="No se pudo confirmar el ranking"
+            detalle="No se mostraron posiciones anteriores ni una lista incompleta."
+            onRetry={() => setReintento((valor) => valor + 1)}
+          />
         ) : (
           <section className="ranking-panel">
             <h2 className="ranking-section-title">Top estudiantes</h2>
@@ -1042,6 +949,15 @@ export default function ProfesorRanking() {
                       />
                     ))}
                   </div>
+                ) : errorLogrosPerfil ? (
+                  <EstadoErrorCargaFCC
+                    compacto
+                    titulo="No se pudieron confirmar los logros"
+                    detalle="No se mostró una lista vacía como si fuera el estado real."
+                    onRetry={() => {
+                      if (selectedUsuario) void abrirPerfil(selectedUsuario);
+                    }}
+                  />
                 ) : logros.length === 0 ? (
                   <div className="ranking-logros-empty">
                     Este usuario aún no tiene logros.

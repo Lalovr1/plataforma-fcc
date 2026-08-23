@@ -30,7 +30,7 @@
 .theme-claro {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-azul.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-azul.webp");
   --color-bg: #f4f8ff;
   --color-text: #1e293b;
   --color-heading: #0f172a;
@@ -147,7 +147,7 @@
 .theme-blanco {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-blanco.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-blanco.webp");
   --color-bg: #f8fafc;
   --color-text: #1f2937;
   --color-heading: #111827;
@@ -263,7 +263,7 @@
 .theme-oscuro {
   color-scheme: dark;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-negro.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-negro.webp");
   --color-bg: #050505;
   --color-text: #f5f5f5;
   --color-heading: #ffffff;
@@ -380,7 +380,7 @@
 .theme-gris {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-gris.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-gris.webp");
   --color-bg: #f1f5f9;
   --color-text: #1f2937;
   --color-heading: #111827;
@@ -496,7 +496,7 @@
 .theme-esmeralda {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-esmeralda.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-esmeralda.webp");
   --color-bg: #f0fdf9;
   --color-text: #123c34;
   --color-heading: #06251f;
@@ -613,7 +613,7 @@
 .theme-morado {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-morado.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-morado.webp");
   --color-bg: #faf5ff;
   --color-text: #3b2463;
   --color-heading: #251044;
@@ -730,7 +730,7 @@
 .theme-indigo {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-indigo.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-indigo.webp");
   --color-bg: #eef2ff;
   --color-text: #202957;
   --color-heading: #111947;
@@ -847,7 +847,7 @@
 .theme-rojo {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-rojo.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-rojo.webp");
   --color-bg: #fff5f5;
   --color-text: #3f1d1d;
   --color-heading: #230f0f;
@@ -964,7 +964,7 @@
 .theme-rosa {
   color-scheme: light;
 
-  --fcc-sidebar-logo-image: url("/logos/logo-rosa.png");
+  --fcc-sidebar-logo-image: url("/ui/logos/logo-rosa.webp");
   --color-bg: #fff5fb;
   --color-text: #3b2135;
   --color-heading: #261326;
@@ -1566,4 +1566,56 @@ textarea::placeholder {
 
 [data-rht-toaster] > div {
   z-index: 999999 !important;
+}
+
+/*
+ * Mientras una navegación está coordinada, las cargas internas continúan
+ * trabajando y bloqueando la revelación, pero no compiten visualmente con el
+ * único indicador principal.
+ */
+html[data-fcc-navigation-pending="true"]
+  .fcc-loader:not(.fcc-navigation-indicator) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Cubierta de los primeros milisegundos de una navegación completa. Evita
+   que el HTML previo a la hidratación alcance a revelar datos o capas. */
+html[data-fcc-navigation-boot] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 28999;
+  pointer-events: auto;
+  background: var(--gradient-soft, #f7f9fc);
+}
+
+html[data-fcc-navigation-boot="pantalla"] body::before {
+  z-index: 31999;
+}
+
+@media (min-width: 1024px) {
+  html[data-fcc-navigation-boot="pagina"] body::before {
+    left: var(--fcc-sidebar-width, 16rem);
+  }
+}
+
+.fcc-reward-overlay {
+  animation: fcc-reward-overlay-in 220ms ease-out both;
+}
+
+@keyframes fcc-reward-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcc-reward-overlay {
+    animation: none;
+  }
 }
