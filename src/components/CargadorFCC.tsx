@@ -2,6 +2,8 @@
 
 import { useId, type CSSProperties } from "react";
 
+export const DURACION_MINIMA_CARGADOR_FCC_MS = 950;
+
 type CargadorFCCProps = {
   mensaje?: string;
   detalle?: string;
@@ -9,6 +11,8 @@ type CargadorFCCProps = {
   pantallaCompleta?: boolean;
   pagina?: boolean;
   flotante?: boolean;
+  sobreModal?: boolean;
+  temaPublico?: boolean;
   className?: string;
 };
 
@@ -19,18 +23,37 @@ export default function CargadorFCC({
   pantallaCompleta = false,
   pagina = false,
   flotante = false,
+  sobreModal = false,
+  temaPublico = false,
   className = "",
 }: CargadorFCCProps) {
   const id = useId().replace(/:/g, "");
   const clipId = `fcc-loader-clip-${id}`;
   const gradientId = `fcc-loader-gradient-${id}`;
+  const esFlotante = flotante || sobreModal;
 
-  const estiloContenedor: CSSProperties = flotante
+  // Las rutas públicas siempre usan la identidad azul predeterminada. Este
+  // override también mantiene estable Login -> Dashboard mientras, por debajo,
+  // se prepara el tema real del usuario.
+  const estiloTemaPublico = temaPublico
+    ? ({
+        "--fcc-premium-accent": "#2563eb",
+        "--fcc-premium-cyan": "#23d4ff",
+        "--fcc-premium-heading": "#10213f",
+        "--fcc-premium-muted": "#64748b",
+        "--fcc-premium-surface": "rgba(255,255,255,.96)",
+        "--fcc-premium-border": "rgba(125,181,255,.22)",
+        "--gradient-soft":
+          "radial-gradient(circle at 8% 4%, rgba(37,99,235,.11), transparent 28%), radial-gradient(circle at 92% 86%, rgba(14,165,233,.11), transparent 32%), #f4f8ff",
+      } as CSSProperties)
+    : {};
+
+  const estiloContenedor: CSSProperties = esFlotante
     ? {
         position: "fixed",
         right: "max(18px, env(safe-area-inset-right))",
         bottom: "max(18px, env(safe-area-inset-bottom))",
-        zIndex: 30000,
+        zIndex: sobreModal ? 120000 : 30000,
         width: "auto",
         maxWidth: "min(360px, calc(100vw - 36px))",
         minHeight: 0,
@@ -95,8 +118,8 @@ export default function CargadorFCC({
 
   const estiloMarca: CSSProperties = {
     position: "relative",
-    width: flotante ? 42 : compacto ? 76 : 134,
-    height: flotante ? 48 : compacto ? 88 : 154,
+    width: esFlotante ? 42 : compacto ? 76 : 134,
+    height: esFlotante ? 48 : compacto ? 88 : 154,
     display: "grid",
     placeItems: "center",
     flex: "0 0 auto",
@@ -106,8 +129,10 @@ export default function CargadorFCC({
     <div
       className={`fcc-loader ${compacto ? "is-compact" : ""} ${
         pantallaCompleta ? "is-screen" : ""
-      } ${pagina ? "is-page" : ""} ${flotante ? "is-floating" : ""} ${className}`}
-      style={estiloContenedor}
+      } ${pagina ? "is-page" : ""} ${esFlotante ? "is-floating" : ""} ${
+        sobreModal ? "is-over-modal" : ""
+      } ${className}`}
+      style={{ ...estiloContenedor, ...estiloTemaPublico }}
       role="status"
       aria-live="polite"
       aria-busy="true"

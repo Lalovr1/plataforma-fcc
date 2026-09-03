@@ -25,9 +25,308 @@ interface Props {
 }
 
 const FRAMES_COFRE = FRAMES_COFRE_FCC;
+const AJUSTE_CENTRO_COFRE_X = "50%";
+const POSICION_COFRE_Y = "55dvh";
+const POSICION_RECOMPENSA_Y = "14.25dvh";
 
 const prepararImagenRecompensa = (src: string) =>
   obtenerUrlImagenOptimizada(src || "/ui/trophy-default.svg", 256, 75);
+
+interface AuraExteriorRender {
+  src: string;
+  contentWidthPct: number;
+  contentHeightPct: number;
+  auraOffsetXPct: number;
+  auraOffsetYPct: number;
+  auraWidthPct: number;
+  auraHeightPct: number;
+}
+
+const auraExteriorCache = new Map<
+  string,
+  Promise<AuraExteriorRender | null>
+>();
+
+function crearAuraExterior(
+  src: string,
+  color: string
+): Promise<AuraExteriorRender | null> {
+  const clave = `${src}|${color}`;
+
+  const existente = auraExteriorCache.get(clave);
+  if (existente) return existente;
+
+  const promesa = new Promise<AuraExteriorRender | null>((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(null);
+      return;
+    }
+
+    const imagen = new Image();
+    imagen.decoding = "async";
+
+    if (
+      !src.startsWith("/") &&
+      !src.startsWith("data:") &&
+      !src.startsWith("blob:")
+    ) {
+      imagen.crossOrigin = "anonymous";
+    }
+
+    imagen.onload = () => {
+      try {
+        const anchoNatural = Math.max(1, imagen.naturalWidth || 1);
+        const altoNatural = Math.max(1, imagen.naturalHeight || 1);
+        const ladoMaximo = 240;
+        const escala = Math.min(
+          1,
+          ladoMaximo / Math.max(anchoNatural, altoNatural)
+        );
+
+        const ancho = Math.max(1, Math.round(anchoNatural * escala));
+        const alto = Math.max(1, Math.round(altoNatural * escala));
+
+        const origen = document.createElement("canvas");
+        origen.width = ancho;
+        origen.height = alto;
+
+        const ctxOrigen = origen.getContext("2d", {
+          willReadFrequently: true,
+        });
+
+        if (!ctxOrigen) {
+          resolve(null);
+          return;
+        }
+
+        ctxOrigen.clearRect(0, 0, ancho, alto);
+        ctxOrigen.drawImage(imagen, 0, 0, ancho, alto);
+
+        const pixeles = ctxOrigen.getImageData(
+          0,
+          0,
+          ancho,
+          alto
+        );
+
+        const totalPixeles = ancho * alto;
+        const exterior = new Uint8Array(totalPixeles);
+        const cola = new Int32Array(totalPixeles);
+        let inicio = 0;
+        let fin = 0;
+        const umbralAlpha = 18;
+
+        const agregarSiExterior = (indice: number) => {
+          if (
+            indice < 0 ||
+            indice >= totalPixeles ||
+            exterior[indice]
+          ) {
+            return;
+          }
+
+          const alpha = pixeles.data[indice * 4 + 3];
+          if (alpha > umbralAlpha) return;
+
+          exterior[indice] = 1;
+          cola[fin] = indice;
+          fin += 1;
+        };
+
+        for (let x = 0; x < ancho; x += 1) {
+          agregarSiExterior(x);
+          agregarSiExterior((alto - 1) * ancho + x);
+        }
+
+        for (let y = 0; y < alto; y += 1) {
+          agregarSiExterior(y * ancho);
+          agregarSiExterior(y * ancho + (ancho - 1));
+        }
+
+        while (inicio < fin) {
+          const indice = cola[inicio];
+          inicio += 1;
+
+          const x = indice % ancho;
+          const y = Math.floor(indice / ancho);
+
+          if (x > 0) agregarSiExterior(indice - 1);
+          if (x < ancho - 1) agregarSiExterior(indice + 1);
+          if (y > 0) agregarSiExterior(indice - ancho);
+          if (y < alto - 1) agregarSiExterior(indice + ancho);
+        }
+
+        // Todo lo que NO está conectado con el borde se considera parte de
+        // la silueta exterior. Esto rellena huecos internos como los cristales
+        // transparentes de unos lentes y evita que el aura aparezca dentro.
+        const mascara = document.createElement("canvas");
+        mascara.width = ancho;
+        mascara.height = alto;
+
+        const ctxMascara = mascara.getContext("2d");
+        if (!ctxMascara) {
+          resolve(null);
+          return;
+        }
+
+        const datosMascara = ctxMascara.createImageData(
+          ancho,
+          alto
+        );
+
+        for (let i = 0; i < totalPixeles; i += 1) {
+          if (exterior[i]) continue;
+
+          const offset = i * 4;
+          datosMascara.data[offset] = 255;
+          datosMascara.data[offset + 1] = 255;
+          datosMascara.data[offset + 2] = 255;
+          datosMascara.data[offset + 3] = 255;
+        }
+
+        ctxMascara.putImageData(datosMascara, 0, 0);
+
+        const padding = Math.max(
+          22,
+          Math.ceil(Math.max(ancho, alto) * 0.12)
+        );
+
+        const aura = document.createElement("canvas");
+        aura.width = ancho + padding * 2;
+        aura.height = alto + padding * 2;
+
+        const ctxAura = aura.getContext("2d");
+        if (!ctxAura) {
+          resolve(null);
+          return;
+        }
+
+        const dibujarCapa = (
+          blur: number,
+          opacidad: number
+        ) => {
+          const capa = document.createElement("canvas");
+          capa.width = aura.width;
+          capa.height = aura.height;
+
+          const ctxCapa = capa.getContext("2d");
+          if (!ctxCapa) return;
+
+          ctxCapa.filter = `blur(${blur}px)`;
+          ctxCapa.drawImage(mascara, padding, padding);
+          ctxCapa.filter = "none";
+          ctxCapa.globalCompositeOperation = "source-in";
+          ctxCapa.fillStyle = color;
+          ctxCapa.fillRect(0, 0, capa.width, capa.height);
+
+          ctxAura.globalAlpha = opacidad;
+          ctxAura.drawImage(capa, 0, 0);
+          ctxAura.globalAlpha = 1;
+        };
+
+        dibujarCapa(18, 0.38);
+        dibujarCapa(8, 0.82);
+
+        // Borramos la silueta completa (incluidos sus huecos internos
+        // rellenados) para conservar únicamente el halo EXTERIOR.
+        ctxAura.globalCompositeOperation = "destination-out";
+        ctxAura.drawImage(mascara, padding, padding);
+        ctxAura.globalCompositeOperation = "source-over";
+
+        const mayor = Math.max(ancho, alto);
+        const contentWidthPct = (ancho / mayor) * 100;
+        const contentHeightPct = (alto / mayor) * 100;
+        const auraWidthPct = ((ancho + padding * 2) / ancho) * 100;
+        const auraHeightPct = ((alto + padding * 2) / alto) * 100;
+        const auraOffsetXPct = -(padding / ancho) * 100;
+        const auraOffsetYPct = -(padding / alto) * 100;
+
+        resolve({
+          src: aura.toDataURL("image/png"),
+          contentWidthPct,
+          contentHeightPct,
+          auraOffsetXPct,
+          auraOffsetYPct,
+          auraWidthPct,
+          auraHeightPct,
+        });
+      } catch {
+        resolve(null);
+      }
+    };
+
+    imagen.onerror = () => resolve(null);
+    imagen.src = src;
+  });
+
+  auraExteriorCache.set(clave, promesa);
+  return promesa;
+}
+
+const etiquetaRareza: Record<Rareza, string> = {
+  comun: "COMÚN",
+  raro: "RARO",
+  epico: "ÉPICO",
+  legendario: "LEGENDARIO",
+};
+
+function RecompensaVisual({
+  recompensa,
+  variante = "principal",
+  pulseKey = 0,
+}: {
+  recompensa: Recompensa;
+  variante?: "principal" | "resumen";
+  pulseKey?: number;
+}) {
+  const { color } = rarezaConfig[recompensa.rareza];
+  const imagenRender = prepararImagenRecompensa(recompensa.imagen);
+  const principal = variante === "principal";
+
+  return (
+    <div
+      className={
+        principal
+          ? "relative flex aspect-square w-[min(270px,64vw,32dvh)] items-center justify-center"
+          : "relative flex aspect-square w-[min(94px,16vw,12dvh)] items-center justify-center"
+      }
+    >
+      <motion.img
+        key={`${recompensa.imagen}-${pulseKey}-aura`}
+        src={imagenRender}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        decoding="async"
+        className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+        style={{
+          filter: principal
+            ? `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 18px ${color}) drop-shadow(0 0 34px ${color})`
+            : `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 10px ${color}) drop-shadow(0 0 18px ${color})`,
+        }}
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={
+          principal
+            ? { opacity: [0.56, 0.92, 0.72], scale: [0.985, 1.018, 0.995] }
+            : { opacity: 0.74, scale: 1 }
+        }
+        transition={
+          principal
+            ? { duration: 1.1, ease: "easeInOut" }
+            : { duration: 0.35, ease: "easeOut" }
+        }
+      />
+
+      <img
+        src={imagenRender}
+        alt={recompensa.nombre}
+        draggable={false}
+        decoding="async"
+        className="relative z-10 h-full w-full select-none object-contain"
+      />
+    </div>
+  );
+}
 
 export default function AnimacionCofre({
   recompensas,
@@ -49,6 +348,7 @@ export default function AnimacionCofre({
   const [skipRapido, setSkipRapido] = useState(false);
   const [animandoFinal, setAnimandoFinal] = useState(false);
   const [animandoApertura, setAnimandoApertura] = useState(false);
+  const [frameApertura, setFrameApertura] = useState(0);
   const [recursosListos, setRecursosListos] = useState(recursosPrecargados);
   const [errorRecursos, setErrorRecursos] = useState(false);
   const [reintentoRecursos, setReintentoRecursos] = useState(0);
@@ -72,7 +372,6 @@ export default function AnimacionCofre({
 
   const total = recompensasOrdenadas.length;
 
-  const rarezaActual: Rareza = recompensasOrdenadas[indiceActual]?.rareza || "comun";
   const rarezaMax = tipo === "bienvenida" ? "legendario" : (recompensasOrdenadas[0]?.rareza || "comun");
   const auraPrincipal = rarezaConfig[rarezaMax].aura;
 
@@ -120,6 +419,32 @@ export default function AnimacionCofre({
     };
   }, []);
 
+
+  useEffect(() => {
+    if (!animandoApertura) {
+      if (!abierto) setFrameApertura(0);
+      return;
+    }
+
+    setFrameApertura(0);
+
+    const timers = FRAMES_COFRE.slice(1).map((_, indice) =>
+      window.setTimeout(() => {
+        setFrameApertura(indice + 1);
+      }, (indice + 1) * 90)
+    );
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [animandoApertura, abierto]);
+
+  const indiceFrameVisible = abierto
+    ? Math.max(0, FRAMES_COFRE.length - 1)
+    : animandoApertura
+      ? frameApertura
+      : 0;
+
   useEffect(() => {
     if (cofreVisible && contador === null) {
       const timer = setTimeout(() => setContador(total), 600);
@@ -160,7 +485,7 @@ export default function AnimacionCofre({
         setAbierto(true);
         setContador((c) => (c !== null ? Math.max(0, c - 1) : c));
         aperturaTimerRef.current = null;
-      }, 320);
+      }, 480);
       return;
     }
 
@@ -283,7 +608,7 @@ export default function AnimacionCofre({
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center min-h-[100dvh] w-full overflow-hidden select-none bg-transparent px-4"
+      className="relative min-h-[100dvh] w-full overflow-hidden select-none bg-[rgba(4,10,20,0.28)] px-3 backdrop-blur-[2px] sm:px-4"
       onClick={(e) => {
         if (bloquearClicks) {
           e.stopPropagation();
@@ -292,280 +617,358 @@ export default function AnimacionCofre({
         handleOpen(e);
       }}
     >
-      {/* ✨ Aura energética */}
-      <motion.div
-        className="absolute rounded-full blur-[64px]"
-        style={{
-          background: `radial-gradient(circle, ${auraPrincipal} 0%, transparent 70%)`,
-          width: "min(600px, 120vw)",
-          height: "min(600px, 120vw)",
-          zIndex: 0,
-        }}
-        animate={{ opacity: [0.6, 0.9, 0.6], scale: [1, 1.1, 1] }}
-        transition={{ duration: 3, repeat: Infinity }}
-      />
-
-      {/* 🏆 Mensaje de subida de nivel */}
-      {!abierto && (
-      <motion.div
-        initial={{ opacity: 0, y: -40 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -40 }}
-        transition={{ duration: 0.48, ease: "easeOut" }}
-        className="absolute top-[10%] sm:top-[18%] text-center z-20 px-4"
+      {/* Fondo energético sutil: mantiene el color de la rareza sin encerrar la recompensa */}
+      <div className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+        style={{ left: AJUSTE_CENTRO_COFRE_X, top: POSICION_COFRE_Y }}
       >
-        {tipo === "bienvenida" ? (
-          <>
-            <motion.h2
-              className="text-2xl sm:text-4xl font-extrabold text-amber-400 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
-              animate={{ scale: [1, 1.08, 1] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              🎁 ¡Cofre de Bienvenida!
-            </motion.h2>
-            <p className="text-white/90 text-sm sm:text-lg mt-2 font-medium">
-              Gracias por unirte a FCC Academy, estas son tus primeras recompensas.
-            </p>
-          </>
-        ) : (
-          <>
-            <motion.h2
-              className="text-2xl sm:text-4xl font-extrabold text-yellow-300 drop-shadow-[0_0_12px_rgba(255,220,100,0.9)]"
-              animate={{ scale: [1, 1.08, 1] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              🎉 ¡Has subido al Nivel {nivel ?? "?"}!
-            </motion.h2>
-            <p className="text-white/90 text-sm sm:text-lg mt-2 font-medium">
-              Recibes un cofre con nuevas recompensas
-            </p>
-          </>
-        )}
-      </motion.div>
-    )}
+        <div className="absolute left-1/2 top-1/2 h-[min(620px,128vw)] w-[min(620px,128vw)] -translate-x-1/2 -translate-y-1/2">
+          <motion.div
+            className="h-full w-full rounded-full blur-[72px]"
+            style={{
+              background: `radial-gradient(circle, ${auraPrincipal} 0%, transparent 68%)`,
+            }}
+            animate={{ opacity: [0.42, 0.66, 0.42], scale: [0.98, 1.06, 0.98] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
 
-      {/* 🧭 Cofre */}
-      <motion.div
-        className="relative z-10 flex flex-col items-center"
-        initial={{ y: 300, scale: 0.1, opacity: 0 }}
-        animate={
-          mostrarMensajeFinal
-            ? { y: -120, scale: 0.85, opacity: 1 } // 🔹 se hace pequeño
-            : animacionInicialTerminada
-            ? { y: 0, scale: 1, opacity: 1 }
-            : { y: 0, scale: 1, opacity: 1 }
-        }
-        transition={{
-          duration: skipRapido ? 0 : 0.82,
-          ease: "easeOut",
-          onComplete: () => {
-            setCofreVisible(true);
-            setAnimacionInicialTerminada(true);
-          },
-        }}
+        <div className="absolute left-1/2 top-1/2 h-[min(460px,100vw)] w-[min(460px,100vw)] -translate-x-1/2 -translate-y-1/2">
+          <motion.div
+            className="h-full w-full rounded-full border border-white/10"
+            style={{
+              boxShadow: `0 0 44px color-mix(in srgb, ${auraPrincipal} 30%, transparent)`,
+            }}
+            animate={{ rotate: 360, opacity: [0.18, 0.34, 0.18] }}
+            transition={{
+              rotate: { duration: 22, repeat: Infinity, ease: "linear" },
+              opacity: { duration: 3.2, repeat: Infinity },
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Encabezado */}
+      {!abierto && (
+        <motion.div
+          initial={{ opacity: 0, y: -24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -24 }}
+          transition={{ duration: 0.48, ease: "easeOut" }}
+          className="absolute inset-x-0 top-[5dvh] z-30 mx-auto flex w-[94vw] max-w-[780px] flex-col items-center text-center sm:top-[6.5dvh]"
+        >
+          <div className="relative flex w-full flex-col items-center">
+            <div className="absolute left-1/2 top-[58px] h-10 w-[min(520px,82vw)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(245,198,82,0.22)_0%,rgba(255,255,255,0)_72%)] blur-2xl" />
+            <p className="relative mb-3 inline-flex items-center gap-3 rounded-full border border-white/28 bg-[rgba(255,255,255,0.07)] px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.34em] text-[#f7f3e6] shadow-[0_0_18px_rgba(255,255,255,0.08)] backdrop-blur-md sm:text-xs">
+              <span className="h-px w-7 bg-gradient-to-r from-transparent to-[#f5c652]" />
+              FCC Academy
+              <span className="h-px w-7 bg-gradient-to-l from-transparent to-[#f5c652]" />
+            </p>
+
+            {tipo === "bienvenida" ? (
+              <>
+                <motion.h2
+                  className="relative bg-gradient-to-b from-white via-[#fff8e4] to-[#f5c652] bg-clip-text text-[clamp(2.15rem,5.2vw,4.1rem)] font-black tracking-[-0.05em] text-transparent drop-shadow-[0_10px_30px_rgba(245,198,82,0.16)]"
+                  animate={{ opacity: [0.92, 1, 0.92] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  Cofre de Bienvenida
+                </motion.h2>
+                <p className="mx-auto mt-2 max-w-[680px] text-sm font-semibold leading-relaxed text-white sm:text-[1.05rem] drop-shadow-[0_4px_18px_rgba(0,0,0,0.28)]">
+                  Tus primeras recompensas ya están listas.
+                </p>
+              </>
+            ) : (
+              <>
+                <motion.h2
+                  className="relative bg-gradient-to-b from-white via-[#fff8e4] to-[#7bd8ff] bg-clip-text text-[clamp(2.15rem,5.2vw,4.1rem)] font-black tracking-[-0.05em] text-transparent drop-shadow-[0_10px_30px_rgba(123,216,255,0.18)]"
+                  animate={{ opacity: [0.92, 1, 0.92] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  Nivel {nivel ?? "?"} desbloqueado
+                </motion.h2>
+                <p className="mx-auto mt-2 max-w-[680px] text-sm font-semibold leading-relaxed text-white sm:text-[1.05rem] drop-shadow-[0_4px_18px_rgba(0,0,0,0.28)]">
+                  Tu cofre contiene nuevas recompensas.
+                </p>
+              </>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Cofre: ~62.5% de la altura de la pantalla; en móvil usa hasta 80% del ancho */}
+      <div
+        className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
+        style={{ left: AJUSTE_CENTRO_COFRE_X, top: POSICION_COFRE_Y }}
       >
         <motion.div
+          className="relative flex flex-col items-center"
+          initial={{ y: 300, scale: 0.1, opacity: 0 }}
           animate={
-            abierto
-              ? { y: [0, -5, 0], scale: [1, 1.02, 1] }
-              : cofreVisible
-              ? { y: [0, -6, 0], scale: [1, 1.03, 1] }
-              : {}
+            mostrarMensajeFinal
+              ? { y: -74, scale: 0.9, opacity: 1 }
+              : { y: 0, scale: 1, opacity: 1 }
           }
           transition={{
-            y: { duration: 2, repeat: Infinity, ease: "easeInOut" },
-            scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+            duration: skipRapido ? 0 : 0.82,
+            ease: "easeOut",
+            onComplete: () => {
+              setCofreVisible(true);
+              setAnimacionInicialTerminada(true);
+            },
           }}
-          className="relative w-[min(280px,70vw)] aspect-[978/1024]"
         >
-          {FRAMES_COFRE.map((frame, index) => (
-            <img
-              key={frame}
-              src={frame}
-              alt={index === FRAMES_COFRE.length - 1 ? "Cofre abierto" : ""}
-              aria-hidden={index !== FRAMES_COFRE.length - 1}
-              draggable={false}
-              decoding="async"
-              className={`absolute inset-0 h-full w-full select-none object-contain ${
-                animandoApertura && index > 0 ? "fcc-chest-frame-opening" : ""
-              }`}
-              style={{
-                zIndex: index,
-                opacity:
-                  abierto || index === 0
-                    ? 1
-                    : animandoApertura
-                      ? 0
-                      : 0,
-                animationDelay: `${index * 55}ms`,
-              }}
-            />
-          ))}
-
-          {/* 🔢 Contador */}
-          {cofreVisible && contadorVisible && contador !== null && contador >= 0 && (
-            <motion.div
-              key={contador}
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.3 }}
-              className="absolute -top-2 -right-4 sm:-top-4 sm:-right-10 w-11 h-11 sm:w-[60px] sm:h-[60px] flex items-center justify-center rounded-lg font-bold text-white text-lg sm:text-2xl shadow-lg"
-              style={{
-                background: colorContador,
-                boxShadow: `0 0 15px ${colorContador}`,
-                transition: "background 0.4s ease, box-shadow 0.4s ease",
-              }}
-            >
-              {contador}
-            </motion.div>
-          )}
-        </motion.div>
-
-        {/* 🧾 Mensaje y recompensas finales */}
-        {mostrarMensajeFinal && (
           <motion.div
-            initial={skipRapido ? false : { opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={skipRapido ? { duration: 0 } : { duration: 1.2, ease: "easeOut" }}
-            className="absolute flex flex-col items-center text-center top-full mt-2 z-30 w-[92vw] max-w-xl"
+            animate={
+              cofreVisible
+                ? { y: [0, -5, 0], scale: [1, 1.02, 1] }
+                : {}
+            }
+            transition={{
+              y: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+              scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+            }}
+            className="relative aspect-[978/1024] w-[min(360px,78vw,48dvh)]"
           >
-            <p className="text-white text-lg sm:text-2xl font-semibold mb-4 drop-shadow-lg">
-              Recompensas agregadas al inventario:
-            </p>
+            {FRAMES_COFRE.map((frame, index) => (
+              <img
+                key={frame}
+                src={frame}
+                alt={
+                  index === FRAMES_COFRE.length - 1
+                    ? "Cofre abierto"
+                    : "Cofre"
+                }
+                aria-hidden={index !== indiceFrameVisible}
+                draggable={false}
+                decoding="async"
+                className="absolute inset-0 h-full w-full select-none object-contain"
+                style={{
+                  opacity: index === indiceFrameVisible ? 1 : 0,
+                  zIndex: index === indiceFrameVisible ? 2 : 1,
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
 
-            {mostrarListaFinal && (
-              <motion.div
-                initial={skipRapido ? false : { opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={skipRapido ? { duration: 0 } : { duration: 1 }}
-                className="flex flex-col items-center gap-4"
-              >
-                <div className="flex gap-3 sm:gap-4 flex-wrap justify-center">
-                  {recompensasOrdenadas.map((r, i) => {
-                    const { color, aura } = rarezaConfig[r.rareza];
-                    return (
-                      <motion.div
-                        key={`${r.nombre}-${i}`}
-                        className="p-[6px] rounded-xl backdrop-blur-md shadow-lg"
-                        style={{
-                          border: `2px solid ${color}`,
-                          background: `linear-gradient(145deg, rgba(255,255,255,0.15), ${aura})`,
-                          boxShadow: `0 0 20px ${aura}`,
-                        }}
-                        initial={skipRapido ? false : { opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={
-                          skipRapido
-                            ? { duration: 0 }
-                            : { delay: i * 0.25, duration: 0.5 }
-                        }
-                      >
-                        <img
-                          src={prepararImagenRecompensa(r.imagen)}
-                          alt="Recompensa"
-                          width={82}
-                          height={82}
-                          decoding="async"
-                          className="h-[82px] w-[82px] rounded-lg object-contain"
-                        />
-                      </motion.div>
-                    );
-                  })}
-                </div>
-
-                {/* 🟢 Botón para cerrar el cofre */}
-                <motion.button
-                  onClick={onFinish}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5, duration: 0.6 }}
-                  className="mt-6 px-5 py-2 rounded-[14px] text-white font-black shadow-md hover:opacity-90"
+            {/* Contador moderno: píldora + progreso, sin bloque cuadrado */}
+            {cofreVisible &&
+              contadorVisible &&
+              contador !== null &&
+              contador >= 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.32, ease: "easeOut" }}
+                  className="absolute inset-x-0 top-[calc(100%+14px)] z-20 mx-auto w-fit min-w-[122px] rounded-full border px-3.5 py-2.5 backdrop-blur-xl sm:min-w-[136px] sm:px-4"
                   style={{
-                    backgroundColor: "var(--fcc-premium-accent, var(--color-primary))",
-                    border: "1px solid color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 64%, white)",
-                    boxShadow:
-                      "0 12px 26px color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 16%, transparent)",
+                    borderColor: `color-mix(in srgb, ${colorContador} 55%, transparent)`,
+                    background:
+                      "linear-gradient(135deg, rgba(4,10,24,0.94), rgba(8,18,38,0.82))",
+                    boxShadow: `0 12px 30px rgba(0,0,0,0.24), 0 0 24px color-mix(in srgb, ${colorContador} 26%, transparent)`,
+                    transition:
+                      "border-color 0.4s ease, box-shadow 0.4s ease",
                   }}
                 >
-                  Continuar
-                </motion.button>
-              </motion.div>
-            )}
-          </motion.div>
-        )}
-      </motion.div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[8px] font-black uppercase tracking-[0.22em] text-white/80 sm:text-[9px]">
+                      Restantes
+                    </span>
+                    <motion.span
+                      key={contador}
+                      initial={{ opacity: 0, y: -5, scale: 0.82 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.28, ease: "easeOut" }}
+                      className="text-lg font-black leading-none sm:text-xl"
+                      style={{
+                        color: colorContador,
+                        textShadow: `0 0 14px color-mix(in srgb, ${colorContador} 70%, transparent)`,
+                      }}
+                    >
+                      {contador}
+                    </motion.span>
+                  </div>
 
-      {/* 💥 Recompensa actual */}
+                  <div className="mt-1.5 flex gap-1">
+                    {Array.from({ length: total }).map((_, index) => (
+                      <span
+                        key={index}
+                        className="h-[3px] flex-1 rounded-full"
+                        style={{
+                          background:
+                            index < contador
+                              ? colorContador
+                              : "rgba(255,255,255,0.12)",
+                          boxShadow:
+                            index < contador
+                              ? `0 0 8px color-mix(in srgb, ${colorContador} 58%, transparent)`
+                              : "none",
+                          transition:
+                            "background 0.35s ease, box-shadow 0.35s ease",
+                        }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Recompensa actual: preview limpio, ~75% del ancho del cofre y aura sólo exterior */}
       {abierto &&
         mostrarRecompensaActual &&
         !mostrarListaFinal &&
         contador !== null &&
         contador >= 0 && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={recompensasOrdenadas[indiceActual].nombre}
-              className="absolute flex flex-col items-center justify-center z-20"
-              initial={{ opacity: 0, scale: 0.8, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: -160 }}
-              exit={{ opacity: 0, scale: 0.5, y: -250 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-            >
+          <div
+          className="pointer-events-none absolute z-40 -translate-x-1/2 -translate-y-1/2"
+          style={{ left: AJUSTE_CENTRO_COFRE_X, top: POSICION_RECOMPENSA_Y }}
+        >
+            <AnimatePresence mode="wait">
               <motion.div
-                key={explosionKey}
-                className="absolute inset-0 flex items-center justify-center z-[-1]"
-                initial={{ opacity: 0.9, scale: 0.6 }}
-                animate={{
-                  opacity: [0.9, 0.6, 0],
-                  scale: [0.6, 2.2, 2.6],
-                }}
-                transition={{ duration: 1, ease: "easeOut" }}
+                key={recompensasOrdenadas[indiceActual].nombre}
+                className="flex flex-col items-center"
+                initial={{ opacity: 0, scale: 0.18, y: 250 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.84, y: -54 }}
+                transition={{ duration: 0.78, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div
-                  className="w-[200px] h-[200px] rounded-full blur-[36px]"
-                  style={{ background: rarezaConfig[rarezaActual].aura }}
+                <RecompensaVisual
+                  recompensa={recompensasOrdenadas[indiceActual]}
+                  pulseKey={explosionKey}
                 />
-              </motion.div>
 
-              <motion.div
-                className="p-[8px] rounded-xl backdrop-blur-md shadow-lg"
-                style={{
-                  border: `3px solid ${rarezaConfig[rarezaActual].color}`,
-                  background: `linear-gradient(145deg, rgba(255,255,255,0.15), ${rarezaConfig[rarezaActual].aura})`,
-                  boxShadow: `0 0 30px ${rarezaConfig[rarezaActual].aura}`,
-                }}
-                initial={{ scale: 0.7, y: 100 }}
-                animate={{ scale: 1, y: -120 }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-              >
-                <img
-                  src={prepararImagenRecompensa(
-                    recompensasOrdenadas[indiceActual].imagen
-                  )}
-                  alt="Recompensa"
-                  width={110}
-                  height={110}
-                  decoding="async"
-                  className="h-[110px] w-[110px] rounded-lg object-contain"
-                />
               </motion.div>
-            </motion.div>
-          </AnimatePresence>
+            </AnimatePresence>
+          </div>
         )}
-      <style jsx global>{`
-        @keyframes fcc-chest-frame-reveal {
-          to { opacity: 1; }
-        }
 
-        .fcc-chest-frame-opening {
-          animation: fcc-chest-frame-reveal 1ms linear forwards;
-        }
+      {/* Resumen final: las recompensas quedan abajo, sin tarjetas ni recuadros */}
+      {mostrarMensajeFinal && (
+        <div className="absolute inset-0 z-30">
+          <motion.div
+            initial={skipRapido ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={
+              skipRapido
+                ? { duration: 0 }
+                : { duration: 0.7, ease: "easeOut" }
+            }
+            className="pointer-events-none absolute inset-x-0 top-[7dvh] flex justify-center px-4 sm:top-[8dvh]"
+          >
+            <div
+              className="flex w-full max-w-[600px] flex-col items-center"
+              style={{ textAlign: "center" }}
+            >
+              <p
+                className="w-full text-[10px] font-black uppercase tracking-[0.3em] sm:text-[11px]"
+                style={{
+                  color: "rgba(255,255,255,0.72)",
+                  textAlign: "center",
+                }}
+              >
+                Inventario actualizado
+              </p>
 
-        @media (prefers-reduced-motion: reduce) {
-          .fcc-chest-frame-opening {
-            animation-delay: 0ms !important;
-          }
-        }
-      `}</style>
+              <p
+                className="mt-1 w-full text-[1.08rem] font-bold sm:text-[1.6rem]"
+                style={{
+                  color: "#ffffff",
+                  textAlign: "center",
+                  textShadow: "0 4px 18px rgba(0,0,0,0.30)",
+                }}
+              >
+                Recompensas agregadas
+              </p>
+
+              {mostrarListaFinal && (
+                <motion.div
+                  initial={skipRapido ? false : { opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={
+                    skipRapido
+                      ? { duration: 0 }
+                      : { duration: 0.62, ease: "easeOut" }
+                  }
+                  className="mt-2 flex w-full flex-col items-center"
+                >
+                  <div className="flex w-full flex-wrap items-start justify-center gap-x-1.5 gap-y-2 sm:gap-x-3">
+                    {recompensasOrdenadas.map((r, i) => {
+                      const { color } = rarezaConfig[r.rareza];
+
+                      return (
+                        <motion.div
+                          key={`${r.nombre}-${i}`}
+                          className="flex w-[82px] shrink-0 flex-col items-center sm:w-[108px]"
+                          style={{ textAlign: "center" }}
+                          initial={
+                            skipRapido
+                              ? false
+                              : { opacity: 0, scale: 0.72, y: 12 }
+                          }
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          transition={
+                            skipRapido
+                              ? { duration: 0 }
+                              : {
+                                  delay: i * 0.11,
+                                  duration: 0.42,
+                                  ease: "easeOut",
+                                }
+                          }
+                        >
+                          <div className="flex w-full justify-center">
+                            <RecompensaVisual
+                              recompensa={r}
+                              variante="resumen"
+                              pulseKey={i}
+                            />
+                          </div>
+
+                          <span
+                            className="mt-0.5 block w-full text-[7px] font-black uppercase tracking-[0.16em] sm:text-[8px]"
+                            style={{
+                              color,
+                              textAlign: "center",
+                            }}
+                          >
+                            {etiquetaRareza[r.rareza]}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-[23dvh] flex justify-center px-4 sm:bottom-[24dvh]">
+            <div className="pointer-events-auto flex w-full justify-center">
+              <motion.button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onFinish?.();
+                }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35, duration: 0.45 }}
+                className="rounded-full px-6 py-2 text-sm font-black text-white shadow-lg transition-transform hover:scale-[1.03] sm:px-7 sm:py-2.5"
+                style={{
+                  background:
+                    "linear-gradient(135deg, color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 88%, white), var(--fcc-premium-accent, var(--color-primary)))",
+                  border:
+                    "1px solid color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 58%, white)",
+                  boxShadow:
+                    "0 14px 32px color-mix(in srgb, var(--fcc-premium-accent, var(--color-primary)) 20%, transparent)",
+                }}
+              >
+                Continuar
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

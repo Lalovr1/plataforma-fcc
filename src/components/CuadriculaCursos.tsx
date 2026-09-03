@@ -8,6 +8,8 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
+import RenderizadorAvatar from "@/components/RenderizadorAvatar";
+import CargadorFCC from "@/components/CargadorFCC";
 import toast from "react-hot-toast";
 import {
   Check,
@@ -35,6 +37,20 @@ function prepararMateriasIniciales(materias: any[]) {
   }));
 }
 
+function parseAvatarConfigCurso(value: any) {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return value;
+}
+
 export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const [materiasConEstado, setMateriasConEstado] = useState<any[]>(() =>
     prepararMateriasIniciales(materias)
@@ -48,10 +64,33 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const [visitante, setVisitante] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mostrarFormularioInscripcion, setMostrarFormularioInscripcion] = useState(false);
+  /* FCC_COURSE_AVATAR_LOADER_PROTECTION_V1C */
+  const [avatarProfesorModalListo, setAvatarProfesorModalListo] = useState(true);
 
   useEffect(() => {
     setMateriasConEstado(prepararMateriasIniciales(materias));
   }, [materias]);
+
+  useEffect(() => {
+    if (
+      !selected ||
+      mostrarFormularioInscripcion ||
+      avatarProfesorModalListo ||
+      !selected.profesor?.avatar_config
+    ) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAvatarProfesorModalListo(true);
+    }, 30000);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    selected,
+    mostrarFormularioInscripcion,
+    avatarProfesorModalListo,
+  ]);
 
   useEffect(() => {
     const fetchSecciones = async () => {
@@ -155,6 +194,7 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const cerrarModal = () => {
     setSelected(null);
     setMostrarFormularioInscripcion(false);
+    setAvatarProfesorModalListo(true);
   };
 
   const abrirCurso = async (m: any) => {
@@ -170,8 +210,36 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       return;
     }
 
+    let profesorDetalle = m.profesor ?? null;
+    const profesorId = profesorDetalle?.id ?? m.profesor_id ?? null;
+
+    if (profesorDetalle?.avatar_config) {
+      profesorDetalle = {
+        ...profesorDetalle,
+        avatar_config: parseAvatarConfigCurso(profesorDetalle.avatar_config),
+      };
+    } else if (profesorId) {
+      const { data: profesorRow, error: profesorError } = await supabase
+        .from("usuarios")
+        .select("id, nombre, avatar_config")
+        .eq("id", profesorId)
+        .maybeSingle();
+
+      if (profesorError) {
+        console.warn("No se pudo cargar el avatar del profesor", profesorError);
+      } else if (profesorRow) {
+        profesorDetalle = {
+          ...profesorDetalle,
+          ...profesorRow,
+          avatar_config: parseAvatarConfigCurso(profesorRow.avatar_config),
+        };
+      }
+    }
+
+    setAvatarProfesorModalListo(!profesorDetalle?.avatar_config);
     setSelected({
       ...m,
+      profesor: profesorDetalle,
       progresoEstado: progresoRow
         ? { exists: true, visible: progresoRow.visible }
         : { exists: false, visible: false },
@@ -578,6 +646,19 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
             ),
             rgba(0, 0, 0, 0.62);
           backdrop-filter: blur(8px);
+          animation: fcc-course-modal-ready 180ms ease-out both;
+        }
+
+        @keyframes fcc-course-modal-ready {
+          from {
+            opacity: 0;
+            transform: scale(0.992);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
 
         .fcc-course-modal {
@@ -634,6 +715,33 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
             #ef4444 34%,
             var(--fcc-premium-border)
           );
+        }
+
+        /* FCC_COURSE_MODAL_SEPARATE_ENROLLMENT_V1 */
+        .fcc-course-modal-profesor-avatar {
+          position: relative;
+          width: 116px;
+          height: 116px;
+          margin: 4px auto 2px;
+          display: grid;
+          place-items: center;
+          overflow: visible;
+          isolation: isolate;
+        }
+
+        .fcc-course-modal-profesor-avatar-placeholder {
+          width: 64px;
+          height: 64px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          color: var(--fcc-course-grid-muted);
+          background: color-mix(
+            in srgb,
+            var(--fcc-premium-surface-strong) 82%,
+            transparent
+          );
+          border: 1px solid var(--fcc-premium-border);
         }
 
         .fcc-course-modal-title {
@@ -875,6 +983,11 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
             border-radius: 24px;
           }
 
+          .fcc-course-modal-profesor-avatar {
+            width: 96px;
+            height: 96px;
+          }
+
           .fcc-course-modal-title {
             padding-left: 30px;
             padding-right: 30px;
@@ -916,10 +1029,38 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
         )}
 
         {selected &&
+          !mostrarFormularioInscripcion &&
+          selected.profesor?.avatar_config &&
+          !avatarProfesorModalListo && (
+            <CargadorFCC
+              flotante
+              mensaje="Preparando curso"
+              detalle=""
+            />
+          )}
+
+        {selected &&
+          !mostrarFormularioInscripcion &&
           typeof document !== "undefined" &&
           createPortal(
             <div
               className="fcc-course-modal-overlay"
+              aria-hidden={Boolean(
+                selected.profesor?.avatar_config &&
+                  !avatarProfesorModalListo
+              )}
+              style={{
+                opacity:
+                  selected.profesor?.avatar_config &&
+                  !avatarProfesorModalListo
+                    ? 0
+                    : 1,
+                pointerEvents:
+                  selected.profesor?.avatar_config &&
+                  !avatarProfesorModalListo
+                    ? "none"
+                    : "auto",
+              }}
               onClick={cerrarModal}
             >
               <div
@@ -934,6 +1075,20 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                 >
                   <X size={18} strokeWidth={2.5} />
                 </button>
+
+                <div className="fcc-course-modal-profesor-avatar curso-profesor-avatar-stage">
+                  {selected.profesor?.avatar_config ? (
+                    <RenderizadorAvatar
+                      size={240}
+                      config={selected.profesor.avatar_config}
+                      onReady={() => setAvatarProfesorModalListo(true)}
+                    />
+                  ) : (
+                    <span className="fcc-course-modal-profesor-avatar-placeholder">
+                      <UserRound size={30} strokeWidth={2.1} />
+                    </span>
+                  )}
+                </div>
 
                 <h3 className="fcc-course-modal-title">{selected.nombre}</h3>
 
@@ -1131,6 +1286,159 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
                       </div>
                     </div>
                   )}
+              </div>
+            </div>,
+            document.body
+          )}
+
+        {selected &&
+          mostrarFormularioInscripcion &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className="fcc-course-modal-overlay"
+              onClick={cerrarModal}
+            >
+              <div
+                className="fcc-course-modal"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="fcc-course-modal-close"
+                  onClick={cerrarModal}
+                  aria-label="Cerrar"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+
+                <h3 className="fcc-course-modal-title">
+                  Inscribirte a {selected.nombre}
+                </h3>
+
+                <div className="fcc-course-modal-form">
+                  <p className="fcc-course-form-intro">
+                    Completa estos datos para agregar el curso a tu inicio.
+                  </p>
+
+                  <div className="fcc-course-field">
+                    <label>Selecciona carrera</label>
+
+                    <select
+                      value={selectedCarrera ?? ""}
+                      onChange={(e) => {
+                        setSelectedCarrera(e.target.value || null);
+                        setSelectedPeriodo(null);
+                        setSelectedSeccion(null);
+
+                        if (e.target.value) {
+                          const carrera = selected.curso_carreras?.find(
+                            (cc: any) =>
+                              String(cc.carrera?.id) === e.target.value
+                          );
+
+                          setPeriodos(carrera?.curso_periodos || []);
+                        } else {
+                          setPeriodos([]);
+                        }
+                      }}
+                      disabled={visitante}
+                      className="fcc-course-select"
+                    >
+                      <option value="">-- Seleccionar --</option>
+
+                      {(selected.curso_carreras ?? []).map((cc: any) => (
+                        <option key={cc.id} value={cc.carrera?.id}>
+                          {cc.carrera?.nombre} (Semestre {cc.semestre})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedCarrera && (
+                    <div className="fcc-course-field">
+                      <label>Selecciona periodo</label>
+
+                      <select
+                        value={selectedPeriodo ?? ""}
+                        onChange={(e) =>
+                          setSelectedPeriodo(e.target.value || null)
+                        }
+                        disabled={visitante}
+                        className="fcc-course-select"
+                      >
+                        <option value="">-- Seleccionar --</option>
+
+                        {periodos.map((p: any) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre} {p.anio}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedPeriodo && (
+                    <div className="fcc-course-field">
+                      <label>Selecciona seccion</label>
+
+                      <select
+                        value={selectedSeccion ?? ""}
+                        onChange={(e) =>
+                          setSelectedSeccion(e.target.value || null)
+                        }
+                        disabled={visitante}
+                        className="fcc-course-select"
+                      >
+                        <option value="">-- Seleccionar --</option>
+
+                        {secciones.map((s: any) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <label className="fcc-course-visitante">
+                    <input
+                      type="checkbox"
+                      checked={visitante}
+                      onChange={(e) => {
+                        setVisitante(e.target.checked);
+
+                        if (e.target.checked) {
+                          setSelectedCarrera(null);
+                          setSelectedPeriodo(null);
+                          setSelectedSeccion(null);
+                        }
+                      }}
+                    />
+
+                    <span>Tomar curso como visitante</span>
+                  </label>
+
+                  <div className="fcc-course-modal-actions">
+                    <button
+                      type="button"
+                      className="fcc-course-modal-btn is-muted"
+                      onClick={() => setMostrarFormularioInscripcion(false)}
+                      disabled={loading}
+                    >
+                      Volver
+                    </button>
+
+                    <button
+                      type="button"
+                      className="fcc-course-modal-btn is-primary"
+                      onClick={inscribirse}
+                      disabled={loading}
+                    >
+                      {loading ? "Guardando..." : "Inscribirse"}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>,
             document.body

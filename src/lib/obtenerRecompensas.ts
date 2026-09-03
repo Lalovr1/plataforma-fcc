@@ -46,6 +46,7 @@ export async function obtenerRecompensasAleatorias(
 
     try {
       data = texto ? JSON.parse(texto) : {};
+      console.log("[COFRE PRUEBA] respuesta API:", data);
     } catch {
       data = {};
     }

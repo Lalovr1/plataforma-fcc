@@ -23,6 +23,8 @@ import {
   type Tema,
 } from "@/lib/temas";
 
+const PREFIJO_TEMA_CONFIRMADO_SESION = "fcc:tema-confirmado:";
+
 const CLASES_TEMA_ANTERIORES = [
   "theme-azul",
   "theme-grafito",
@@ -57,7 +59,24 @@ function aplicarTema(tema: Tema) {
   document.body.classList.add(`theme-${tema}`);
 }
 
+function claveTemaConfirmadoSesion(userId: string) {
+  return `${PREFIJO_TEMA_CONFIRMADO_SESION}${userId}`;
+}
+
+function limpiarTemasConfirmadosSesion() {
+  try {
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.startsWith(PREFIJO_TEMA_CONFIRMADO_SESION)) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {
+    // La aplicación sigue funcionando aunque sessionStorage esté bloqueado.
+  }
+}
+
 type EstadoTutorial =
+  | "pendiente"
   | "verificando"
   | "mostrar"
   | "recuperar-cofre"
@@ -237,7 +256,7 @@ function RecuperarCofreBienvenida({
 }
 
 function VerificarTutorial() {
-  const [estado, setEstado] = useState<EstadoTutorial>("verificando");
+  const [estado, setEstado] = useState<EstadoTutorial>("pendiente");
   const [userId, setUserId] = useState<string | null>(null);
   const [reintento, setReintento] = useState(0);
 
@@ -256,6 +275,17 @@ function VerificarTutorial() {
     let completadoDuranteConsulta = false;
 
     async function verificar() {
+      const usuarioLocal = localStorage.getItem("user_id");
+
+      if (
+        usuarioLocal &&
+        localStorage.getItem(`fcc_tutorial_completo_${usuarioLocal}`) === "1"
+      ) {
+        setUserId(usuarioLocal);
+        setEstado("completo");
+        return;
+      }
+
       setEstado("verificando");
 
       try {
@@ -334,14 +364,8 @@ function VerificarTutorial() {
     );
   }
 
-  if (estado === "verificando") {
-    return (
-      <CargadorFCC
-        flotante
-        mensaje="Verificando tu bienvenida"
-        detalle=""
-      />
-    );
+  if (estado === "pendiente" || estado === "verificando") {
+    return null;
   }
 
   if (estado === "mostrar") return <TutorialInicio />;
@@ -388,6 +412,30 @@ export default function LayoutGeneral({
       }
     }
 
+    function marcarTemaConfirmadoSesion(userId: string, tema: Tema) {
+      try {
+        sessionStorage.setItem(claveTemaConfirmadoSesion(userId), tema);
+      } catch {
+        // El tema sigue funcionando aunque sessionStorage esté bloqueado.
+      }
+    }
+
+    function temaConfirmadoEnSesion(
+      userId: string,
+      temaLocal: Tema | null
+    ) {
+      if (!temaLocal) return false;
+
+      try {
+        return (
+          sessionStorage.getItem(claveTemaConfirmadoSesion(userId)) ===
+          temaLocal
+        );
+      } catch {
+        return false;
+      }
+    }
+
     function cargarPreferenciasLocales(): Tema | null {
       try {
         const saved = localStorage.getItem("preferencias_usuario");
@@ -423,7 +471,21 @@ export default function LayoutGeneral({
       return true;
     }
 
-    async function cargarPreferenciasDesdeSupabase() {
+    async function cargarPreferenciasDesdeSupabase(temaLocal: Tema | null) {
+      const usuarioLocal = localStorage.getItem("user_id");
+
+      // Una vez confirmado el tema de este usuario en la pestaña actual, las
+      // revisitas entre secciones no vuelven a consultar Supabase por lo mismo.
+      if (
+        usuarioLocal &&
+        temaConfirmadoEnSesion(usuarioLocal, temaLocal)
+      ) {
+        document.documentElement.removeAttribute("data-fcc-theme-pending");
+        return;
+      }
+
+      document.documentElement.setAttribute("data-fcc-theme-pending", "true");
+
       try {
         const { supabase } = await import("@/utils/supabaseClient");
 
@@ -433,7 +495,11 @@ export default function LayoutGeneral({
         } = await supabase.auth.getUser();
 
         if (errorSesion) throw errorSesion;
-        if (!user) return false;
+        if (!user) return;
+
+        if (temaConfirmadoEnSesion(user.id, temaLocal)) {
+          return;
+        }
 
         const { data: pref, error: errorPreferencias } = await supabase
           .from("configuraciones_usuario")
@@ -443,13 +509,22 @@ export default function LayoutGeneral({
 
         if (errorPreferencias) throw errorPreferencias;
 
-        const temaSupabase = normalizarTema(pref?.tema);
+        const temaFinal =
+          normalizarTema(pref?.tema) ??
+          temaLocal ??
+          TEMA_PREDETERMINADO;
 
-        if (!temaSupabase || !montado || !aceptarRespuestaRemota) return;
+        if (!montado || !aceptarRespuestaRemota) return;
 
-        await aplicarTemaCuandoEsteListo(temaSupabase);
+        const aplicado = await aplicarTemaCuandoEsteListo(temaFinal);
+
+        if (aplicado) {
+          marcarTemaConfirmadoSesion(user.id, temaFinal);
+        }
       } catch (err) {
         console.error("Error cargando preferencias desde Supabase:", err);
+      } finally {
+        document.documentElement.removeAttribute("data-fcc-theme-pending");
       }
     }
 
@@ -463,15 +538,22 @@ export default function LayoutGeneral({
           aceptarRespuestaRemota = false;
         }
 
-        void aplicarTemaCuandoEsteListo(temaNormalizado);
+        void aplicarTemaCuandoEsteListo(temaNormalizado).then((aplicado) => {
+          if (!aplicado) return;
+
+          const usuario = localStorage.getItem("user_id");
+          if (usuario) {
+            marcarTemaConfirmadoSesion(usuario, temaNormalizado);
+          }
+        });
       }
     }
 
-    cargarPreferenciasLocales();
+    const temaLocal = cargarPreferenciasLocales();
 
     window.addEventListener("app:preferencias", handler);
 
-    void cargarPreferenciasDesdeSupabase();
+    void cargarPreferenciasDesdeSupabase(temaLocal);
 
     return () => {
       montado = false;
@@ -487,43 +569,38 @@ export default function LayoutGeneral({
   }, []);
 
   useEffect(() => {
-    const syncRol = async () => {
+    // El rol ya viene determinado por los layouts protegidos del servidor.
+    // No volver a consultar `usuarios` desde el navegador.
+    localStorage.setItem("rol_usuario", rol);
+
+    const sincronizarIdentidadLocal = async () => {
       try {
-        const { data: user } = await import("@/utils/supabaseClient").then((m) =>
+        const { data } = await import("@/utils/supabaseClient").then((m) =>
           m.supabase.auth.getUser()
         );
 
-        if (user?.user?.id) {
-          const { data: usuario } = await import("@/utils/supabaseClient").then(
-            (m) =>
-              m.supabase
-                .from("usuarios")
-                .select("rol")
-                .eq("id", user.user.id)
-                .single()
-          );
-
-          if (usuario?.rol) {
-            localStorage.setItem("rol_usuario", usuario.rol);
-          }
+        if (data?.user?.id) {
+          localStorage.setItem("user_id", data.user.id);
         }
       } catch (err) {
-        console.error("Error sincronizando rol_usuario:", err);
+        console.error("Error sincronizando la identidad local:", err);
       }
     };
 
-    syncRol();
+    void sincronizarIdentidadLocal();
 
     const handleLogout = () => {
       localStorage.removeItem("rol_usuario");
       localStorage.removeItem("tutorial_visto");
       localStorage.removeItem("tutorial_visto_finalizado");
+      limpiarTemasConfirmadosSesion();
+      document.documentElement.removeAttribute("data-fcc-theme-pending");
     };
 
     window.addEventListener("logout", handleLogout);
 
     return () => window.removeEventListener("logout", handleLogout);
-  }, []);
+  }, [rol]);
 
   useEffect(() => {
     const currentUser = localStorage.getItem("user_id");
@@ -680,6 +757,44 @@ export default function LayoutGeneral({
       <style>{`
         :root {
           --fcc-sidebar-width: 16rem;
+        }
+
+        @keyframes fcc-modal-enter-standard {
+          from {
+            opacity: 0;
+            transform: scale(0.992);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes fcc-modal-backdrop-enter-standard {
+          from {
+            opacity: 0;
+          }
+
+          to {
+            opacity: 1;
+          }
+        }
+
+        .fcc-modal-enter-standard {
+          transform-origin: center;
+          animation: fcc-modal-enter-standard 180ms ease-out both;
+        }
+
+        .fcc-modal-backdrop-enter-standard {
+          animation: fcc-modal-backdrop-enter-standard 180ms ease-out both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .fcc-modal-enter-standard,
+          .fcc-modal-backdrop-enter-standard {
+            animation-duration: 1ms;
+          }
         }
 
         .menu-lateral {

@@ -45,6 +45,32 @@ function attr(
     : "";
 }
 
+export function contenidoQuizATextoIA(
+  value: unknown
+): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return decodeEntities(
+    value
+      .replace(
+        /<span\b[^>]*data-latex=["']([^"']+)["'][^>]*>(?:[\s\S]*?<\/span>)?/gi,
+        (_match, latex: string) => {
+          const formula = decodeEntities(latex).trim();
+          return formula ? ` $${formula}$ ` : " ";
+        }
+      )
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/(?:p|div|li|h[1-6])>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function mimeImagenIA(
   url: string
 ): string | null {
@@ -196,11 +222,11 @@ export function extraerFormulasInlineIA(
 
   for (
     const match of value.matchAll(
-      /\$\$([\s\S]+?)\$\$/g
+      /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g
     )
   ) {
     const formula =
-      match[1]?.trim();
+      (match[1] || match[2] || "").trim();
 
     if (formula) {
       formulas.push(formula);

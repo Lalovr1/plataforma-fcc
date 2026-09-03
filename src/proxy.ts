@@ -1,38 +1,60 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-function getProjectRef(): string | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const m = url.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
-  return m?.[1] || null;
-}
+export async function proxy(request: NextRequest) {
+  let response = NextResponse.next({
+    request,
+  });
 
-export async function proxy(req: NextRequest) {
-  const res = NextResponse.next();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
 
-  const pathname = req.nextUrl.pathname;
+          response = NextResponse.next({
+            request,
+          });
 
-  if (!pathname.startsWith("/dashboard")) return res;
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
 
-  const projectRef = getProjectRef();
-  if (!projectRef) {
-    
-    return res;
+  const pathname = request.nextUrl.pathname;
+
+  if (!pathname.startsWith("/dashboard")) {
+    return response;
   }
 
-  
-  const authCookieName = `sb-${projectRef}-auth-token`;
-  const hasSession = Boolean(req.cookies.get(authCookieName));
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-
-  if (!hasSession) {
-    return NextResponse.redirect(new URL("/login", req.url));
+  if (user) {
+    return response;
   }
 
-  
-  return res;
-}
+  const redirectResponse = NextResponse.redirect(
+    new URL("/login", request.url)
+  );
 
+  response.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie);
+  });
+
+  return redirectResponse;
+}
 
 export const config = {
   matcher: ["/dashboard/:path*"],

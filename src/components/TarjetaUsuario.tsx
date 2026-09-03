@@ -17,6 +17,7 @@ import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
 import CargadorFCC from "@/components/CargadorFCC";
+import { supabase } from "@/utils/supabaseClient";
 
 interface TarjetaUsuarioProps {
   name?: string;
@@ -217,6 +218,64 @@ export default function TarjetaUsuario({
   }, []);
 
   useEffect(() => {
+    let activo = true;
+
+    const sincronizarAvatarActual = async () => {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user || !activo) return;
+
+        const { data, error } = await supabase
+          .from("usuarios")
+          .select("avatar_config")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error || !activo || !data?.avatar_config) return;
+
+        const avatarActual =
+          typeof data.avatar_config === "string"
+            ? JSON.parse(data.avatar_config)
+            : data.avatar_config;
+
+        if (!avatarActual || !activo) return;
+
+        setAvatar((actual) =>
+          JSON.stringify(actual) === JSON.stringify(avatarActual)
+            ? actual
+            : (avatarActual as AvatarConfig)
+        );
+      } catch (error) {
+        console.warn(
+          "[FCC Academy] No se pudo sincronizar el avatar vigente de la tarjeta:",
+          error
+        );
+      }
+    };
+
+    // El dashboard puede reconstruirse con el payload conservado por el
+    // Router Cache al volver con Back. Confirmamos el avatar directamente
+    // contra Supabase para que la tarjeta no dependa de ese dato anterior.
+    void sincronizarAvatarActual();
+
+    // Cobertura adicional para restauraciones reales desde BFCache.
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      void sincronizarAvatarActual();
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      activo = false;
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, []);
+  useEffect(() => {
     if (avatarConfig) setAvatar(avatarConfig);
   }, [avatarConfig]);
 
@@ -235,6 +294,14 @@ export default function TarjetaUsuario({
     rol === "profesor"
       ? "/dashboard/profesor/perfil"
       : "/dashboard/estudiante/perfil";
+  // El registro conserva el nombre completo; en esta tarjeta mostramos
+  // solo las primeras dos palabras para mantener estable el encabezado.
+  const nombreVisible = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ") || "Usuario";
 
   const [tutorialActivo, setTutorialActivo] = useState<boolean>(() =>
     typeof window !== "undefined" ? !!(window as any).__tutorialActivo : false,
@@ -385,6 +452,7 @@ export default function TarjetaUsuario({
                           : MAPA_PERSONALIZACION_URL
                       }
                       className="fcc-schedule-customize"
+                      data-fcc-pantalla-completa="true"
                       aria-disabled={!!salidaHerramienta}
                       onClick={
                         accionRenderizada === "horario"
@@ -1703,9 +1771,7 @@ export default function TarjetaUsuario({
             </p>
 
             <h2 className="fcc-user-title">
-              {rol === "profesor"
-                ? `Bienvenido, profesor ${name}`
-                : `Bienvenido, ${name}`}
+              {`Hola, ${nombreVisible}`}
             </h2>
 
             {rol === "estudiante" && (

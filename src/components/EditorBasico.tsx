@@ -35,6 +35,158 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
+
+export type SegmentoFormatoEditor = {
+  id: string;
+  texto: string;
+};
+
+export type DecisionFormatoEditor = {
+  id: string;
+  tamano: "pequeno" | "normal" | "grande" | "muy_grande";
+  alineacion: "izquierda" | "centro" | "derecha" | "justificado";
+  negrita: boolean;
+  cursiva: boolean;
+  subrayado: boolean;
+  mayusculas: boolean;
+};
+
+type NodoTiptap = {
+  type?: string;
+  attrs?: Record<string, unknown> | null;
+  content?: NodoTiptap[];
+  text?: string;
+  marks?: Array<{
+    type?: string;
+    attrs?: Record<string, unknown> | null;
+  }>;
+  [key: string]: unknown;
+};
+
+const TIPOS_BLOQUE_FORMATEABLE = new Set(["paragraph", "heading"]);
+
+const textoDeNodoTiptap = (node: NodoTiptap): string => {
+  if (node.type === "text") return String(node.text || "");
+  if (!Array.isArray(node.content)) return "";
+
+  return node.content.map(textoDeNodoTiptap).join("");
+};
+
+const obtenerSegmentosFormato = (doc: NodoTiptap): SegmentoFormatoEditor[] => {
+  const segmentos: SegmentoFormatoEditor[] = [];
+
+  const recorrer = (node: NodoTiptap, ruta: number[]) => {
+    if (node.type && TIPOS_BLOQUE_FORMATEABLE.has(node.type)) {
+      const texto = textoDeNodoTiptap(node).replace(/\s+/g, " ").trim();
+
+      if (texto) {
+        segmentos.push({ id: ruta.join("."), texto });
+      }
+
+      return;
+    }
+
+    node.content?.forEach((child, index) => {
+      recorrer(child, [...ruta, index]);
+    });
+  };
+
+  recorrer(doc, []);
+  return segmentos;
+};
+
+const TAMANOS_FORMATO: Record<DecisionFormatoEditor["tamano"], string> = {
+  pequeno: "12px",
+  normal: "16px",
+  grande: "22px",
+  muy_grande: "30px",
+};
+
+const ALINEACIONES_FORMATO: Record<
+  DecisionFormatoEditor["alineacion"],
+  string
+> = {
+  izquierda: "left",
+  centro: "center",
+  derecha: "right",
+  justificado: "justify",
+};
+
+const aplicarFormatoANodoTexto = (
+  node: NodoTiptap,
+  decision: DecisionFormatoEditor
+): NodoTiptap => {
+  if (node.type !== "text") return node;
+
+  const marcasOriginales = Array.isArray(node.marks) ? node.marks : [];
+  const esCodigo = marcasOriginales.some((mark) => mark.type === "code");
+
+  if (esCodigo) return node;
+
+  const marks = marcasOriginales.filter(
+    (mark) =>
+      !["bold", "italic", "underline", "textStyle"].includes(
+        String(mark.type || "")
+      )
+  );
+
+  marks.push({
+    type: "textStyle",
+    attrs: { fontSize: TAMANOS_FORMATO[decision.tamano] },
+  });
+
+  if (decision.negrita) marks.push({ type: "bold" });
+  if (decision.cursiva) marks.push({ type: "italic" });
+  if (decision.subrayado) marks.push({ type: "underline" });
+
+  return {
+    ...node,
+    text: decision.mayusculas
+      ? String(node.text || "").toLocaleUpperCase("es-MX")
+      : node.text,
+    marks,
+  };
+};
+
+const aplicarDecisionesFormato = (
+  doc: NodoTiptap,
+  decisiones: DecisionFormatoEditor[]
+): NodoTiptap => {
+  const porId = new Map(decisiones.map((decision) => [decision.id, decision]));
+
+  const recorrer = (node: NodoTiptap, ruta: number[]): NodoTiptap => {
+    const decision = porId.get(ruta.join("."));
+
+    if (
+      decision &&
+      node.type &&
+      TIPOS_BLOQUE_FORMATEABLE.has(node.type)
+    ) {
+      return {
+        ...node,
+        attrs: {
+          ...(node.attrs || {}),
+          textAlign: ALINEACIONES_FORMATO[decision.alineacion],
+        },
+        content: node.content?.map((child) =>
+          aplicarFormatoANodoTexto(child, decision)
+        ),
+      };
+    }
+
+    if (!Array.isArray(node.content)) return node;
+
+    return {
+      ...node,
+      content: node.content.map((child, index) =>
+        recorrer(child, [...ruta, index])
+      ),
+    };
+  };
+
+  return recorrer(doc, []);
+};
 
 export type EditorBasicoRef = {
   insertFormula: (latex: string) => void;
@@ -42,8 +194,11 @@ export type EditorBasicoRef = {
   insertImage: (url: string, alt?: string) => void;
   insertVideoLink: (url: string, name: string) => void;
   insertDocumentLink: (url: string, name: string) => void;
+  insertSanitizedHtml: (html: string) => void;
   getHTML: () => string;
   setContent: (html: string) => void;
+  getFormatSegments: () => SegmentoFormatoEditor[];
+  applyFormatDecisions: (decisions: DecisionFormatoEditor[]) => boolean;
 };
 
 const escaparHtml = (text: string) =>
@@ -130,6 +285,189 @@ const sanitizarUrl = (url: string | null) => {
   }
 
   return "";
+};
+
+const MAX_IMAGEN_PEGADA_BYTES = 15 * 1024 * 1024;
+
+const extensionImagenPegada = (file: File) => {
+  const porMime: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/svg+xml": "svg",
+  };
+  const mime = String(file.type || "").toLowerCase();
+  const desdeNombre =
+    file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
+    "";
+
+  return porMime[mime] || desdeNombre || "png";
+};
+
+const renombrarImagenPegada = (file: File, indice: number) =>
+  new File(
+    [file],
+    `imagen-pegada-${Date.now()}-${indice + 1}.${extensionImagenPegada(file)}`,
+    {
+      type: file.type || "image/png",
+      lastModified: Date.now(),
+    }
+  );
+
+const descargarImagenPegada = async (
+  src: string,
+  indice: number
+): Promise<File | null> => {
+  const fuente = src.startsWith("/")
+    ? new URL(src, window.location.origin).toString()
+    : src;
+
+  if (!/^(?:data:image\/|blob:|https?:\/\/)/i.test(fuente)) return null;
+
+  const controlador = new AbortController();
+  const temporizador = window.setTimeout(() => controlador.abort(), 12_000);
+
+  try {
+    const respuesta = await fetch(fuente, {
+      signal: controlador.signal,
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+
+    if (!respuesta.ok) return null;
+
+    const longitud = Number(respuesta.headers.get("content-length") || 0);
+    if (longitud > MAX_IMAGEN_PEGADA_BYTES) return null;
+
+    const blob = await respuesta.blob();
+    if (
+      !blob.type.toLowerCase().startsWith("image/") ||
+      blob.size <= 0 ||
+      blob.size > MAX_IMAGEN_PEGADA_BYTES
+    ) {
+      return null;
+    }
+
+    return new File(
+      [blob],
+      `imagen-origen-${indice + 1}.${extensionImagenPegada(
+        new File([blob], "imagen", { type: blob.type })
+      )}`,
+      { type: blob.type }
+    );
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(temporizador);
+  }
+};
+
+type ResultadoImagenesPegadas = {
+  html: string;
+  subidas: number;
+  externas: number;
+  omitidas: number;
+};
+
+const prepararImagenesPegadas = async ({
+  html,
+  fallbackText,
+  archivosPortapapeles,
+  subirImagen,
+}: {
+  html: string;
+  fallbackText: string;
+  archivosPortapapeles: File[];
+  subirImagen: (file: File) => Promise<{ url: string; name: string }>;
+}): Promise<ResultadoImagenesPegadas> => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(
+    html.trim() ? html : convertirTextoPlanoAHtml(fallbackText),
+    "text/html"
+  );
+  const elementosImagen = Array.from(doc.body.getElementsByTagName("*")).filter(
+    (elemento) =>
+      elemento.tagName === "IMG" || elemento.tagName.endsWith(":IMAGEDATA")
+  );
+  const imagenes = elementosImagen.map((elemento) => {
+    if (elemento.tagName === "IMG") return elemento as HTMLImageElement;
+
+    const imagen = doc.createElement("img");
+    imagen.setAttribute("src", elemento.getAttribute("src") || "");
+    imagen.setAttribute("alt", elemento.getAttribute("title") || "");
+    elemento.replaceWith(imagen);
+    return imagen;
+  });
+
+  let subidas = 0;
+  let externas = 0;
+  let omitidas = 0;
+
+  await Promise.all(
+    imagenes.map(async (imagen, indice) => {
+      const src = (imagen.getAttribute("src") || "").trim();
+      const archivoAlternativo = archivosPortapapeles[indice] || null;
+      const archivoDesdeFuente = src
+        ? await descargarImagenPegada(src, indice)
+        : null;
+      const archivo = archivoDesdeFuente || archivoAlternativo;
+
+      if (archivo) {
+        try {
+          const preparado = renombrarImagenPegada(archivo, indice);
+          const resultado = await subirImagen(preparado);
+
+          imagen.setAttribute("src", resultado.url);
+          imagen.setAttribute(
+            "alt",
+            imagen.getAttribute("alt") || resultado.name
+          );
+          imagen.setAttribute("align", "center");
+          subidas += 1;
+          return;
+        } catch {
+          // Si la fuente original es pública, todavía se conserva como respaldo.
+        }
+      }
+
+      if (/^(?:https?:\/\/|\/)/i.test(src)) {
+        imagen.setAttribute("align", "center");
+        externas += 1;
+        return;
+      }
+
+      imagen.remove();
+      omitidas += 1;
+    })
+  );
+
+  const archivosAdicionales = archivosPortapapeles.slice(imagenes.length);
+
+  for (let indice = 0; indice < archivosAdicionales.length; indice += 1) {
+    try {
+      const preparado = renombrarImagenPegada(
+        archivosAdicionales[indice],
+        imagenes.length + indice
+      );
+      const resultado = await subirImagen(preparado);
+      const imagen = doc.createElement("img");
+      imagen.setAttribute("src", resultado.url);
+      imagen.setAttribute("alt", resultado.name);
+      imagen.setAttribute("align", "center");
+      doc.body.appendChild(imagen);
+      subidas += 1;
+    } catch {
+      omitidas += 1;
+    }
+  }
+
+  return {
+    html: sanitizarHtmlPegado(doc.body.innerHTML, fallbackText),
+    subidas,
+    externas,
+    omitidas,
+  };
 };
 
 const sanitizarHtmlPegado = (html: string, fallbackText: string) => {
@@ -251,6 +589,17 @@ const sanitizarHtmlPegado = (html: string, fallbackText: string) => {
     if (ignoredTags.has(tag)) return "";
     if (tag === "BR") return "<br>";
 
+    if (tag === "IMG") {
+      const src = sanitizarUrl(el.getAttribute("src"));
+      if (!src) return "";
+
+      const alt = el.getAttribute("alt") || "Imagen del contenido";
+
+      return `<img src="${escaparHtml(src)}" alt="${escaparHtml(
+        alt
+      )}" align="center">`;
+    }
+
     const children = Array.from(el.childNodes).map(limpiarNodo).join("");
 
     if (blockTags.has(tag)) {
@@ -290,7 +639,12 @@ const sanitizarHtmlPegado = (html: string, fallbackText: string) => {
     return convertirTextoPlanoAHtml(fallbackText);
   }
 
-  if (!/<p[\s>]/i.test(result)) {
+  result = result.replace(
+    /<p([^>]*)>\s*(<img[^>]+>)\s*<\/p>/gi,
+    "$2"
+  );
+
+  if (!/<(?:p|img)[\s>]/i.test(result)) {
     result = `<p>${result}</p>`;
   }
 
@@ -311,6 +665,7 @@ interface Props {
   showFormulaPanelButton?: boolean;
   onPasteImage?: (file: File) => Promise<{ url: string; name: string }>;
   fillHeight?: boolean;
+  animateExpanded?: boolean;
 }
 
 const CustomImage = ImageBase.extend({
@@ -368,6 +723,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
     showFormulaPanelButton,
     onPasteImage,
     fillHeight,
+    animateExpanded = true,
   },
   ref
 ) {
@@ -403,7 +759,10 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: false,
+        underline: false,
+      }),
       TextStyle,
       FontSize,
       Underline,
@@ -440,38 +799,106 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           "editor-basico-content prose prose-sm max-w-none outline-none break-words",
       },
       handlePaste(_view, event) {
-        const items = event.clipboardData?.items;
-
-        if (items && onPasteImage) {
-          for (const item of Array.from(items)) {
-            if (item.type.startsWith("image/")) {
-              const file = item.getAsFile();
-              if (!file) continue;
-
-              event.preventDefault();
-
-              onPasteImage(file).then(({ url, name }) => {
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertContent({
-                    type: "image",
-                    attrs: {
-                      src: url,
-                      alt: name,
-                      align: "center",
-                    },
-                  })
-                  .run();
-              });
-
-              return true;
-            }
-          }
-        }
-
         const text = event.clipboardData?.getData("text/plain") || "";
         const html = event.clipboardData?.getData("text/html") || "";
+        const items = event.clipboardData?.items;
+        const archivosImagen = items
+          ? Array.from(items)
+              .filter((item) => item.type.startsWith("image/"))
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => Boolean(file))
+          : [];
+        const contieneImagenHtml = /<(?:img|[a-z0-9]+:imagedata)\b/i.test(html);
+
+        if (
+          onPasteImage &&
+          (contieneImagenHtml || archivosImagen.length > 0)
+        ) {
+          event.preventDefault();
+
+          const rango = editor
+            ? {
+                from: editor.state.selection.from,
+                to: editor.state.selection.to,
+              }
+            : null;
+          const toastId = toast.loading(
+            archivosImagen.length > 1 || contieneImagenHtml
+              ? "Pegando contenido e imágenes..."
+              : "Pegando imagen..."
+          );
+
+          void prepararImagenesPegadas({
+            html,
+            fallbackText: text,
+            archivosPortapapeles: archivosImagen,
+            subirImagen: onPasteImage,
+          })
+            .then((resultado) => {
+              if (!editor || !rango) {
+                toast.dismiss(toastId);
+                return;
+              }
+
+              editor
+                .chain()
+                .focus()
+                .insertContentAt(rango, resultado.html, {
+                  parseOptions: {
+                    preserveWhitespace: "full",
+                  },
+                })
+                .run();
+
+              if (resultado.omitidas > 0 || resultado.externas > 0) {
+                const detalles = [
+                  resultado.subidas > 0
+                    ? `${resultado.subidas} imagen${
+                        resultado.subidas === 1 ? "" : "es"
+                      } guardada${resultado.subidas === 1 ? "" : "s"}`
+                    : "",
+                  resultado.externas > 0
+                    ? `${resultado.externas} imagen${
+                        resultado.externas === 1 ? "" : "es"
+                      } externa${resultado.externas === 1 ? "" : "s"}`
+                    : "",
+                  resultado.omitidas > 0
+                    ? `${resultado.omitidas} no ${
+                        resultado.omitidas === 1
+                          ? "se pudo"
+                          : "se pudieron"
+                      } copiar`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+
+                toast.error(
+                  `${detalles}. Revisa las imágenes antes de guardar.`,
+                  { id: toastId, duration: 6000 }
+                );
+                return;
+              }
+
+              toast.success(
+                resultado.subidas > 0
+                  ? `Contenido pegado con ${resultado.subidas} imagen${
+                      resultado.subidas === 1 ? "" : "es"
+                    }.`
+                  : "Contenido pegado.",
+                { id: toastId }
+              );
+            })
+            .catch((error) => {
+              console.error("No se pudo pegar el contenido enriquecido:", error);
+              toast.error(
+                "No se pudieron procesar las imágenes. Intenta pegarlas por separado.",
+                { id: toastId, duration: 6000 }
+              );
+            });
+
+          return true;
+        }
 
         if (!text && !html) return false;
 
@@ -579,6 +1006,21 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
           .run();
         setEditorVersion((n) => n + 1);
       },
+      insertSanitizedHtml(html: string) {
+        if (!editor || !html.trim()) return;
+
+        const htmlLimpio = sanitizarHtmlPegado(html, "");
+        editor
+          .chain()
+          .focus()
+          .insertContent(htmlLimpio, {
+            parseOptions: {
+              preserveWhitespace: "full",
+            },
+          })
+          .run();
+        setEditorVersion((n) => n + 1);
+      },
       getHTML() {
         return editor?.getHTML() || "";
       },
@@ -586,8 +1028,60 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         editor?.commands.setContent(html || "");
         setEditorVersion((n) => n + 1);
       },
+      getFormatSegments() {
+        if (!editor) return [];
+        return obtenerSegmentosFormato(editor.getJSON() as NodoTiptap);
+      },
+      applyFormatDecisions(decisions: DecisionFormatoEditor[]) {
+        if (!editor || !Array.isArray(decisions) || decisions.length === 0) {
+          return false;
+        }
+
+        const decisionesValidas = decisions.every(
+          (decision) =>
+            decision &&
+            typeof decision.id === "string" &&
+            Object.prototype.hasOwnProperty.call(
+              TAMANOS_FORMATO,
+              decision.tamano
+            ) &&
+            Object.prototype.hasOwnProperty.call(
+              ALINEACIONES_FORMATO,
+              decision.alineacion
+            ) &&
+            typeof decision.negrita === "boolean" &&
+            typeof decision.cursiva === "boolean" &&
+            typeof decision.subrayado === "boolean" &&
+            typeof decision.mayusculas === "boolean"
+        );
+
+        if (!decisionesValidas) return false;
+
+        const segmentos = obtenerSegmentosFormato(
+          editor.getJSON() as NodoTiptap
+        );
+        const idsEsperados = new Set(segmentos.map((segmento) => segmento.id));
+        const idsRecibidos = new Set(decisions.map((decision) => decision.id));
+
+        if (
+          idsEsperados.size !== idsRecibidos.size ||
+          [...idsEsperados].some((id) => !idsRecibidos.has(id))
+        ) {
+          return false;
+        }
+
+        const contenidoFormateado = aplicarDecisionesFormato(
+          editor.getJSON() as NodoTiptap,
+          decisions
+        );
+
+        editor.commands.setContent(contenidoFormateado as any);
+        onChange(editor.getHTML());
+        setEditorVersion((n) => n + 1);
+        return true;
+      },
     }),
-    [editor]
+    [editor, onChange]
   );
 
   const currentFontSize = useMemo(() => {
@@ -645,6 +1139,29 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
         flex-direction: column;
         transform: translate(-50%, -50%);
         box-shadow: var(--editor-shadow);
+      }
+
+      @keyframes editor-basico-expanded-enter {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.992);
+        }
+
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+
+      .editor-basico.expanded.editor-basico-expanded-enter {
+        transform-origin: center;
+        animation: editor-basico-expanded-enter 180ms ease-out both;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .editor-basico.expanded.editor-basico-expanded-enter {
+          animation-duration: 1ms;
+        }
       }
 
       .editor-basico-toolbar {
@@ -735,6 +1252,10 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
       .editor-basico-tool-button.media.document {
         --media-color: #f59e0b;
+      }
+
+      .editor-basico-tool-button.media.word {
+        --media-color: #2563eb;
       }
 
       .editor-basico-tool-button.media.link {
@@ -1002,7 +1523,11 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
 
   const editorShell = (
     <div
-      className={`editor-basico ${isExpanded ? "expanded" : ""}`}
+      className={`editor-basico ${
+        isExpanded
+          ? `expanded${animateExpanded ? " editor-basico-expanded-enter" : ""}`
+          : ""
+      }`}
       onClick={(e) => {
         if (isExpanded) e.stopPropagation();
       }}
@@ -1216,7 +1741,7 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       {isExpanded &&
         renderPortal(
           <div
-            className="editor-basico-overlay"
+            className="editor-basico-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setIsExpanded(false)}
           />
         )}
@@ -1226,13 +1751,13 @@ const EditorBasico = forwardRef<EditorBasicoRef, Props>(function EditorBasico(
       {preview &&
         renderPortal(
           <div
-            className="editor-basico-preview-overlay"
+            className="editor-basico-preview-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setPreview(null)}
           >
             {estilos}
 
             <div
-              className="editor-basico-preview-content"
+              className="editor-basico-preview-content fcc-modal-enter-standard"
               onClick={(e) => e.stopPropagation()}
             >
               <button

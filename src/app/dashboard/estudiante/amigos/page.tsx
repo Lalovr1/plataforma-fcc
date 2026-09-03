@@ -44,6 +44,9 @@ type Solicitud = {
   solicitante?: Usuario;
 };
 
+const LIMITE_PREPARACION_VISUAL_PERFIL_MS = 30_000;
+const DURACION_MINIMA_APERTURA_PERFIL_MS = 950;
+
 type LogroModal = {
   id: string;
   titulo: string;
@@ -93,9 +96,11 @@ function normalizarUsuario(value: any): Usuario | null {
 function AvatarAmigos({
   config,
   size,
+  onReady,
 }: {
   config: AvatarConfig | null;
   size: number;
+  onReady?: () => void;
 }) {
   return (
     <div
@@ -105,7 +110,11 @@ function AvatarAmigos({
       <span className="amigos-avatar-orbit" />
 
       <div className="amigos-avatar-render">
-        <RenderizadorAvatar config={config ?? defaultAvatar} size={size} />
+        <RenderizadorAvatar
+          config={config ?? defaultAvatar}
+          size={size}
+          onReady={onReady}
+        />
       </div>
     </div>
   );
@@ -125,6 +134,9 @@ export default function AmigosPage() {
   const [reintento, setReintento] = useState(0);
 
   const [selectedAmigo, setSelectedAmigo] = useState<Usuario | null>(null);
+  const [preparandoPerfilId, setPreparandoPerfilId] = useState<string | null>(
+    null
+  );
   const [logros, setLogros] = useState<LogroModal[]>([]);
   const [loadingLogros, setLoadingLogros] = useState(false);
 
@@ -134,8 +146,90 @@ export default function AmigosPage() {
   const [enviandoSolicitudId, setEnviandoSolicitudId] = useState<string | null>(
     null
   );
+  const [perfilVisualListo, setPerfilVisualListo] = useState(false);
+  const [avatarPerfilListo, setAvatarPerfilListo] = useState(false);
+  const [logrosPerfilListos, setLogrosPerfilListos] = useState(false);
+  const inicioPreparacionPerfilRef = useRef(0);
 
   const logrosRevisadosRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !selectedAmigo ||
+      !preparandoPerfilId ||
+      selectedAmigo.id !== preparandoPerfilId ||
+      perfilVisualListo ||
+      !avatarPerfilListo ||
+      !logrosPerfilListos
+    ) {
+      return;
+    }
+
+    let cancelado = false;
+    let frame1: number | null = null;
+    let frame2: number | null = null;
+    const idPreparado = preparandoPerfilId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const espera = Math.max(
+      0,
+      DURACION_MINIMA_APERTURA_PERFIL_MS - transcurrido
+    );
+
+    const timer = window.setTimeout(() => {
+      frame1 = window.requestAnimationFrame(() => {
+        frame2 = window.requestAnimationFrame(() => {
+          if (cancelado) return;
+
+          setPerfilVisualListo(true);
+          setPreparandoPerfilId((actual) =>
+            actual === idPreparado ? null : actual
+          );
+        });
+      });
+    }, espera);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+      if (frame1 !== null) window.cancelAnimationFrame(frame1);
+      if (frame2 !== null) window.cancelAnimationFrame(frame2);
+    };
+  }, [
+    selectedAmigo,
+    preparandoPerfilId,
+    perfilVisualListo,
+    avatarPerfilListo,
+    logrosPerfilListos,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedAmigo ||
+      !preparandoPerfilId ||
+      selectedAmigo.id !== preparandoPerfilId ||
+      perfilVisualListo
+    ) {
+      return;
+    }
+
+    const idPreparado = preparandoPerfilId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const restante = Math.max(
+      0,
+      LIMITE_PREPARACION_VISUAL_PERFIL_MS - transcurrido
+    );
+
+    const limite = window.setTimeout(() => {
+      setPerfilVisualListo(true);
+      setPreparandoPerfilId((actual) =>
+        actual === idPreparado ? null : actual
+      );
+    }, restante);
+
+    return () => window.clearTimeout(limite);
+  }, [selectedAmigo, preparandoPerfilId, perfilVisualListo]);
 
   useEffect(() => {
     const init = async () => {
@@ -502,52 +596,64 @@ export default function AmigosPage() {
   };
 
   const openAmigo = async (u: Usuario) => {
-    setSelectedAmigo(u);
+    if (preparandoPerfilId) return;
 
+    const inicio = performance.now();
+    inicioPreparacionPerfilRef.current = inicio;
+
+    setPreparandoPerfilId(u.id);
+    setPerfilVisualListo(false);
+    setAvatarPerfilListo(false);
+    setLogrosPerfilListos(false);
     setLogros([]);
     setLoadingLogros(true);
 
-    const { data: relaciones, error: errorRelaciones } = await supabase
-      .from("logros_usuarios")
-      .select("logro_id")
-      .eq("usuario_id", u.id);
+    // Montamos el perfil completo oculto desde el principio. De esta forma el
+    // avatar carga en paralelo con la consulta de logros, no despues de ella.
+    setSelectedAmigo(u);
 
-    if (errorRelaciones) {
-      console.error("Error obteniendo relaciones:", errorRelaciones);
+    try {
+      const { data: relaciones, error: errorRelaciones } = await supabase
+        .from("logros_usuarios")
+        .select("logro_id")
+        .eq("usuario_id", u.id);
+
+      if (errorRelaciones) throw errorRelaciones;
+
+      let parsed: LogroModal[] = [];
+
+      if (relaciones && relaciones.length > 0) {
+        const logroIds = relaciones.map((r: any) => r.logro_id);
+
+        const { data: logrosData, error: errorLogros } = await supabase
+          .from("logros")
+          .select("id, nombre, descripcion, icono_url")
+          .in("id", logroIds);
+
+        if (errorLogros) throw errorLogros;
+
+        parsed = (logrosData ?? []).map((l: any) => ({
+          id: l.id,
+          titulo: l.nombre,
+          descripcion: l.descripcion,
+          icono_url: l.icono_url,
+        }));
+      }
+
+      setLogros(parsed);
       setLoadingLogros(false);
-      return;
-    }
 
-    if (!relaciones || relaciones.length === 0) {
-      setLogros([]);
+      if (parsed.length === 0) {
+        setLogrosPerfilListos(true);
+      }
+    } catch (error) {
+      console.error("Error preparando perfil de amigo:", error);
       setLoadingLogros(false);
-      return;
+      setSelectedAmigo(null);
+      setPreparandoPerfilId(null);
+      toast.error("No se pudo preparar el perfil completo.");
     }
-
-    const logroIds = relaciones.map((r: any) => r.logro_id);
-
-    const { data: logrosData, error: errorLogros } = await supabase
-      .from("logros")
-      .select("id, nombre, descripcion, icono_url")
-      .in("id", logroIds);
-
-    if (errorLogros) {
-      console.error("Error obteniendo logros:", errorLogros);
-      setLoadingLogros(false);
-      return;
-    }
-
-    const parsed = (logrosData ?? []).map((l: any) => ({
-      id: l.id,
-      titulo: l.nombre,
-      descripcion: l.descripcion,
-      icono_url: l.icono_url,
-    }));
-
-    setLogros(parsed);
-    setLoadingLogros(false);
   };
-
   const renderEstadoBadge = (usuarioId: string) => {
     const estado = getEstadoUsuario(usuarioId);
 
@@ -1103,6 +1209,22 @@ export default function AmigosPage() {
           backdrop-filter: blur(8px);
         }
 
+        .amigos-profile-overlay.is-visible {
+          animation: amigos-profile-ready 180ms ease-out both;
+        }
+
+        @keyframes amigos-profile-ready {
+          from {
+            opacity: 0;
+            transform: scale(0.992);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         .amigos-profile-modal {
           position: relative;
           width: min(94vw, 760px);
@@ -1550,11 +1672,24 @@ export default function AmigosPage() {
         )}
       </div>
 
+      {preparandoPerfilId && (
+        <CargadorFCC flotante mensaje="Preparando perfil" detalle="" />
+      )}
+
       {selectedAmigo &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="amigos-profile-overlay"
+            className={`amigos-profile-overlay ${
+              perfilVisualListo ? "is-visible" : ""
+            }`}
+            aria-hidden={!perfilVisualListo}
+            style={{
+              // El perfil permanece montado para confirmar sus recursos, pero
+              // todo el portal queda visualmente oculto como una sola unidad.
+              opacity: perfilVisualListo ? 1 : 0,
+              pointerEvents: perfilVisualListo ? "auto" : "none",
+            }}
             onClick={() => setSelectedAmigo(null)}
           >
             <div
@@ -1573,7 +1708,8 @@ export default function AmigosPage() {
               <div className="amigos-profile-header">
                 <AvatarAmigos
                   config={selectedAmigo.avatar_config}
-                  size={230}
+                  size={300}
+                  onReady={() => setAvatarPerfilListo(true)}
                 />
 
                 <div>
@@ -1619,6 +1755,7 @@ export default function AmigosPage() {
                       descripcion: l.descripcion ?? "",
                       desbloqueado: true,
                     }))}
+                    onReady={() => setLogrosPerfilListos(true)}
                   />
                 )}
               </div>

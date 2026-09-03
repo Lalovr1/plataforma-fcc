@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { eliminarCursoCompleto } from "@/lib/cursoStorageCliente";
 import { useRouter, useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import LayoutGeneral from "@/components/LayoutGeneral";
@@ -521,17 +522,34 @@ export default function EditarInformacionCursoPage() {
 
     setGuardando(true);
 
-    const { error } = await supabase.from("materias").delete().eq("id", id);
+    try {
+      const resultado = await eliminarCursoCompleto(id);
 
-    if (error) {
-      toast.error("Error al eliminar curso");
+      limpiarCachesRelacionados(id);
+
+      if (resultado.advertencia) {
+        console.warn(
+          "[FCC Academy] Curso eliminado con aviso de Storage:",
+          resultado.advertencia
+        );
+
+        toast.success(
+          "Curso eliminado. Quedó pendiente una limpieza de Storage."
+        );
+      } else {
+        toast.success("Curso eliminado");
+      }
+
+      router.push("/dashboard/profesor");
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Error al eliminar curso"
+      );
       setGuardando(false);
-      return;
     }
-
-    limpiarCachesRelacionados(id);
-    toast.success("Curso eliminado");
-    router.push("/dashboard/profesor");
   };
 
   const eliminarCarreraConfirmada = (index: number) => {
@@ -2278,8 +2296,8 @@ export default function EditarInformacionCursoPage() {
 
       {confirmacion &&
         renderPortal(
-          <div className="editar-curso-modal-overlay">
-            <div className="editar-curso-modal editar-curso-confirm-modal">
+          <div className="editar-curso-modal-overlay fcc-modal-backdrop-enter-standard">
+            <div className="editar-curso-modal editar-curso-confirm-modal fcc-modal-enter-standard">
               <div className="editar-curso-modal-content">
                 <button
                   type="button"

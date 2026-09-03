@@ -7,6 +7,7 @@
 import {
   useState,
   useEffect,
+  useRef,
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
@@ -28,6 +29,9 @@ interface Usuario {
   nivel: number | null;
   avatar_config: AvatarConfig | null;
 }
+
+const LIMITE_PREPARACION_VISUAL_PERFIL_MS = 30_000;
+const DURACION_MINIMA_APERTURA_PERFIL_MS = 950;
 
 interface LogroModal {
   id: string;
@@ -82,10 +86,12 @@ function AvatarRanking({
   config,
   size,
   className = "",
+  onReady,
 }: {
   config: AvatarConfig | null;
   size: number;
   className?: string;
+  onReady?: () => void;
 }) {
   return (
     <div
@@ -95,7 +101,11 @@ function AvatarRanking({
       <span className="ranking-avatar-orbit" />
 
       <div className="ranking-avatar-render">
-        <RenderizadorAvatar config={config ?? defaultAvatar} size={size} />
+        <RenderizadorAvatar
+          config={config ?? defaultAvatar}
+          size={size}
+          onReady={onReady}
+        />
       </div>
     </div>
   );
@@ -119,12 +129,97 @@ export default function EstudianteRanking() {
   );
 
   const [selectedUsuario, setSelectedUsuario] = useState<Usuario | null>(null);
+  const [preparandoPerfilId, setPreparandoPerfilId] = useState<string | null>(
+    null
+  );
   const [logros, setLogros] = useState<LogroModal[]>([]);
   const [loadingLogros, setLoadingLogros] = useState(false);
   const [errorLogrosPerfil, setErrorLogrosPerfil] = useState(false);
   const [enviandoSolicitudId, setEnviandoSolicitudId] = useState<string | null>(
     null
   );
+  const [perfilVisualListo, setPerfilVisualListo] = useState(false);
+  const [avatarPerfilListo, setAvatarPerfilListo] = useState(false);
+  const [logrosPerfilListos, setLogrosPerfilListos] = useState(false);
+  const inicioPreparacionPerfilRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      !selectedUsuario ||
+      !preparandoPerfilId ||
+      selectedUsuario.id !== preparandoPerfilId ||
+      perfilVisualListo ||
+      !avatarPerfilListo ||
+      !logrosPerfilListos
+    ) {
+      return;
+    }
+
+    let cancelado = false;
+    let frame1: number | null = null;
+    let frame2: number | null = null;
+    const idPreparado = preparandoPerfilId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const espera = Math.max(
+      0,
+      DURACION_MINIMA_APERTURA_PERFIL_MS - transcurrido
+    );
+
+    const timer = window.setTimeout(() => {
+      frame1 = window.requestAnimationFrame(() => {
+        frame2 = window.requestAnimationFrame(() => {
+          if (cancelado) return;
+
+          setPerfilVisualListo(true);
+          setPreparandoPerfilId((actual) =>
+            actual === idPreparado ? null : actual
+          );
+        });
+      });
+    }, espera);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+      if (frame1 !== null) window.cancelAnimationFrame(frame1);
+      if (frame2 !== null) window.cancelAnimationFrame(frame2);
+    };
+  }, [
+    selectedUsuario,
+    preparandoPerfilId,
+    perfilVisualListo,
+    avatarPerfilListo,
+    logrosPerfilListos,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedUsuario ||
+      !preparandoPerfilId ||
+      selectedUsuario.id !== preparandoPerfilId ||
+      perfilVisualListo
+    ) {
+      return;
+    }
+
+    const idPreparado = preparandoPerfilId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const restante = Math.max(
+      0,
+      LIMITE_PREPARACION_VISUAL_PERFIL_MS - transcurrido
+    );
+
+    const limite = window.setTimeout(() => {
+      setPerfilVisualListo(true);
+      setPreparandoPerfilId((actual) =>
+        actual === idPreparado ? null : actual
+      );
+    }, restante);
+
+    return () => window.clearTimeout(limite);
+  }, [selectedUsuario, preparandoPerfilId, perfilVisualListo]);
 
   const fetchEstadoSocial = async (myId: string) => {
     const [
@@ -333,17 +428,36 @@ export default function EstudianteRanking() {
   };
 
   const abrirPerfil = async (usuario: Usuario) => {
-    setSelectedUsuario(usuario);
+    if (preparandoPerfilId) return;
 
-    if (miUsuario?.id) {
-      void fetchEstadoSocial(miUsuario.id).catch((error) => {
-        console.error("Error actualizando estado social:", error);
-      });
-    }
+    const inicio = performance.now();
+    const modalYaAbierto =
+      selectedUsuario?.id === usuario.id && perfilVisualListo;
 
+    inicioPreparacionPerfilRef.current = inicio;
+    setPreparandoPerfilId(usuario.id);
     setLogros([]);
     setLoadingLogros(true);
     setErrorLogrosPerfil(false);
+
+    if (!modalYaAbierto) {
+      setPerfilVisualListo(false);
+      setAvatarPerfilListo(false);
+      setLogrosPerfilListos(false);
+
+      // Igual que Horario/Calendario/Mapa curricular: el arbol real se monta
+      // oculto cuanto antes. Avatar y logros se preparan en paralelo mientras
+      // el cargador flotante sigue siendo lo unico visible.
+      setSelectedUsuario(usuario);
+    }
+
+    const estadoSocialPromise = miUsuario?.id
+      ? fetchEstadoSocial(miUsuario.id).catch((error) => {
+          console.error("Error actualizando estado social:", error);
+        })
+      : Promise.resolve();
+
+    let parsed: LogroModal[] = [];
 
     try {
       const { data: relaciones, error: errorRelaciones } = await supabase
@@ -353,37 +467,44 @@ export default function EstudianteRanking() {
 
       if (errorRelaciones) throw errorRelaciones;
 
-      if (!relaciones || relaciones.length === 0) {
-        setLogros([]);
-        return;
+      if (relaciones && relaciones.length > 0) {
+        const logroIds = relaciones.map((r: any) => r.logro_id);
+        const { data: logrosData, error: errorLogros } = await supabase
+          .from("logros")
+          .select("id, nombre, descripcion, icono_url")
+          .in("id", logroIds);
+
+        if (errorLogros) throw errorLogros;
+
+        parsed = (logrosData ?? []).map((l: any) => ({
+          id: l.id,
+          titulo: l.nombre,
+          descripcion: l.descripcion,
+          icono_url: l.icono_url,
+        }));
       }
 
-      const logroIds = relaciones.map((r: any) => r.logro_id);
-
-      const { data: logrosData, error: errorLogros } = await supabase
-        .from("logros")
-        .select("id, nombre, descripcion, icono_url")
-        .in("id", logroIds);
-
-      if (errorLogros) throw errorLogros;
-
-      const parsed = (logrosData ?? []).map((l: any) => ({
-        id: l.id,
-        titulo: l.nombre,
-        descripcion: l.descripcion,
-        icono_url: l.icono_url,
-      }));
-
+      await estadoSocialPromise;
       setLogros(parsed);
+      setErrorLogrosPerfil(false);
+
+      if (parsed.length === 0) {
+        setLogrosPerfilListos(true);
+      }
     } catch (error) {
-      console.error("Error obteniendo logros:", error);
+      console.error("Error preparando perfil del ranking:", error);
+      await estadoSocialPromise;
       setLogros([]);
       setErrorLogrosPerfil(true);
-    } finally {
-      setLoadingLogros(false);
+      setLogrosPerfilListos(true);
+    }
+
+    setLoadingLogros(false);
+
+    if (modalYaAbierto) {
+      setPreparandoPerfilId(null);
     }
   };
-
   const enviarSolicitud = async (toUser: Usuario) => {
     if (!miUsuario) return;
     if (toUser.id === miUsuario.id) return;
@@ -1036,6 +1157,22 @@ export default function EstudianteRanking() {
           backdrop-filter: blur(8px);
         }
 
+        .ranking-profile-overlay.is-visible {
+          animation: ranking-profile-ready 180ms ease-out both;
+        }
+
+        @keyframes ranking-profile-ready {
+          from {
+            opacity: 0;
+            transform: scale(0.992);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         .ranking-profile-modal {
           position: relative;
           width: min(94vw, 760px);
@@ -1368,7 +1505,7 @@ export default function EstudianteRanking() {
 
                   <AvatarRanking
                     config={miUsuario.avatar_config}
-                    size={112}
+                    size={132}
                   />
 
                   <span className="ranking-user-name">{miUsuario.nombre}</span>
@@ -1424,7 +1561,7 @@ export default function EstudianteRanking() {
 
                       <AvatarRanking
                         config={user.avatar_config}
-                        size={index < 3 ? 92 : 76}
+                        size={index === 0 ? 138 : index === 1 ? 132 : index === 2 ? 126 : 112}
                       />
 
                       <span className="ranking-name-block">
@@ -1444,11 +1581,30 @@ export default function EstudianteRanking() {
         )}
       </div>
 
+      {preparandoPerfilId && (
+        <CargadorFCC
+          flotante={!selectedUsuario || !perfilVisualListo}
+          sobreModal={Boolean(selectedUsuario && perfilVisualListo)}
+          mensaje="Preparando perfil"
+          detalle=""
+        />
+      )}
+
       {selectedUsuario &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="ranking-profile-overlay"
+            className={`ranking-profile-overlay ${
+              perfilVisualListo ? "is-visible" : ""
+            }`}
+            aria-hidden={!perfilVisualListo}
+            style={{
+              // opacity se aplica al subarbol completo. A diferencia de
+              // visibility, un hijo no puede volver a hacerse visible por su
+              // cuenta mientras el perfil se prepara.
+              opacity: perfilVisualListo ? 1 : 0,
+              pointerEvents: perfilVisualListo ? "auto" : "none",
+            }}
             onClick={() => setSelectedUsuario(null)}
           >
             <div
@@ -1467,7 +1623,8 @@ export default function EstudianteRanking() {
               <div className="ranking-profile-header">
                 <AvatarRanking
                   config={selectedUsuario.avatar_config}
-                  size={230}
+                  size={300}
+                  onReady={() => setAvatarPerfilListo(true)}
                 />
 
                 <div>
@@ -1538,6 +1695,7 @@ export default function EstudianteRanking() {
                       descripcion: l.descripcion ?? "",
                       desbloqueado: true,
                     }))}
+                    onReady={() => setLogrosPerfilListos(true)}
                   />
                 )}
               </div>

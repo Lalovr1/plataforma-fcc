@@ -86,7 +86,11 @@ export default function MapaCurricularPage() {
       `}</style>
 
       <div className="curriculum-page-shell">
-        <Link href={hrefVolver} className="curriculum-page-back">
+        <Link
+          href={hrefVolver}
+          className="curriculum-page-back"
+          data-fcc-pantalla-completa={volverAlModalMapa ? "true" : undefined}
+        >
           <ArrowLeft size={16} />
           Volver
         </Link>

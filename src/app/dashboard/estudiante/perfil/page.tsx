@@ -15,6 +15,7 @@ import BarraXP from "@/components/BarraXP";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, { AvatarConfig } from "@/components/RenderizadorAvatar";
 import ModalEditorAvatar from "@/components/ModalEditorAvatar";
+import { esAvatarConfigV2, resolverAvatarConfigEstudianteParaCuenta } from "@/lib/avatarConfig";
 import toast from "react-hot-toast";
 import GridLogros from "@/components/GridLogros";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
@@ -121,7 +122,7 @@ function ModalEditarNombre({
   };
 
   return createPortal(
-    <div className="perfil-modal-overlay" onClick={onClose}>
+    <div className="perfil-modal-overlay fcc-modal-enter-standard" onClick={onClose}>
       <div className="perfil-modal-card" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
@@ -222,9 +223,39 @@ export default function PerfilEstudiantePage() {
           desbloqueado: idsDesbloqueados.has(l.id),
         }));
 
+        const avatarActual = parseAvatarConfig(userData.avatar_config);
+        const generoFallback =
+          avatarActual?.gender === "femenino"
+            ? "femenino"
+            : "masculino";
+
+        const avatarResuelto =
+          resolverAvatarConfigEstudianteParaCuenta(
+            user.email,
+            avatarActual,
+            generoFallback
+          );
+
+        if (
+          JSON.stringify(avatarResuelto) !==
+          JSON.stringify(avatarActual)
+        ) {
+          const { error: avatarSyncError } = await supabase
+            .from("usuarios")
+            .update({ avatar_config: avatarResuelto })
+            .eq("id", user.id);
+
+          if (avatarSyncError) {
+            console.warn(
+              "[FCC Academy] No se pudo sincronizar el avatar personalizado en perfil:",
+              avatarSyncError
+            );
+          }
+        }
+
         const perfilData: UsuarioPerfil = {
           ...userData,
-          avatar_config: parseAvatarConfig(userData.avatar_config),
+          avatar_config: avatarResuelto,
           logrosDesbloqueados: logrosMapeados.filter((l) => l.desbloqueado),
           logrosBloqueados: logrosMapeados.filter((l) => !l.desbloqueado),
         };
@@ -1016,9 +1047,9 @@ export default function PerfilEstudiantePage() {
   const config: AvatarConfig = usuario.avatar_config ?? defaultAvatar;
 
   const handleSaveAvatar = async (newConfig: AvatarConfig) => {
-    if (!newConfig.gender || !newConfig.skin) {
-      toast.error("Debes seleccionar un tipo de cuerpo antes de guardar.");
-      return;
+    if (!esAvatarConfigV2(newConfig)) {
+      toast.error("La configuración del avatar no es válida.");
+      return false;
     }
 
     const { error } = await supabase

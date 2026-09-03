@@ -271,6 +271,18 @@ export async function POST(
         ])
       );
 
+    if (bloqueIds.length > 8) {
+      return NextResponse.json(
+        {
+          error:
+            "Puedes usar como máximo 8 bloques de contexto.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     let bloques: any[] = [];
 
     if (
@@ -306,6 +318,65 @@ export async function POST(
 
       bloques =
         result.data ?? [];
+
+      if (
+        bloques.length !==
+        bloqueIds.length
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Uno o más bloques no pertenecen al curso.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const bloquePrincipal =
+        bloques.find(
+          (bloque) =>
+            bloque.id ===
+            quiz.bloque_id
+        );
+
+      if (!bloquePrincipal) {
+        return NextResponse.json(
+          {
+            error:
+              "No se encontró el bloque principal del quiz.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const ordenPrincipal =
+        Number(
+          bloquePrincipal.orden ?? 0
+        );
+
+      if (
+        bloques.some(
+          (bloque) =>
+            bloque.unidad_id !==
+              bloquePrincipal.unidad_id ||
+            Number(bloque.orden ?? 0) >
+              ordenPrincipal
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Sólo puedes utilizar el bloque principal y bloques anteriores de la misma unidad.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
     }
 
     let formulas: any[] = [];

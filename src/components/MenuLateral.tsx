@@ -7,7 +7,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpen,
   Trophy,
@@ -86,8 +86,10 @@ const profesorLinks: NavItem[] = [
 
 export default function MenuLateral({ rol }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [tutorialActivo, setTutorialActivo] = useState(false);
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
 
   useEffect(() => {
     const handler = (e: any) => setTutorialActivo(!!e.detail?.activo);
@@ -158,44 +160,81 @@ export default function MenuLateral({ rol }: Props) {
   }
 
   async function ejecutarCerrarSesion() {
+    setCerrandoSesion(true);
+
+    // El cierre de sesion es una unica transicion de pantalla completa desde
+    // el primer instante. Asi no existe un estado intermedio que conserve el
+    // hueco visual de la barra lateral.
     iniciarIndicadorNavegacionFCC("Cerrando tu sesión", {
       pantallaCompleta: true,
       destino: "/login",
     });
 
-    const { supabase } = await import("@/utils/supabaseClient");
-
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error("Error al cerrar sesión en Supabase:", err);
-    }
-
-    window.dispatchEvent(new Event("logout"));
-
     const intentosActivosLocales: Array<[string, string]> = [];
+    const tutorialCompletadoLocal: Array<[string, string]> = [];
 
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key?.startsWith("fcc_academy_quiz_active_v1_")) continue;
+        if (!key) continue;
 
         const value = localStorage.getItem(key);
-        if (value !== null) {
+        if (value === null) continue;
+
+        if (key.startsWith("fcc_academy_quiz_active_v1_")) {
           intentosActivosLocales.push([key, value]);
+        } else if (key.startsWith("fcc_tutorial_completo_")) {
+          tutorialCompletadoLocal.push([key, value]);
         }
       }
     } catch {}
 
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          "El cierre de sesión del servidor no respondió correctamente."
+        );
+      }
+    } catch (error) {
+      console.error("[FCC Academy] Error cerrando la sesión en servidor:", error);
+
+      try {
+        const { supabase } = await import("@/utils/supabaseClient");
+        const { error: errorSesion } = await supabase.auth.signOut();
+
+        if (errorSesion && errorSesion.name !== "AuthSessionMissingError") {
+          console.error(
+            "[FCC Academy] Error cerrando la sesión local:",
+            errorSesion
+          );
+        }
+      } catch (errorLocal) {
+        console.error(
+          "[FCC Academy] No se pudo completar el cierre de sesión local:",
+          errorLocal
+        );
+      }
+    }
+
+    window.dispatchEvent(new Event("logout"));
     localStorage.clear();
 
     try {
-      intentosActivosLocales.forEach(([key, value]) => {
-        localStorage.setItem(key, value);
-      });
+      [...intentosActivosLocales, ...tutorialCompletadoLocal].forEach(
+        ([key, value]) => {
+          localStorage.setItem(key, value);
+        }
+      );
     } catch {}
 
-    window.location.href = "/login";
+    // replace conserva la protección de no volver con Atrás a una vista privada,
+    // sin recargar el documento ni reconstruir el cargador global.
+    router.replace("/login");
   }
 
   async function cerrarSesion() {
@@ -581,6 +620,7 @@ export default function MenuLateral({ rol }: Props) {
           <button
             type="button"
             onClick={cerrarSesion}
+            disabled={cerrandoSesion}
             className="fcc-logout-button"
           >
             <LogOut size={19} strokeWidth={1.95} />

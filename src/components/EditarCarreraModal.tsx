@@ -440,7 +440,7 @@ export default function EditarCarreraModal({
 
   const modal = createPortal(
     <div
-      className="editar-carrera-overlay"
+      className="editar-carrera-overlay fcc-modal-backdrop-enter-standard"
       onClick={() => {
         if (closeOnBackdrop) solicitarSalida();
       }}
@@ -897,7 +897,7 @@ export default function EditarCarreraModal({
       `}</style>
 
       <div
-        className="editar-carrera-modal"
+        className="editar-carrera-modal fcc-modal-enter-standard"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}

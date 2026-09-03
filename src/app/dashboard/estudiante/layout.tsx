@@ -1,41 +1,25 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { obtenerUsuarioConRolServidor } from "@/lib/rolServidor";
 
 export default async function EstudianteLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const cookieStore = await cookies();
-
-  const supabase = createServerComponentClient({
-    cookies: () => cookieStore,
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, rol } = await obtenerUsuarioConRolServidor();
 
   if (!user) {
     redirect("/login");
   }
 
-  const correo = user.email?.toLowerCase() ?? "";
+  if (rol === "profesor") {
+    redirect("/dashboard/profesor");
+  }
 
-  const esEstudiante =
-    correo.endsWith("@alumno.buap.mx") ||
-    correo.endsWith("@alm.buap.mx");
-
-  const esProfesor = correo.endsWith("@correo.buap.mx");
-
-  if (!esEstudiante) {
-    if (esProfesor) {
-      redirect("/dashboard/profesor");
-    }
-
+  if (rol !== "estudiante") {
     redirect("/login");
   }
 
-  return <>{children}</>;
+  return children;
 }

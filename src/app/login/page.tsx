@@ -4,8 +4,8 @@
  * - Antes de iniciar sesión revisa si el correo existe y si está confirmado.
  * - Si el correo no está confirmado, permite reenviar confirmación.
  * - Si la contraseña falla, permite solicitar restablecimiento.
- * - Busca el rol en la tabla `usuarios` y redirige al dashboard correspondiente.
- * - Carga el tema del usuario antes de redirigir para evitar parpadeo claro/oscuro.
+ * - Tras autenticar, delega la redirección por rol a /dashboard.
+ * - No consulta `usuarios` ni rutas auxiliares desde el navegador.
  */
 
 "use client";
@@ -13,83 +13,14 @@
 import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Lock, LogIn, Mail } from "lucide-react";
-import { precargarImagenes } from "@/lib/imagenes";
 import { iniciarIndicadorNavegacionFCC } from "@/components/IndicadorNavegacionFCC";
 
 type TipoMensaje = "error" | "success" | "info";
 
-const temasValidos = [
-  "claro",
-  "blanco",
-  "oscuro",
-  "gris",
-  "esmeralda",
-  "morado",
-  "indigo",
-  "rojo",
-  "rosa",
-] as const;
-
-type Tema = (typeof temasValidos)[number];
-
-const LOGO_POR_TEMA: Record<Tema, string> = {
-  claro: "/ui/logos/logo-azul.webp",
-  blanco: "/ui/logos/logo-blanco.webp",
-  oscuro: "/ui/logos/logo-negro.webp",
-  gris: "/ui/logos/logo-gris.webp",
-  esmeralda: "/ui/logos/logo-esmeralda.webp",
-  morado: "/ui/logos/logo-morado.webp",
-  indigo: "/ui/logos/logo-indigo.webp",
-  rojo: "/ui/logos/logo-rojo.webp",
-  rosa: "/ui/logos/logo-rosa.webp",
-};
-
-const HORARIO_STORAGE_KEY = "fcc-academy-mi-horario-v5";
-const DB_HORARIO_TABLE = "horarios_usuario";
-
-function esTemaValido(valor: any): valor is Tema {
-  return temasValidos.includes(valor);
-}
-
-function aplicarTemaAntesDeEntrar(tema: Tema) {
-  localStorage.setItem("preferencias_usuario", JSON.stringify({ tema }));
-
-  const clasesTema = temasValidos.map((t) => `theme-${t}`);
-
-  document.documentElement.classList.remove(...clasesTema);
-  document.documentElement.classList.add(`theme-${tema}`);
-
-  if (document.body) {
-    document.body.classList.remove(...clasesTema);
-    document.body.classList.add(`theme-${tema}`);
-  }
-}
-
-async function precargarHorarioUsuario(userId: string) {
-  const { data, error } = await supabase
-    .from(DB_HORARIO_TABLE)
-    .select("datos")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.warn("No se pudo precargar Mi horario:", error);
-    return;
-  }
-
-  if (!data?.datos) return;
-
-  localStorage.setItem(HORARIO_STORAGE_KEY, JSON.stringify(data.datos));
-
-  window.dispatchEvent(
-    new CustomEvent("horarioActualizado", {
-      detail: data.datos,
-    })
-  );
-}
-
 export default function LoginPage() {
+  const router = useRouter();
   const [correo, setCorreo] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [mensaje, setMensaje] = useState("");
@@ -127,7 +58,6 @@ export default function LoginPage() {
     const correoLimpio = correo.trim().toLowerCase();
 
     try {
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: correoLimpio,
         password: contrasena,
@@ -176,72 +106,23 @@ export default function LoginPage() {
         return;
       }
 
+      // Auth ya aceptó las credenciales. El servidor es la fuente
+      // autoritativa para resolver el rol mediante /dashboard.
       localStorage.setItem("user_id", data.user.id);
+      localStorage.removeItem("rol_usuario");
 
-      const [
-        { data: usuario, error: usuarioError },
-        { data: preferencias },
-      ] = await Promise.all([
-        supabase
-          .from("usuarios")
-          .select("rol")
-          .eq("id", data.user.id)
-          .single(),
-        supabase
-          .from("configuraciones_usuario")
-          .select("tema")
-          .eq("usuario_id", data.user.id)
-          .maybeSingle(),
-        precargarHorarioUsuario(data.user.id),
-      ]);
+      // No reutilizar visualmente el tema de una sesión previa. El tema
+      // auténtico de este usuario se confirma dentro del dashboard mientras
+      // el loader azul de Login continúa cubriendo la interfaz.
+      localStorage.removeItem("preferencias_usuario");
 
-      if (usuarioError || !usuario) {
-        console.error(usuarioError);
-        mostrarMensaje(
-          "Tu cuenta existe, pero no se pudo determinar tu rol. Contacta al administrador de la plataforma."
-        );
-        return;
-      }
+      iniciarIndicadorNavegacionFCC("Abriendo tu panel", {
+        pantallaCompleta: true,
+        destino: "/dashboard",
+        mantenerPantallaCompleta: true,
+      });
 
-      const temaUsuario = esTemaValido(preferencias?.tema)
-        ? preferencias.tema
-        : "claro";
-
-      const logoListo = await precargarImagenes(
-        [LOGO_POR_TEMA[temaUsuario]],
-        12_000
-      );
-
-      aplicarTemaAntesDeEntrar(temaUsuario);
-
-      if (logoListo) {
-        document.documentElement.setAttribute(
-          "data-fcc-logo-ready",
-          temaUsuario
-        );
-      } else {
-        document.documentElement.removeAttribute("data-fcc-logo-ready");
-      }
-
-      localStorage.setItem("rol_usuario", usuario.rol);
-
-      if (usuario.rol === "estudiante") {
-        iniciarIndicadorNavegacionFCC("Abriendo tu panel de estudiante", {
-          pantallaCompleta: true,
-          destino: "/dashboard/estudiante",
-        });
-        window.location.href = "/dashboard/estudiante";
-      } else if (usuario.rol === "profesor") {
-        iniciarIndicadorNavegacionFCC("Abriendo tu panel de profesor", {
-          pantallaCompleta: true,
-          destino: "/dashboard/profesor",
-        });
-        window.location.href = "/dashboard/profesor";
-      } else {
-        mostrarMensaje(
-          "Tu cuenta tiene un rol no válido. Contacta al administrador de la plataforma."
-        );
-      }
+      router.replace("/dashboard");
     } catch (err: any) {
       console.error(err);
       mostrarMensaje("Error inesperado en login: " + err.message);
@@ -911,7 +792,7 @@ export default function LoginPage() {
 
                 <input
                   type="email"
-                  placeholder="Correo BUAP"
+                  placeholder="Correo electrónico"
                   value={correo}
                   onChange={(e) => setCorreo(e.target.value)}
                   className="login-input"

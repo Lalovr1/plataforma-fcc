@@ -1555,7 +1555,7 @@ export default function CalendarioEscolar2026({
       )}
 
       {ajustesAbiertos && (
-        <div className="fcc-calendar-settings-overlay" role="dialog" aria-modal="true">
+        <div className="fcc-calendar-settings-overlay fcc-modal-enter-standard" role="dialog" aria-modal="true">
           <div className="fcc-calendar-settings-card">
             <h4>Ajustes del calendario</h4>
             <p>Selecciona cómo quieres ver el calendario escolar.</p>

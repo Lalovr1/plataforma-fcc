@@ -1,116 +1,280 @@
 /**
- * Modal de edición del avatar del usuario.
- * Permite personalizar cabello, ojos, boca, nariz, ropa, playeras y accesorios,
- * mostrando una vista previa en tiempo real.
+ * Editor de avatar V2 para estudiantes de FCC Academy.
+ *
+ * Las opciones salen exclusivamente del catalogo generado desde
+ * public/elementos_avatar_nuevo. No contiene listas hardcodeadas ni migra
+ * identificadores del sistema anterior.
  */
 
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import RenderizadorAvatar, {
-  AvatarConfig,
+  type AvatarConfig,
   prepararRecursosAvatarFCC,
 } from "./RenderizadorAvatar";
-import { supabase } from "@/utils/supabaseClient";
-import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
+import ModalEditorAvatarPersonalizado from "./ModalEditorAvatarPersonalizado";
+import ModalEditorAvatarProfesor from "./ModalEditorAvatarProfesor";
 import CargadorFCC from "@/components/CargadorFCC";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+import { obtenerUrlImagenOptimizada } from "@/lib/imagenes";
 import {
-  obtenerUrlImagenOptimizada,
-  precargarImagenes,
-} from "@/lib/imagenes";
+  completarAvatarConfigBaseEstudiante,
+  crearAvatarConfigInicialEstudiante,
+  esAvatarConfigV2,
+  establecerColorItemAvatarV2,
+  establecerVarianteImagenAvatarV2,
+  obtenerSlotItemAvatar,
+  quitarSeleccionAvatarV2,
+  seleccionarItemAvatarV2,
+  type AvatarConfigV2,
+} from "@/lib/avatarConfig";
+import {
+  obtenerColoresPielAvatar,
+  obtenerItemAvatarPorId,
+  obtenerEstudiantePersonalizadoAvatar,
+  obtenerProfesorAvatar,
+  obtenerRecompensasInicialesAvatar,
+  obtenerSeccionesEstudianteAvatar,
+  resolverOpcionImagenAvatar,
+  resolverVarianteItemAvatar,
+  type CapaSimpleAvatar,
+  type CapaTintAvatar,
+  type GeneroAvatar,
+  type ItemCatalogoAvatar,
+  type SeccionEstudianteAvatar,
+  type VarianteItemAvatar,
+  type UsuarioAvatarPersonalizado,
+} from "@/lib/avatarCatalogo";
+import { supabase } from "@/utils/supabaseClient";
 
-const DURACION_MINIMA_PREPARACION_EDITOR_MS = 950;
+const DURACION_MINIMA_PREPARACION_EDITOR_MS = 280;
+const RETRASO_LOADER_CAMBIO_MS = 2_000;
+const DURACION_MINIMA_LOADER_CAMBIO_MS = 1_050;
+const LIMITE_CAMBIO_AVATAR_MS = 30_000;
+const TAMANO_AVATAR_EDITOR = 380;
+const PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID = "ropa/playeras+camisas/PlayeraTirantes";
 
-function VistaPreviaCapasAtomica({
-  sources,
-  children,
-}: {
-  sources: string[];
-  children: ReactNode;
-}) {
-  const contenedorRef = useRef<HTMLDivElement | null>(null);
-  const [cercana, setCercana] = useState(false);
-  const [montada, setMontada] = useState(false);
-  const [lista, setLista] = useState(false);
-  const clave = sources.join("|");
+function esperar(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
 
-  useEffect(() => {
-    const elemento = contenedorRef.current;
-    if (!elemento) return;
+const PRIORIDAD_RAREZA: Record<string, number> = {
+  inicial: 0,
+  comun: 1,
+  epico: 2,
+  raro: 3,
+  legendario: 4,
+};
 
-    if (typeof IntersectionObserver === "undefined") {
-      setCercana(true);
-      return;
+function prioridadRareza(item: ItemCatalogoAvatar) {
+  return PRIORIDAD_RAREZA[item.rarity ?? ""] ?? 99;
+}
+
+function prioridadVarianteGenero(
+  item: ItemCatalogoAvatar,
+  gender: GeneroAvatar
+) {
+  if (item.customization.type === "image_variants") {
+    const tienePropia = item.customization.options.some(
+      (option) => Boolean(option.variants[gender])
+    );
+    return tienePropia ? 0 : 1;
+  }
+
+  return item.variants[gender] ? 0 : 1;
+}
+
+function compararItemsEditor(
+  a: ItemCatalogoAvatar,
+  b: ItemCatalogoAvatar,
+  gender: GeneroAvatar
+) {
+  // PlayeraTirantes es la prenda mas basica del estudiante:
+  // dentro de Playeras / Camisas debe aparecer SIEMPRE como primera tarjeta,
+  // independientemente del orden alfabetico o de otras prendas iniciales.
+  if (
+    a.id === PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID &&
+    b.id !== PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID
+  ) {
+    return -1;
+  }
+
+  if (
+    b.id === PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID &&
+    a.id !== PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID
+  ) {
+    return 1;
+  }
+
+  const generoA = prioridadVarianteGenero(a, gender);
+  const generoB = prioridadVarianteGenero(b, gender);
+
+  if (generoA !== generoB) return generoA - generoB;
+
+  const rarezaA = prioridadRareza(a);
+  const rarezaB = prioridadRareza(b);
+
+  if (rarezaA !== rarezaB) return rarezaA - rarezaB;
+
+  return a.name.localeCompare(b.name, "es", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function ordenarItemsEditor(
+  items: ItemCatalogoAvatar[],
+  gender: GeneroAvatar
+) {
+  return [...items].sort((a, b) => compararItemsEditor(a, b, gender));
+}
+const ETIQUETAS_SLOT: Record<string, string> = {
+  cabello: "Cabello",
+  ojos: "Ojos",
+};
+
+function etiquetaSlot(slot: string) {
+  if (slot.startsWith("ropa/")) return "Ropa";
+  if (slot.startsWith("accesorios/")) return "Accesorios";
+  return ETIQUETAS_SLOT[slot] ?? slot;
+}
+
+function listaNatural(valores: string[]) {
+  const unicos = Array.from(new Set(valores));
+
+  if (unicos.length <= 1) return unicos[0] ?? "";
+  if (unicos.length === 2) return `${unicos[0]} y ${unicos[1]}`;
+
+  return `${unicos.slice(0, -1).join(", ")} y ${unicos.at(-1)}`;
+}
+
+
+type GrupoColorRopa = {
+  familia: string;
+  items: ItemCatalogoAvatar[];
+};
+
+function separarFamiliaColorRopa(item: ItemCatalogoAvatar) {
+  if (item.customization.type !== "none") return null;
+
+  const indice = item.name.lastIndexOf("__");
+  if (indice <= 0 || indice >= item.name.length - 2) return null;
+
+  return {
+    familia: item.name.slice(0, indice),
+    color: item.name.slice(indice + 2),
+  };
+}
+
+function etiquetaSimple(valor: string) {
+  return valor
+    .replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .trim();
+}
+
+function swatchColorRopa(color: string) {
+  const normalizado = color
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const colores: Record<string, string> = {
+    azul: "#2563eb",
+    verde: "#3f7f4f",
+    gris: "#a3a3a3",
+    mostaza: "#d4a017",
+    negra: "#171717",
+    negro: "#171717",
+    roja: "#b91c1c",
+    rojo: "#b91c1c",
+    cafe: "#8b5e3c",
+    blanco: "#f5f5f5",
+    blanca: "#f5f5f5",
+    beige: "#e7d3ac",
+    olivo: "#6b7034",
+    naranja: "#f97316",
+    azulmarino: "#1e3a5f",
+  };
+
+  return colores[normalizado] ?? null;
+}
+
+function estiloSwatch(color?: string | null) {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) {
+    return {};
+  }
+
+  const r = Number.parseInt(color.slice(1, 3), 16);
+  const g = Number.parseInt(color.slice(3, 5), 16);
+  const b = Number.parseInt(color.slice(5, 7), 16);
+  const luminosidad = (r * 299 + g * 587 + b * 114) / 255000;
+
+  if (luminosidad < 0.78) {
+    return {};
+  }
+
+  return {
+    borderColor: "#94a3b8",
+    boxShadow: "inset 0 0 0 1px rgba(100,116,139,.42)",
+  };
+}
+
+function agruparItemsRopa(
+  items: ItemCatalogoAvatar[],
+  gender: GeneroAvatar
+): Array<ItemCatalogoAvatar | GrupoColorRopa> {
+  const resultado: Array<ItemCatalogoAvatar | GrupoColorRopa> = [];
+  const grupos = new Map<string, ItemCatalogoAvatar[]>();
+
+  for (const item of items) {
+    const agrupable = separarFamiliaColorRopa(item);
+
+    if (!agrupable) {
+      resultado.push(item);
+      continue;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setCercana(true);
-        observer.disconnect();
-      },
-      { rootMargin: "160px" }
-    );
+    const lista = grupos.get(agrupable.familia) ?? [];
+    lista.push(item);
+    grupos.set(agrupable.familia, lista);
+  }
 
-    observer.observe(elemento);
-    return () => observer.disconnect();
-  }, [clave]);
-
-  useEffect(() => {
-    setMontada(false);
-    setLista(false);
-    if (!cercana) return;
-
-    let activa = true;
-    let primerFrame = 0;
-    let segundoFrame = 0;
-
-    void precargarImagenes(sources).then((completo) => {
-      if (!activa || !completo) return;
-
-      setMontada(true);
-      primerFrame = window.requestAnimationFrame(() => {
-        segundoFrame = window.requestAnimationFrame(() => {
-          if (activa) setLista(true);
-        });
-      });
+  for (const [familia, itemsGrupo] of grupos.entries()) {
+    resultado.push({
+      familia,
+      items: ordenarItemsEditor(itemsGrupo, gender),
     });
+  }
 
-    return () => {
-      activa = false;
-      window.cancelAnimationFrame(primerFrame);
-      window.cancelAnimationFrame(segundoFrame);
-    };
-  }, [cercana, clave]);
+  return resultado.sort((a, b) => {
+    const itemsA = "familia" in a ? a.items : [a];
+    const itemsB = "familia" in b ? b.items : [b];
 
-  return (
-    <div ref={contenedorRef} className="relative h-full w-full">
-      {!lista && <span className="avatar-editor-preview-placeholder" />}
-      {montada && (
-        <div
-          className="absolute inset-0"
-          style={{ opacity: lista ? 1 : 0.001 }}
-        >
-          {children}
-        </div>
-      )}
+    const representanteA = ordenarItemsEditor(itemsA, gender)[0];
+    const representanteB = ordenarItemsEditor(itemsB, gender)[0];
 
-      <style jsx>{`
-        .avatar-editor-preview-placeholder {
-          position: absolute;
-          inset: 12%;
-          border-radius: 18px;
-          background: color-mix(
-            in srgb,
-            var(--fcc-premium-muted) 12%,
-            transparent
-          );
-        }
-      `}</style>
-    </div>
-  );
+    if (representanteA && representanteB) {
+      const comparacion = compararItemsEditor(
+        representanteA,
+        representanteB,
+        gender
+      );
+
+      if (comparacion !== 0) return comparacion;
+    }
+
+    const nombreA = "familia" in a ? a.familia : a.name;
+    const nombreB = "familia" in b ? b.familia : b.name;
+
+    return nombreA.localeCompare(nombreB, "es", {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 interface Props {
@@ -120,6 +284,317 @@ interface Props {
   onSave: (newConfig: AvatarConfig) => void | boolean | Promise<void | boolean>;
   forzado?: boolean;
   onReady?: () => void;
+  /**
+   * Permite que un flujo externo desvanezca el overlay antes de desmontarlo.
+   * Por defecto es false, así que el editor normal conserva su comportamiento.
+   */
+  desvanecerSalida?: boolean;
+  /**
+   * Duración del fade del overlay. El valor por defecto mantiene los 180 ms actuales.
+   */
+  duracionTransicionMs?: number;
+  /**
+   * Desactiva únicamente las animaciones internas de zoom/entrada.
+   * Se usa en el tutorial para que toda la aparición dependa de un único
+   * fade sincronizado. Por defecto es false y Perfil conserva su animación.
+   */
+  desactivarAnimacionEntrada?: boolean;
+}
+
+function inferirGenero(config: AvatarConfig): GeneroAvatar {
+  return config?.gender === "femenino" ? "femenino" : "masculino";
+}
+
+function esCapaSimple(
+  variante: VarianteItemAvatar
+): variante is CapaSimpleAvatar {
+  return typeof variante.image === "string";
+}
+
+function esCapaTint(
+  variante: VarianteItemAvatar
+): variante is CapaTintAvatar {
+  return (
+    typeof variante.image === "object" &&
+    "fill" in variante.image
+  );
+}
+
+function itemCompatibleConGenero(
+  item: ItemCatalogoAvatar,
+  gender: GeneroAvatar
+) {
+  if (item.customization.type === "image_variants") {
+    return item.customization.options.some((option) =>
+      Boolean(option.variants[gender] ?? option.variants.universal)
+    );
+  }
+
+  return Boolean(resolverVarianteItemAvatar(item, gender));
+}
+
+function tieneMultiplesVariantesImagen(
+  item: ItemCatalogoAvatar | null | undefined,
+  gender: GeneroAvatar
+) {
+  if (
+    !item ||
+    item.customization.type !== "image_variants"
+  ) {
+    return false;
+  }
+
+  return (
+    item.customization.options.filter((option) =>
+      Boolean(
+        option.variants[gender] ??
+          option.variants.universal
+      )
+    ).length > 1
+  );
+}
+
+function crearConfigInicialEditor(initialConfig: AvatarConfig): AvatarConfigV2 {
+  if (esAvatarConfigV2(initialConfig)) {
+    return completarAvatarConfigBaseEstudiante(initialConfig);
+  }
+
+  return crearAvatarConfigInicialEstudiante(inferirGenero(initialConfig));
+}
+
+function cambiarGenero(
+  config: AvatarConfigV2,
+  gender: GeneroAvatar
+): AvatarConfigV2 {
+  const selections: Record<string, string> = {};
+  const colors: Record<string, string> = {};
+  const imageVariants: Record<string, string> = {};
+
+  for (const [slot, itemId] of Object.entries(config.selections)) {
+    const item = obtenerItemAvatarPorId(itemId);
+    if (!item || !itemCompatibleConGenero(item, gender)) continue;
+
+    selections[slot] = itemId;
+
+    if (config.colors[itemId]) {
+      colors[itemId] = config.colors[itemId];
+    }
+
+    if (config.imageVariants[itemId]) {
+      imageVariants[itemId] = config.imageVariants[itemId];
+    }
+  }
+
+  return completarAvatarConfigBaseEstudiante({
+    ...config,
+    gender,
+    selections,
+    colors,
+    imageVariants,
+  });
+}
+
+function esSlotRopa(slot: string) {
+  return slot.startsWith("ropa/");
+}
+
+function seleccionarItemExclusivo(
+  config: AvatarConfigV2,
+  item: ItemCatalogoAvatar
+) {
+  let siguiente = config;
+  const slot = obtenerSlotItemAvatar(item);
+
+  // Toda la ropa ocupa una unica eleccion visual. La playera inicial no se
+  // conserva debajo de camisas, sueteres, chamarras ni prendas unicas.
+  if (esSlotRopa(slot)) {
+    for (const slotActual of Object.keys(
+      siguiente.selections
+    )) {
+      if (esSlotRopa(slotActual)) {
+        siguiente =
+          quitarSeleccionAvatarV2(
+            siguiente,
+            slotActual
+          );
+      }
+    }
+  }
+
+  return seleccionarItemAvatarV2(
+    siguiente,
+    item
+  );
+}
+
+function obtenerFuentePreviewSimple(
+  item: ItemCatalogoAvatar,
+  config: AvatarConfigV2,
+  imageVariantOverride?: string | null
+) {
+  if (item.customization.type === "image_variants") {
+    const resolved = resolverOpcionImagenAvatar(
+      item,
+      imageVariantOverride ?? config.imageVariants[item.id],
+      config.gender
+    );
+
+    if (!resolved?.layer) return null;
+    return resolved.layer.preview ?? resolved.layer.image;
+  }
+
+  const variante = resolverVarianteItemAvatar(item, config.gender);
+  if (!variante) return null;
+
+  if (!esCapaSimple(variante)) return null;
+  return variante.preview ?? variante.image;
+}
+
+function obtenerFuentesPreviewItemEditor(
+  item: ItemCatalogoAvatar,
+  config: AvatarConfigV2
+) {
+  const fuentes: string[] = [];
+
+  if (item.customization.type === "image_variants") {
+    const resolved = resolverOpcionImagenAvatar(
+      item,
+      config.imageVariants[item.id],
+      config.gender
+    );
+
+    const src = resolved?.layer?.preview ?? resolved?.layer?.image;
+    if (src) fuentes.push(src);
+
+    return fuentes;
+  }
+
+  const variante = resolverVarianteItemAvatar(item, config.gender);
+  if (!variante) return fuentes;
+
+  if (esCapaSimple(variante)) {
+    fuentes.push(variante.preview ?? variante.image);
+    return fuentes;
+  }
+
+  if (esCapaTint(variante)) {
+    fuentes.push(variante.preview.fill ?? variante.image.fill);
+    fuentes.push(variante.preview.outline ?? variante.image.outline);
+  }
+
+  return fuentes;
+}
+
+function obtenerItemsSeccionEditor(seccion: SeccionEstudianteAvatar) {
+  if (seccion.type === "body") return [];
+
+  if (seccion.type === "collection") {
+    return seccion.items;
+  }
+
+  return seccion.subsections.flatMap((subseccion) => subseccion.items);
+}
+
+// Las tarjetas sólo muestran thumbnails optimizados. El editor los calienta
+// en segundo plano por lotes para que el scroll no tenga que descargar y
+// decodificar imágenes justo cuando entran al viewport.
+function VistaPreviaItem({
+  item,
+  config,
+  imageVariantOverride,
+  colorOverride,
+}: {
+  item: ItemCatalogoAvatar;
+  config: AvatarConfigV2;
+  imageVariantOverride?: string | null;
+  colorOverride?: string | null;
+}) {
+  const optimizar = (src: string) => obtenerUrlImagenOptimizada(src, 240, 80);
+
+  if (item.customization.type === "image_variants") {
+    const src = obtenerFuentePreviewSimple(item, config, imageVariantOverride);
+    if (!src) return <span className="avatar-v2-empty">Sin preview</span>;
+
+    return (
+      <img
+        src={optimizar(src)}
+        alt={item.name}
+        className="h-full w-full object-contain"
+        decoding="async"
+      />
+    );
+  }
+
+  const variante = resolverVarianteItemAvatar(item, config.gender);
+  if (!variante) return <span className="avatar-v2-empty">Sin preview</span>;
+
+  if (esCapaSimple(variante)) {
+    const src = variante.preview ?? variante.image;
+
+    return (
+      <img
+        src={optimizar(src)}
+        alt={item.name}
+        className="h-full w-full object-contain"
+        decoding="async"
+      />
+    );
+  }
+
+  if (esCapaTint(variante)) {
+    const fill = variante.preview.fill ?? variante.image.fill;
+    const outline = variante.preview.outline ?? variante.image.outline;
+    const color = colorOverride ?? config.colors[item.id] ?? item.customization.colors[0] ?? "#ffffff";
+    const fillOptimizado = optimizar(fill);
+
+    return (
+      <div className="relative h-full w-full">
+        <img
+          src={fillOptimizado}
+          alt=""
+          className="absolute inset-0 h-full w-full object-contain"
+          decoding="async"
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundColor: color,
+            opacity: 0.62,
+            maskImage: `url(${fillOptimizado})`,
+            WebkitMaskImage: `url(${fillOptimizado})`,
+            maskSize: "contain",
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+          }}
+        />
+        <img
+          src={optimizar(outline)}
+          alt={item.name}
+          className="absolute inset-0 h-full w-full object-contain"
+          decoding="async"
+        />
+      </div>
+    );
+  }
+
+  return <span className="avatar-v2-empty">Sin preview</span>;
+}
+
+function etiquetaRareza(item: ItemCatalogoAvatar) {
+  if (!item.rarity) return null;
+
+  const etiquetas: Record<string, string> = {
+    inicial: "Inicial",
+    comun: "Común",
+    raro: "Raro",
+    epico: "Épico",
+    legendario: "Legendario",
+  };
+
+  return etiquetas[item.rarity] ?? item.rarity;
 }
 
 export default function ModalEditorAvatar({
@@ -129,617 +604,974 @@ export default function ModalEditorAvatar({
   onSave,
   forzado = false,
   onReady,
+  desvanecerSalida = false,
+  duracionTransicionMs = 180,
+  desactivarAnimacionEntrada = false,
 }: Props) {
-  const rolUsuario =
-    typeof window !== "undefined"
-      ? localStorage.getItem("rol_usuario") || "estudiante"
-      : "estudiante";
-
-  const [config, setConfig] = useState<AvatarConfig>({
-    ...initialConfig,
-    sueterColor: initialConfig.sueterColor ?? "#ffffff",
-  });
-
-  const [currentTab, setCurrentTab] = useState("gender");
-  const [desbloqueados, setDesbloqueados] = useState<string[]>([]);
-  const [cargandoDesbloqueos, setCargandoDesbloqueos] = useState(true);
-  const [errorDesbloqueos, setErrorDesbloqueos] = useState(false);
-  const [reintentoDesbloqueos, setReintentoDesbloqueos] = useState(0);
+  const [config, setConfig] = useState<AvatarConfigV2>(() =>
+    crearConfigInicialEditor(initialConfig)
+  );
+  const [tab, setTab] = useState("cuerpo");
+  const [inventario, setInventario] = useState<Set<string>>(new Set());
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
-  const [confirmarSalida, setConfirmarSalida] = useState(false);
-  const [guardandoSalida, setGuardandoSalida] = useState(false);
-  const [guardandoAvatar, setGuardandoAvatar] = useState(false);
-  const [cargandoRecursosAvatar, setCargandoRecursosAvatar] = useState(true);
-  const [errorRecursosAvatar, setErrorRecursosAvatar] = useState(false);
-  const [avatarInicialListo, setAvatarInicialListo] = useState(false);
-  const onReadyRef = useRef(onReady);
-  const readyNotificadoRef = useRef(false);
-  const claveConfigInicial = JSON.stringify({
-    ...initialConfig,
-    sueterColor: initialConfig.sueterColor ?? "#ffffff",
-  });
+  const [avatarListo, setAvatarListo] = useState(false);
+  const [avatarActualizando, setAvatarActualizando] = useState(false);
+  const [mostrarLoaderCambio, setMostrarLoaderCambio] = useState(false);
+  const [itemPersonalizacionId, setItemPersonalizacionId] = useState<string | null>(null);
+  const [reintento, setReintento] = useState(0);
+  const [modoEspecial, setModoEspecial] = useState<
+    "profesor" | "personalizado" | null
+  >(null);
+  const [usuarioPersonalizado, setUsuarioPersonalizado] =
+    useState<UsuarioAvatarPersonalizado | null>(null);
+  const readyRef = useRef(false);
+  const solicitudVisualRef = useRef(0);
+  const esperandoCommitVisualRef = useRef(false);
+  const loaderCambioTimerRef = useRef<number | null>(null);
+  const loaderCambioVisibleDesdeRef = useRef<number | null>(null);
+  const variantesSesionRef = useRef<Record<string, string>>({});
+  const coloresSesionRef = useRef<Record<string, string>>({});
+  const familiasRopaSesionRef = useRef<Record<string, string>>({});
 
-  onReadyRef.current = onReady;
-
-  useEffect(() => {
-    let intentos = 0;
-
-    async function cargarDesbloqueados() {
-      setCargandoDesbloqueos(true);
-      setErrorDesbloqueos(false);
-
-      // Si es profesor, desbloquear todo y salir
-      if (rolUsuario === "profesor") {
-        console.log("🎓 Modo profesor — todos los elementos desbloqueados");
-        setDesbloqueados(["ALL_ITEMS_UNLOCKED"]);
-        setCargandoDesbloqueos(false);
-        return;
-      }
-
-      try {
-        const { data: user, error: errorSesion } = await supabase.auth.getUser();
-        if (errorSesion) throw errorSesion;
-
-        let userId = user?.user?.id || localStorage.getItem("user_id");
-
-        while (!userId && intentos < 5) {
-          await new Promise((r) => setTimeout(r, 300));
-          userId = localStorage.getItem("user_id");
-          intentos++;
-        }
-
-        if (!userId) {
-          throw new Error("No se pudo confirmar el usuario del editor.");
-        }
-
-        const { data, error } = await supabase
-          .from("recompensas_usuario")
-          .select("nombre")
-          .eq("user_id", userId);
-
-        if (error) throw error;
-
-        setDesbloqueados(data?.map((d) => d.nombre) || []);
-      } catch (err) {
-        console.error("⚠️ Error inesperado al cargar desbloqueados:", err);
-        setDesbloqueados([]);
-        setErrorDesbloqueos(true);
-      } finally {
-        setCargandoDesbloqueos(false);
-      }
-    }
-
-    if (open) cargarDesbloqueados();
-  }, [open, rolUsuario, reintentoDesbloqueos]);
+  const secciones = useMemo(() => obtenerSeccionesEstudianteAvatar(), []);
+  const iniciales = useMemo(() => obtenerRecompensasInicialesAvatar(), []);
+  const idsIniciales = useMemo(
+    () => new Set(iniciales.map((item) => item.id)),
+    [iniciales]
+  );
+  const tonosPiel = useMemo(() => obtenerColoresPielAvatar(), []);
+  const claveInicial = JSON.stringify(initialConfig);
 
   useEffect(() => {
-    if (open) {
-      setConfig({
-        ...initialConfig,
-        sueterColor: initialConfig.sueterColor ?? "#ffffff",
-      });
-      setConfirmarSalida(false);
-      setAvatarInicialListo(false);
-      readyNotificadoRef.current = false;
+    if (!open) {
+      solicitudVisualRef.current += 1;
+
+      if (loaderCambioTimerRef.current !== null) {
+        window.clearTimeout(loaderCambioTimerRef.current);
+        loaderCambioTimerRef.current = null;
+      }
+
+      loaderCambioVisibleDesdeRef.current = null;
+      setMostrarLoaderCambio(false);
+      setAvatarActualizando(false);
+      return;
     }
-  }, [open, claveConfigInicial]);
+
+    const nueva = crearConfigInicialEditor(initialConfig);
+    setConfig(nueva);
+    setTab("cuerpo");
+    setMensaje("");
+    setAvatarListo(false);
+    setAvatarActualizando(false);
+    setMostrarLoaderCambio(false);
+    setItemPersonalizacionId(null);
+
+    if (loaderCambioTimerRef.current !== null) {
+      window.clearTimeout(loaderCambioTimerRef.current);
+      loaderCambioTimerRef.current = null;
+    }
+
+    loaderCambioVisibleDesdeRef.current = null;
+    solicitudVisualRef.current += 1;
+    esperandoCommitVisualRef.current = false;
+    variantesSesionRef.current = { ...nueva.imageVariants };
+    coloresSesionRef.current = { ...nueva.colors };
+    familiasRopaSesionRef.current = {};
+
+    for (const itemId of Object.values(nueva.selections)) {
+      const item = obtenerItemAvatarPorId(itemId);
+      if (!item || item.section !== "ropa" || !item.subsection) continue;
+
+      const datos = separarFamiliaColorRopa(item);
+      if (!datos) continue;
+
+      familiasRopaSesionRef.current[
+        `${item.subsection}:${datos.familia}`
+      ] = item.id;
+    }
+
+    setModoEspecial(null);
+    setUsuarioPersonalizado(null);
+    readyRef.current = false;
+  }, [open, claveInicial]);
 
   useEffect(() => {
     if (!open) return;
 
     let activo = true;
-    setCargandoRecursosAvatar(true);
-    setErrorRecursosAvatar(false);
 
-    const configInicial = {
-      ...initialConfig,
-      sueterColor: initialConfig.sueterColor ?? "#ffffff",
-    };
+    async function preparar() {
+      setCargando(true);
+      setErrorCarga(false);
 
-    async function prepararAvatarInicial() {
-      const [completo] = await Promise.all([
-        prepararRecursosAvatarFCC(configInicial, 300),
-        new Promise<void>((resolve) =>
-          window.setTimeout(resolve, DURACION_MINIMA_PREPARACION_EDITOR_MS)
-        ),
-      ]);
+      try {
+        const configInicial = crearConfigInicialEditor(initialConfig);
 
-      if (!activo) return;
+        const prepararVisual = Promise.all([
+          prepararRecursosAvatarFCC(configInicial, TAMANO_AVATAR_EDITOR),
+          new Promise<void>((resolve) =>
+            window.setTimeout(resolve, DURACION_MINIMA_PREPARACION_EDITOR_MS)
+          ),
+        ]);
 
-      setErrorRecursosAvatar(!completo);
-      setCargandoRecursosAvatar(false);
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("No se pudo confirmar el usuario.");
+
+        const { data: perfil, error: perfilError } = await supabase
+          .from("usuarios")
+          .select("rol")
+          .eq("id", authData.user.id)
+          .single();
+
+        if (perfilError) throw perfilError;
+
+        if (perfil?.rol === "profesor") {
+          const profesor =
+            obtenerProfesorAvatar(authData.user.email);
+
+          if (activo) {
+            setUsuarioPersonalizado(profesor);
+            setModoEspecial("profesor");
+          }
+
+          await prepararVisual;
+          return;
+        }
+
+        const personalizado =
+          obtenerEstudiantePersonalizadoAvatar(authData.user.email);
+
+        if (personalizado) {
+          if (activo) {
+            setUsuarioPersonalizado(personalizado);
+            setModoEspecial("personalizado");
+          }
+          await prepararVisual;
+          return;
+        }
+
+        // Backfill de starter pack. Si por alguna razon la tabla central aun
+        // no estuviera sincronizada, los elementos de rareza inicial siguen
+        // habilitados por el catalogo local.
+        const { error: inicialesError } = await supabase.rpc(
+          "fcc_otorgar_iniciales_faltantes"
+        );
+
+        if (inicialesError) {
+          console.warn(
+            "[FCC Academy] No se pudo completar el backfill de iniciales:",
+            inicialesError
+          );
+        }
+
+        const { data: recompensas, error: recompensasError } = await supabase
+          .from("recompensas_usuario")
+          .select("nombre")
+          .eq("user_id", authData.user.id);
+
+        if (recompensasError) throw recompensasError;
+
+        const [visualCompleto] = await prepararVisual;
+        if (!visualCompleto) {
+          throw new Error("No se pudieron precargar las capas iniciales.");
+        }
+
+        if (!activo) return;
+
+        setInventario(
+          new Set(
+            (recompensas ?? [])
+              .map((row) => row.nombre)
+              .filter((value): value is string => typeof value === "string")
+          )
+        );
+      } catch (error) {
+        console.error("[FCC Academy] Error preparando editor V2:", error);
+        if (activo) setErrorCarga(true);
+      } finally {
+        if (activo) setCargando(false);
+      }
     }
 
-    void prepararAvatarInicial();
+    void preparar();
 
     return () => {
       activo = false;
     };
-  }, [open, claveConfigInicial, reintentoDesbloqueos]);
-
-  useEffect(() => {
-    if (rolUsuario === "profesor") {
-      setDesbloqueados(["ALL_ITEMS_UNLOCKED"]);
-      setCargandoDesbloqueos(false);
-    }
-  }, [rolUsuario]);
-
-  useEffect(() => {
-    if (
-      !open ||
-      cargandoDesbloqueos ||
-      cargandoRecursosAvatar ||
-      errorDesbloqueos ||
-      errorRecursosAvatar ||
-      !avatarInicialListo ||
-      readyNotificadoRef.current
-    ) {
-      return;
-    }
-
-    readyNotificadoRef.current = true;
-
-    const frame = window.requestAnimationFrame(() => {
-      onReadyRef.current?.();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [
-    open,
-    cargandoDesbloqueos,
-    cargandoRecursosAvatar,
-    errorDesbloqueos,
-    errorRecursosAvatar,
-    avatarInicialListo,
-  ]);
-
-  const configInicialNormalizada: AvatarConfig = {
-    ...initialConfig,
-    sueterColor: initialConfig.sueterColor ?? "#ffffff",
-  };
-
-  const hayCambiosSinGuardar =
-    JSON.stringify(config) !== JSON.stringify(configInicialNormalizada);
-
-  useEffect(() => {
-    if (
-      !open ||
-      forzado ||
-      rolUsuario !== "profesor" ||
-      !hayCambiosSinGuardar
-    ) {
-      return;
-    }
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [open, forzado, rolUsuario, hayCambiosSinGuardar]);
+  }, [open, claveInicial, reintento]);
 
   if (!open) return null;
-  if (errorDesbloqueos || errorRecursosAvatar) {
-    const errorEditor = (
-      <div
-        className="fixed bottom-4 right-4 z-[31000] w-[min(560px,calc(100vw-32px))]"
-      >
+
+  if (errorCarga) {
+    const error = (
+      <div className="fixed bottom-4 right-4 z-[31000] w-[min(560px,calc(100vw-32px))]">
         <div className="w-full overflow-hidden rounded-[22px] bg-white/95 shadow-2xl">
           <EstadoErrorCargaFCC
             compacto
             titulo="No pudimos preparar el editor"
-            detalle="No mostraremos opciones bloqueadas ni capas incompletas hasta confirmar todos los recursos del editor."
+            detalle="No se mostrarán opciones incompletas hasta confirmar el inventario y las capas del avatar."
             onRetry={() => {
-              setErrorDesbloqueos(false);
-              setErrorRecursosAvatar(false);
-              setReintentoDesbloqueos((actual) => actual + 1);
+              setErrorCarga(false);
+              setReintento((actual) => actual + 1);
             }}
           />
         </div>
       </div>
     );
 
-    return typeof document === "undefined"
-      ? errorEditor
-      : createPortal(errorEditor, document.body);
+    return typeof document === "undefined" ? error : createPortal(error, document.body);
   }
 
-  if (cargandoDesbloqueos || cargandoRecursosAvatar) {
-    const cargador = (
-      <CargadorFCC
-        flotante
-        mensaje="Preparando el editor de avatar"
-        detalle=""
+  if (cargando) {
+    const loader = <CargadorFCC flotante mensaje="Preparando el editor de avatar" detalle="" />;
+    return typeof document === "undefined" ? loader : createPortal(loader, document.body);
+  }
+
+  if (
+    modoEspecial === "personalizado" &&
+    usuarioPersonalizado
+  ) {
+    return (
+      <ModalEditorAvatarPersonalizado
+        open={open}
+        onClose={onClose}
+        initialConfig={initialConfig}
+        onSave={onSave}
+        usuario={usuarioPersonalizado}
+        forzado={forzado}
+        onReady={onReady}
       />
+    );
+  }
+
+  if (
+    modoEspecial === "profesor" &&
+    usuarioPersonalizado
+  ) {
+    return (
+      <ModalEditorAvatarProfesor
+        open={open}
+        onClose={onClose}
+        initialConfig={initialConfig}
+        onSave={onSave}
+        usuario={usuarioPersonalizado}
+        forzado={forzado}
+        onReady={onReady}
+      />
+    );
+  }
+
+  if (modoEspecial === "profesor") {
+    const especial = (
+      <div
+        className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        onClick={forzado ? undefined : onClose}
+      >
+        <div
+          className="w-[min(92vw,520px)] rounded-[26px] border p-6 text-center shadow-2xl"
+          style={{
+            background: "var(--fcc-premium-surface)",
+            borderColor: "var(--fcc-premium-border-strong)",
+            color: "var(--fcc-premium-text)",
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p
+            className="mb-2 text-xs font-black uppercase tracking-[0.18em]"
+            style={{ color: "var(--fcc-premium-accent)" }}
+          >
+            Editor V2
+          </p>
+          <h2
+            className="text-xl font-black"
+            style={{ color: "var(--fcc-premium-heading)" }}
+          >
+            Avatar de profesor
+          </h2>
+          <p
+            className="mt-3 text-sm font-semibold leading-6"
+            style={{ color: "var(--fcc-premium-muted)" }}
+          >
+            Para activar el avatar personalizado del profesor se necesita
+            Cuerpo.png y al menos una expresión PNG real en su carpeta.
+          </p>
+          {!forzado && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-5 min-h-11 rounded-xl px-5 text-sm font-black"
+              style={{
+                color: "var(--fcc-premium-text)",
+                background: "var(--fcc-premium-surface-strong)",
+                border: "1px solid var(--fcc-premium-border)",
+              }}
+            >
+              Cerrar
+            </button>
+          )}
+        </div>
+      </div>
     );
 
     return typeof document === "undefined"
-      ? cargador
-      : createPortal(cargador, document.body);
+      ? especial
+      : createPortal(especial, document.body);
   }
 
-  const optimizarPreview = (src: string) =>
-    obtenerUrlImagenOptimizada(src, 256, 78);
+  const estaDesbloqueado = (item: ItemCatalogoAvatar) =>
+    idsIniciales.has(item.id) ||
+    inventario.has(item.id) ||
+    inventario.has(item.name);
 
-  const SKIN_TONES = ["#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#5a3825"];
+  const estaDesbloqueadoPorId = (itemId: string) => {
+    if (idsIniciales.has(itemId) || inventario.has(itemId)) return true;
 
-  const TABS = [
-    {
-      key: "gender",
-      label: "Cuerpo",
-      items: ["masculino", "femenino"],
-    },
-    {
-      key: "hair",
-      label: "Cabello",
-      items: [
-        "none",
-        "Cabello1.png",
-        "Cabello2.png",
-        "Cabello3.png",
-        "Cabello4.png",
-        "Cabello5.png",
-        "Cabello6.png",
-        "Cabello7.png",
-        "Cabello8.png",
-        "Cabello9.png",
-        "Cabello10.png",
-        "Cabello11.png",
-        "Cabello12.png",
-        "Cabello13.png",
-        "Cabello14.png",
-      ],
-    },
-    {
-      key: "eyes",
-      label: "Ojos",
-      get items() {
-        return [
-          "Ojos1.png",
-          "Ojos2.png",
-          "Ojos3.png",
-          "Ojos4.png",
-          "Ojos5.png",
-          "Ojos6.png",
-          "Ojos7.png",
-        ];
-      },
-    },
-    {
-      key: "nose",
-      label: "Nariz",
-      items: ["Nariz1.png", "Nariz2.png", "Nariz3.png", "Nariz4.png"],
-    },
-    {
-      key: "mouth",
-      label: "Boca",
-      items: [
-        "Boca1.png",
-        "Boca2.png",
-        "Boca3.png",
-        "Boca4.png",
-        "Boca5.png",
-        "Boca6.png",
-      ],
-    },
-    {
-      key: "ropa",
-      label: "Ropa",
-      subsections:
-        rolUsuario === "profesor"
-          ? [
-              {
-                key: "capas_profesor",
-                label: "Capas de profesor",
-                items: ["none", "Capa1", "Capa2", "Capa3"],
-                renderItem: (file: string, config: AvatarConfig) => {
-                  if (file === "none") return null;
-                  const basePath = `/elementos_avatar/ropa_profesor/${config.gender}/previews/${file}.png`;
-                  return (
-                    <div className="avatar-editor-option-inner">
-                      <img
-                        src={optimizarPreview(basePath)}
-                        className="absolute inset-0 h-full w-full object-contain"
-                        alt={file}
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    </div>
-                  );
-                },
-              },
-            ]
-          : [
-              {
-                key: "playera",
-                label: "Playeras personalizables",
-                items: ["none", "Playera1", "Playera2", "Playera3", "Playera4"],
-              },
-              {
-                key: "sueter_color",
-                label: "Suéteres personalizables",
-                get items() {
-                  const baseNames = ["Sueter1", "Sueter2", "Sueter3"];
-                  return ["none", ...baseNames];
-                },
-              },
-              {
-                key: "sueter_simple",
-                label: "Prendas especiales",
-                get items() {
-                  return [
-                    "none",
-                    "Uniforme_Gris",
-                    "ChaquetaNegra",
-                    "ArmaduraNegra",
-                    "PlayeraNeon",
-                    "SudaderaBuap",
-                    "SudaderaBuap2",
-                    "Sudadera_Negro_Naranja",
-                    "Uniforme_Naranja_Azul",
-                    "Playera_Seleccion",
-                    "Uniforme_Negro_Rojo",
-                    "Uniforme_Azul",
-                    "Uniforme_Cafe",
-                  ];
-                },
-              },
-            ],
-      renderItem: (file: string, config: AvatarConfig) => {
-        if (file === "none") return null;
+    const item = obtenerItemAvatarPorId(itemId);
+    return Boolean(item && inventario.has(item.name));
+  };
 
-        // Ropa de profesor
-        if (rolUsuario === "profesor") {
-          const basePath = `/elementos_avatar/ropa_profesor/${config.gender}/previews/${file}.png`;
-          return (
-            <div className="avatar-editor-option-inner">
-              <img
-                src={optimizarPreview(basePath)}
-                className="absolute inset-0 h-full w-full object-contain"
-                alt={file}
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-          );
-        }
+  const esperarMinimoLoaderCambio = async () => {
+    const visibleDesde = loaderCambioVisibleDesdeRef.current;
+    if (visibleDesde === null) return;
 
-        // Ropa de estudiante
-        const hasDoubleLayer = file.includes("Sueter");
-        const basePath = `/elementos_avatar/ropa/${config.gender}/sueteres/previews/${file}`;
+    const restante =
+      DURACION_MINIMA_LOADER_CAMBIO_MS - (performance.now() - visibleDesde);
 
-        return (
-          <div className="avatar-editor-option-inner">
-            {hasDoubleLayer ? (
-              <VistaPreviaCapasAtomica
-                key={`${config.gender}-${config.sueterColor}-${file}`}
-                sources={[
-                  optimizarPreview(`${basePath}_Relleno.png`),
-                  optimizarPreview(`${basePath}_Contorno.png`),
-                ]}
-              >
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    backgroundImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
-                    backgroundSize: "contain",
-                  }}
-                />
-                <div
-                  className="absolute inset-0 will-change-transform"
-                  style={{
-                    backgroundColor: config.sueterColor ?? "#ffffff",
-                    opacity: 0.6,
-                    maskImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
-                    WebkitMaskImage: `url(${optimizarPreview(`${basePath}_Relleno.png`)})`,
-                    maskSize: "contain",
-                    maskRepeat: "no-repeat",
-                    maskPosition: "center",
-                    WebkitMaskSize: "contain",
-                    WebkitMaskRepeat: "no-repeat",
-                    WebkitMaskPosition: "center",
-                    pointerEvents: "none",
-                  }}
-                />
-                <img
-                  src={optimizarPreview(`${basePath}_Contorno.png`)}
-                  className="absolute inset-0 h-full w-full object-contain"
-                  alt="contorno"
-                  decoding="async"
-                />
-              </VistaPreviaCapasAtomica>
-            ) : (
-              <img
-                src={optimizarPreview(`${basePath}.png`)}
-                className="absolute inset-0 h-full w-full object-contain"
-                alt="sueter"
-                loading="lazy"
-                decoding="async"
-              />
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: "accessory",
-      label: "Accesorios",
-      subsections: [
-        {
-          key: "glasses",
-          label: "Lentes",
-          items: ["none", "Lentes1.png", "Lentes2.png", "Lentes3.png"],
-        },
-        { key: "collar", label: "Collar", items: ["none"] },
-        { key: "pulsera", label: "Pulsera", items: ["none"] },
-      ],
-    },
-  ];
+    if (restante > 0) {
+      await esperar(restante);
+    }
+  };
 
-  const handleSave = async () => {
-    if (!["masculino", "femenino"].includes(config.gender)) {
-      alert("Debes seleccionar un tipo de cuerpo antes de guardar.");
+  const aplicarConfigAtomica = async (
+    siguiente: AvatarConfigV2,
+    itemIdActivo: string | null = itemPersonalizacionId
+  ) => {
+    if (JSON.stringify(siguiente) === JSON.stringify(config)) {
+      if (itemIdActivo !== itemPersonalizacionId) {
+        setItemPersonalizacionId(itemIdActivo);
+      }
+      return true;
+    }
+
+    if (avatarActualizando) {
       return false;
     }
 
-    const confirmarGuardado = async () => {
-      if (guardandoAvatar) return false;
+    const solicitud = ++solicitudVisualRef.current;
+    setAvatarActualizando(true);
+    setMostrarLoaderCambio(false);
+    loaderCambioVisibleDesdeRef.current = null;
+    setMensaje("");
 
-      setGuardandoAvatar(true);
+    if (loaderCambioTimerRef.current !== null) {
+      window.clearTimeout(loaderCambioTimerRef.current);
+    }
 
-      try {
-        const resultado = await onSave(config);
+    loaderCambioTimerRef.current = window.setTimeout(() => {
+      if (solicitudVisualRef.current !== solicitud) return;
 
-        if (resultado === false) {
-          setMensaje(
-            "⚠️ No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo."
-          );
-          return false;
-        }
+      loaderCambioVisibleDesdeRef.current = performance.now();
+      setMostrarLoaderCambio(true);
+    }, RETRASO_LOADER_CAMBIO_MS);
 
-        return true;
-      } catch (error) {
-        console.error("Error guardando configuración de avatar:", error);
+    const resultado = await Promise.race([
+      prepararRecursosAvatarFCC(
+        siguiente,
+        TAMANO_AVATAR_EDITOR
+      ).then((completo) => ({
+        tipo: "recursos" as const,
+        completo,
+      })),
+      esperar(LIMITE_CAMBIO_AVATAR_MS).then(() => ({
+        tipo: "timeout" as const,
+        completo: false,
+      })),
+    ]);
+
+    if (loaderCambioTimerRef.current !== null) {
+      window.clearTimeout(loaderCambioTimerRef.current);
+      loaderCambioTimerRef.current = null;
+    }
+
+    if (solicitud !== solicitudVisualRef.current) {
+      return false;
+    }
+
+    if (resultado.tipo === "timeout" || !resultado.completo) {
+      await esperarMinimoLoaderCambio();
+
+      if (solicitud !== solicitudVisualRef.current) {
+        return false;
+      }
+
+      setMostrarLoaderCambio(false);
+      loaderCambioVisibleDesdeRef.current = null;
+      setAvatarActualizando(false);
+      setMensaje(
+        resultado.tipo === "timeout"
+          ? "⚠️ El cambio tardó demasiado y se canceló. Se mantuvo la apariencia anterior."
+          : "⚠️ No se pudo preparar el cambio completo del avatar. Se mantuvo la apariencia anterior."
+      );
+      return false;
+    }
+
+    // Si la espera fue lo bastante larga como para mostrar el cargador,
+    // dejamos que complete al menos un ciclo visible antes del cambio.
+    await esperarMinimoLoaderCambio();
+
+    if (solicitud !== solicitudVisualRef.current) {
+      return false;
+    }
+
+    esperandoCommitVisualRef.current = true;
+    setItemPersonalizacionId(itemIdActivo);
+    setConfig(siguiente);
+    return true;
+  };
+
+  const recordarFamiliaRopa = (item: ItemCatalogoAvatar) => {
+    if (item.section !== "ropa" || !item.subsection) return;
+
+    const datos = separarFamiliaColorRopa(item);
+    if (!datos) return;
+
+    familiasRopaSesionRef.current[
+      `${item.subsection}:${datos.familia}`
+    ] = item.id;
+  };
+
+  const seleccionar = (item: ItemCatalogoAvatar) => {
+    if (avatarActualizando) return;
+
+    let siguiente = seleccionarItemExclusivo(config, item);
+
+    const slot = obtenerSlotItemAvatar(item);
+    const varianteCabelloGlobal =
+      slot === "cabello"
+        ? obtenerVarianteGlobalCabelloEditor()
+        : null;
+
+    const varianteRecordada =
+      varianteCabelloGlobal ??
+      variantesSesionRef.current[item.id];
+
+    if (
+      item.customization.type === "image_variants" &&
+      varianteRecordada
+    ) {
+      siguiente = establecerVarianteImagenAvatarV2(
+        siguiente,
+        item,
+        varianteRecordada
+      );
+    }
+
+    const colorRecordado = coloresSesionRef.current[item.id];
+    if (item.customization.type === "tint" && colorRecordado) {
+      siguiente = establecerColorItemAvatarV2(
+        siguiente,
+        item,
+        colorRecordado
+      );
+    }
+
+    recordarFamiliaRopa(item);
+    void aplicarConfigAtomica(siguiente, item.id);
+  };
+
+  const guardar = async () => {
+    if (guardando) return false;
+
+    const slotsBloqueados = Object.entries(config.selections)
+      .filter(([, itemId]) => !estaDesbloqueadoPorId(itemId))
+      .map(([slot]) => etiquetaSlot(slot));
+
+    const seccionesBloqueadas = Array.from(new Set(slotsBloqueados));
+
+    if (seccionesBloqueadas.length === 1) {
+      setMensaje(
+        `⚠️ El elemento seleccionado en ${seccionesBloqueadas[0]} todavía está bloqueado.`
+      );
+      return false;
+    }
+
+    if (seccionesBloqueadas.length > 1) {
+      setMensaje(
+        `⚠️ Seleccionaste algunos elementos que todavía están bloqueados: ${listaNatural(
+          seccionesBloqueadas
+        )}.`
+      );
+      return false;
+    }
+
+    setGuardando(true);
+    setMensaje("");
+
+    try {
+      const resultado = await onSave(config);
+
+      if (resultado === false) {
         setMensaje(
           "⚠️ No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo."
         );
         return false;
-      } finally {
-        setGuardandoAvatar(false);
       }
-    };
 
-    // Si el usuario es profesor, omitir validaciones de desbloqueo
-    if (rolUsuario === "profesor") {
-      return confirmarGuardado();
-    }
-
-    const campos = [
-      "hair",
-      "eyes",
-      "mouth",
-      "nose",
-      "playera",
-      "sueter",
-      "glasses",
-      "collar",
-      "pulsera",
-    ];
-
-    const bloqueadosUsados = campos
-      .map((key) => {
-        const valor = (config as any)[key];
-        if (
-          valor &&
-          valor !== "none" &&
-          !desbloqueados.some((n) => coincideNombre(n, valor))
-        ) {
-          return key;
-        }
-        return null;
-      })
-      .filter(Boolean) as string[];
-
-    if (bloqueadosUsados.length > 0) {
-      const nombresAmigables: Record<string, string> = {
-        hair: "Cabello",
-        eyes: "Ojos",
-        mouth: "Boca",
-        nose: "Nariz",
-        playera: "Playera",
-        sueter: "Suéter",
-        glasses: "Lentes",
-        collar: "Collar",
-        pulsera: "Pulsera",
-      };
-
-      const lista = bloqueadosUsados
-        .map((key) => nombresAmigables[key] || key)
-        .join(", ");
-
-      setMensaje(`⚠️ Los siguientes elementos no están desbloqueados: ${lista}.`);
-      setTimeout(() => setMensaje(""), 5000);
+      return true;
+    } catch (error) {
+      console.error("[FCC Academy] Error guardando avatar V2:", error);
+      setMensaje(
+        "⚠️ No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo."
+      );
       return false;
-    }
-
-    return confirmarGuardado();
-  };
-
-  const solicitarSalida = () => {
-    if (forzado) return;
-
-    if (rolUsuario !== "profesor") {
-      onClose();
-      return;
-    }
-
-    if (hayCambiosSinGuardar) {
-      setConfirmarSalida(true);
-      return;
-    }
-
-    onClose();
-  };
-
-  const descartarYSalir = () => {
-    setConfirmarSalida(false);
-    onClose();
-  };
-
-  const guardarYSalir = async () => {
-    if (guardandoSalida) return;
-
-    setGuardandoSalida(true);
-
-    try {
-      const guardado = await handleSave();
-
-      if (!guardado) return;
-
-      setConfirmarSalida(false);
-      onClose();
     } finally {
-      setGuardandoSalida(false);
+      setGuardando(false);
     }
   };
 
-  function coincideNombre(a: string, b: string) {
-    return (
-      a.toLowerCase().replace(".png", "") ===
-      b.toLowerCase().replace(".png", "")
-    );
-  }
+  const cambiarGeneroEditor = (gender: GeneroAvatar) => {
+    if (gender === config.gender) return;
 
-  const mostrarPaletaColor =
-    currentTab === "gender" || (currentTab === "ropa" && rolUsuario !== "profesor");
+    const sinContraparte = Object.entries(config.selections)
+      .filter(([, itemId]) => {
+        const item = obtenerItemAvatarPorId(itemId);
+        return item ? !itemCompatibleConGenero(item, gender) : false;
+      })
+      .map(([slot]) => etiquetaSlot(slot));
+
+    const siguiente = cambiarGenero(config, gender);
+    void aplicarConfigAtomica(siguiente, itemPersonalizacionId);
+
+    const secciones = Array.from(new Set(sinContraparte));
+
+    if (secciones.length > 0) {
+      setMensaje(
+        `⚠️ No encontré la versión ${
+          gender === "masculino" ? "masculina" : "femenina"
+        } correspondiente en: ${listaNatural(secciones)}. Esos elementos volvieron a su opción base o se quitaron.`
+      );
+    } else {
+      setMensaje("");
+    }
+  };
+
+  const seccionActual: SeccionEstudianteAvatar | null =
+    secciones.find((seccion) => seccion.key === tab) ?? null;
+
+  const obtenerVarianteGlobalCabelloEditor = () => {
+    const cabelloSeleccionadoId =
+      config.selections.cabello ?? null;
+
+    if (cabelloSeleccionadoId) {
+      const recordada =
+        variantesSesionRef.current[cabelloSeleccionadoId];
+      if (recordada) return recordada;
+
+      const actual =
+        config.imageVariants[cabelloSeleccionadoId];
+      if (typeof actual === "string" && actual) {
+        return actual;
+      }
+    }
+
+    for (const [itemId, optionKey] of Object.entries(
+      variantesSesionRef.current
+    )) {
+      if (itemId.startsWith("cabello/") && optionKey) {
+        return optionKey;
+      }
+    }
+
+    for (const [itemId, optionKey] of Object.entries(
+      config.imageVariants
+    )) {
+      if (
+        itemId.startsWith("cabello/") &&
+        typeof optionKey === "string" &&
+        optionKey
+      ) {
+        return optionKey;
+      }
+    }
+
+    const cabelloBase = obtenerItemAvatarPorId(
+      "cabello/Cabello1"
+    );
+
+    return cabelloBase?.customization.type ===
+      "image_variants"
+      ? cabelloBase.customization.defaultOption ??
+          cabelloBase.customization.options[0]
+            ?.key ??
+          null
+      : null;
+  };
+
+  const renderTarjeta = (
+    entrada: ItemCatalogoAvatar | GrupoColorRopa,
+    seleccionadoId: string | null
+  ) => {
+    const esGrupo = "familia" in entrada;
+    const itemsGrupo = esGrupo ? entrada.items : [entrada];
+    const seleccionadoGrupo = itemsGrupo.find(
+      (item) => item.id === seleccionadoId
+    );
+
+    const claveFamilia =
+      esGrupo && itemsGrupo[0]?.subsection
+        ? `${itemsGrupo[0].subsection}:${entrada.familia}`
+        : null;
+
+    const itemRecordadoId = claveFamilia
+      ? familiasRopaSesionRef.current[claveFamilia]
+      : null;
+
+    const itemRecordado = itemRecordadoId
+      ? itemsGrupo.find((item) => item.id === itemRecordadoId)
+      : null;
+
+    const representante =
+      seleccionadoGrupo ??
+      itemRecordado ??
+      itemsGrupo.find((item) => estaDesbloqueado(item)) ??
+      itemsGrupo[0];
+
+    if (!representante) return null;
+
+    const selected = Boolean(seleccionadoGrupo);
+    const unlocked = itemsGrupo.some((item) => estaDesbloqueado(item));
+    const clave = esGrupo ? `grupo:${entrada.familia}` : representante.id;
+    const nombre = esGrupo ? entrada.familia : representante.name;
+
+    return (
+      <button
+        key={clave}
+        type="button"
+        className={`avatar-editor-option group ${
+          selected ? "is-selected" : ""
+        } ${!unlocked ? "is-locked" : ""}`}
+        style={{
+          filter: unlocked
+            ? "none"
+            : "grayscale(100%) brightness(0.6)",
+          opacity: unlocked ? 1 : 0.7,
+        }}
+        onClick={() => seleccionar(representante)}
+        aria-label={nombre}
+        disabled={avatarActualizando}
+      >
+        <div className="avatar-editor-option-inner">
+          <VistaPreviaItem
+            item={representante}
+            config={config}
+            imageVariantOverride={
+              obtenerSlotItemAvatar(representante) ===
+              "cabello"
+                ? obtenerVarianteGlobalCabelloEditor()
+                : variantesSesionRef.current[representante.id]
+            }
+            colorOverride={
+              coloresSesionRef.current[representante.id]
+            }
+          />
+        </div>
+
+        {!unlocked && (
+          <div className="avatar-editor-lock-layer absolute inset-0 flex items-center justify-center rounded-[18px]">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              className="h-6 w-6 text-white opacity-90"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
+            </svg>
+
+            <div className="avatar-editor-tooltip absolute left-1/2 top-1/2 z-[120] px-3 py-1.5 text-center text-[11px]">
+              Desbloquea cofres
+              <br />
+              para obtener este elemento
+            </div>
+          </div>
+        )}
+      </button>
+    );
+  };
+
+  const renderItems = (items: ItemCatalogoAvatar[], slot: string) => {
+    const compatibles = ordenarItemsEditor(
+      items.filter((item) => itemCompatibleConGenero(item, config.gender)),
+      config.gender
+    );
+
+    const permiteNinguno = slot.startsWith("accesorios/");
+    const seleccionadoId = config.selections[slot] ?? null;
+    const opcionesVisuales = compatibles;
+
+    return (
+      <div className="grid grid-cols-3 gap-3 overflow-hidden px-1">
+        {permiteNinguno && (
+          <button
+            type="button"
+            className={`avatar-editor-option group ${
+              !seleccionadoId ? "is-selected" : ""
+            }`}
+            onClick={() => {
+              if (avatarActualizando) return;
+              const siguiente = quitarSeleccionAvatarV2(config, slot);
+              void aplicarConfigAtomica(siguiente, null);
+            }}
+            aria-label="Ninguno"
+            disabled={avatarActualizando}
+          >
+            <div className="avatar-editor-option-inner">
+              <span className="avatar-editor-none-text">Ninguno</span>
+            </div>
+          </button>
+        )}
+
+        {opcionesVisuales.map((item) =>
+          renderTarjeta(item, seleccionadoId)
+        )}
+      </div>
+    );
+  };
+
+  const renderRopaItems = (
+    items: ItemCatalogoAvatar[],
+    seleccionadoVisualId: string | null = null
+  ) => {
+    const compatibles = ordenarItemsEditor(
+      items.filter((item) =>
+        itemCompatibleConGenero(
+          item,
+          config.gender
+        )
+      ),
+      config.gender
+    );
+
+    const opcionesVisuales = agruparItemsRopa(
+      compatibles,
+      config.gender
+    );
+
+    const seleccionadoRealId =
+      Object.entries(config.selections).find(
+        ([slot]) => esSlotRopa(slot)
+      )?.[1] ?? null;
+
+    const seleccionadoId =
+      seleccionadoRealId ?? seleccionadoVisualId;
+
+    return (
+      <div className="grid grid-cols-3 gap-3 overflow-hidden px-1">
+        {opcionesVisuales.map((entrada) =>
+          renderTarjeta(
+            entrada,
+            seleccionadoId
+          )
+        )}
+      </div>
+    );
+  };
+
+  const renderRopaAgrupada = (
+    seccion: Extract<
+      SeccionEstudianteAvatar,
+      { type: "grouped" }
+    >
+  ) => {
+    const subsecciones = [
+      ...seccion.subsections,
+    ].sort((a, b) => {
+      if (a.key === "prendas_unicas") return 1;
+      if (b.key === "prendas_unicas") return -1;
+
+      return a.label.localeCompare(
+        b.label,
+        "es",
+        {
+          numeric: true,
+          sensitivity: "base",
+        }
+      );
+    });
+
+    const ropaSeleccionadaReal =
+      Object.entries(config.selections).find(
+        ([slot]) => esSlotRopa(slot)
+      )?.[1] ?? null;
+
+    let primeraRopaVisualId: string | null = null;
+
+    if (!ropaSeleccionadaReal) {
+      const playeraTirantes = subsecciones
+        .flatMap((sub) => sub.items)
+        .find(
+          (item) =>
+            item.id ===
+              PRENDA_VISUAL_INICIAL_ESTUDIANTE_ID &&
+            itemCompatibleConGenero(
+              item,
+              config.gender
+            )
+        );
+
+      primeraRopaVisualId =
+        playeraTirantes?.id ?? null;
+    }
+
+    return (
+      <>
+        {subsecciones.map((sub) => (
+          <div
+            key={sub.key}
+            className="mb-5 last:mb-0"
+          >
+            <h3 className="avatar-editor-section-title mb-3 text-center text-sm font-semibold">
+              {sub.label}
+            </h3>
+
+            {renderRopaItems(
+              sub.items,
+              primeraRopaVisualId
+            )}
+          </div>
+        ))}
+      </>
+    );
+  };
+  const itemSeleccionado = (() => {
+    if (!seccionActual || seccionActual.type === "body") return null;
+
+    if (itemPersonalizacionId) {
+      const rastreado = obtenerItemAvatarPorId(itemPersonalizacionId);
+
+      if (
+        rastreado &&
+        rastreado.section === seccionActual.key &&
+        Object.values(config.selections).includes(rastreado.id)
+      ) {
+        return rastreado;
+      }
+    }
+
+    if (seccionActual.type === "collection") {
+      const id = config.selections[seccionActual.key];
+      return id ? obtenerItemAvatarPorId(id) : null;
+    }
+
+    const subsecciones =
+      seccionActual.subsections;
+
+    for (const sub of subsecciones) {
+      const id = config.selections[`${seccionActual.key}/${sub.key}`];
+
+      if (id) {
+        return obtenerItemAvatarPorId(id);
+      }
+    }
+
+    return null;
+  })();
+
+  const grupoColorSeleccionado = (() => {
+    if (
+      !itemSeleccionado ||
+      seccionActual?.type !== "grouped" ||
+      itemSeleccionado.section !== "ropa"
+    ) {
+      return null;
+    }
+
+    const datos = separarFamiliaColorRopa(itemSeleccionado);
+    if (!datos) return null;
+
+    const sub = seccionActual.subsections.find(
+      (subseccion) => subseccion.key === itemSeleccionado.subsection
+    );
+
+    if (!sub) return null;
+
+    const items = ordenarItemsEditor(
+      sub.items.filter((item) => {
+        const otro = separarFamiliaColorRopa(item);
+
+        return (
+          otro?.familia === datos.familia &&
+          itemCompatibleConGenero(item, config.gender)
+        );
+      }),
+      config.gender
+    );
+
+    return items.length > 1
+      ? {
+          familia: datos.familia,
+          items,
+        }
+      : null;
+  })();
+
+
+  const varianteCuerpoActual =
+    seccionActual?.type === "body"
+      ? seccionActual.variants[config.gender]
+      : null;
+
+  const cuerpoAdmiteColor = Boolean(
+    varianteCuerpoActual?.fill &&
+      varianteCuerpoActual?.outline &&
+      tonosPiel.length > 0
+  );
+
+  const mostrarPersonalizacion =
+    (tab === "cuerpo" && cuerpoAdmiteColor) ||
+    Boolean(grupoColorSeleccionado) ||
+    itemSeleccionado?.customization.type === "tint" ||
+    tieneMultiplesVariantesImagen(
+      itemSeleccionado,
+      config.gender
+    );
 
   const modal = createPortal(
     <div
       className="avatar-editor-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-4"
       style={{
         zIndex: 10020,
-        opacity: avatarInicialListo ? 1 : 0.001,
-        pointerEvents: avatarInicialListo ? "auto" : "none",
-        transition: "opacity 180ms ease-out",
+        opacity: avatarListo && !desvanecerSalida ? 1 : 0.001,
+        pointerEvents:
+          avatarListo && !desvanecerSalida ? "auto" : "none",
+        transform: desactivarAnimacionEntrada
+          ? undefined
+          : avatarListo && !desvanecerSalida
+            ? "scale(1)"
+            : "scale(0.992)",
+        transition: desactivarAnimacionEntrada
+          ? `opacity ${duracionTransicionMs}ms ease`
+          : `opacity ${duracionTransicionMs}ms ease, transform ${duracionTransicionMs}ms ease`,
+        animation: "none",
       }}
-      aria-hidden={!avatarInicialListo}
-      onClick={forzado ? undefined : solicitarSalida}
+      aria-hidden={!avatarListo}
+      onClick={forzado ? undefined : onClose}
     >
       <div
-        className="avatar-editor-modal relative flex max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-[28px] p-3 sm:p-6"
-        onClick={(e) => e.stopPropagation()}
+        className="avatar-editor-modal relative flex max-h-[94vh] w-[96vw] max-w-[1240px] flex-col overflow-hidden rounded-[28px] p-3 sm:p-6"
+        style={{
+          animation: "none",
+        }}
+        onClick={(event) => event.stopPropagation()}
       >
         {!forzado && (
           <button
             type="button"
-            onClick={solicitarSalida}
+            onClick={onClose}
             className="avatar-editor-close absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-xl leading-none"
             title="Cerrar"
           >
@@ -747,506 +1579,347 @@ export default function ModalEditorAvatar({
           </button>
         )}
 
-        <div className="mb-3 sm:mb-5 px-8 text-center">
+        <div className="mb-3 px-8 text-center sm:mb-5">
           <p className="avatar-editor-eyebrow">Personalización</p>
           <h2 className="avatar-editor-title">Editor de Avatar</h2>
         </div>
 
-        <div className="avatar-editor-body flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-6">
-          <div className="avatar-editor-preview-shell flex w-full flex-shrink-0 flex-col items-center lg:w-[420px]">
+        <div className="avatar-editor-body flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-5">
+          <div className="avatar-editor-preview-shell flex min-h-0 w-full flex-shrink-0 flex-col items-center lg:w-[500px] xl:w-[520px]">
             <div className="avatar-editor-avatar-stage relative flex items-center justify-center">
               <span className="avatar-editor-avatar-orbit" />
 
               <div className="avatar-editor-avatar-render relative z-[2]">
                 <RenderizadorAvatar
                   config={config}
-                  size={300}
+                  size={TAMANO_AVATAR_EDITOR}
                   mantenerAnteriorDuranteCarga
-                  onReady={() => setAvatarInicialListo(true)}
+                  onReady={() => {
+                    setAvatarListo(true);
+
+                    if (esperandoCommitVisualRef.current) {
+                      esperandoCommitVisualRef.current = false;
+                      setMostrarLoaderCambio(false);
+                      loaderCambioVisibleDesdeRef.current = null;
+                      setAvatarActualizando(false);
+                    }
+
+                    if (!readyRef.current) {
+                      readyRef.current = true;
+                      onReady?.();
+                    }
+                  }}
                 />
+
+                {mostrarLoaderCambio && (
+                  <div
+                    className="avatar-editor-update-overlay absolute inset-0 z-[8] flex items-center justify-center"
+                    aria-live="polite"
+                    aria-label="Actualizando avatar"
+                  >
+                    <div className="avatar-editor-update-loader">
+                      <CargadorFCC
+                        compacto
+                        mensaje="Actualizando avatar"
+                        detalle=""
+                        className="avatar-editor-inline-loader"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="avatar-editor-color-slot">
-              {currentTab === "gender" && (
-                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
-                  {SKIN_TONES.map((tone) => (
-                    <button
-                      key={tone}
-                      type="button"
-                      onClick={() => setConfig({ ...config, skinColor: tone })}
-                      className={`avatar-editor-color-dot ${
-                        config.skinColor === tone ? "is-selected" : ""
-                      }`}
-                      style={{ backgroundColor: tone }}
-                      title="Color de piel"
-                    />
-                  ))}
+              {tab === "cuerpo" && cuerpoAdmiteColor && (
+                <div
+                  className="avatar-editor-side-palette"
+                  aria-label="Tono de piel"
+                >
+                  <div className="avatar-editor-side-palette-list">
+                    {tonosPiel.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`avatar-editor-color-dot ${
+                          config.skinColor === color ? "is-selected" : ""
+                        }`}
+                        style={{
+                          backgroundColor: color,
+                          ...estiloSwatch(color),
+                        }}
+                        onClick={() => {
+                          if (avatarActualizando) return;
+                          void aplicarConfigAtomica(
+                            {
+                              ...config,
+                              skinColor: color,
+                            },
+                            itemPersonalizacionId
+                          );
+                        }}
+                        disabled={avatarActualizando}
+                        title="Color de piel"
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {currentTab === "ropa" && rolUsuario !== "profesor" && (
-                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
-                  {[
-                    "#ffffff",
-                    "#d1d5db",
-                    "#374151",
-                    "#3b82f6",
-                    "#60a5fa",
-                    "#8b5cf6",
-                  ].map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setConfig({ ...config, sueterColor: color })}
-                      className={`avatar-editor-color-dot ${
-                        config.sueterColor === color ? "is-selected" : ""
-                      }`}
-                      style={{ backgroundColor: color }}
-                      title="Color de prenda"
-                    />
-                  ))}
-                </div>
-              )}
+              {tab !== "cuerpo" && mostrarPersonalizacion && (
+                <div
+                  className="avatar-editor-side-palette"
+                  aria-label="Variantes de color"
+                >
+                  {grupoColorSeleccionado && (
+                    <div className="avatar-editor-side-palette-list">
+                      {grupoColorSeleccionado.items.map((item) => {
+                        const datos = separarFamiliaColorRopa(item);
+                        const color = datos?.color ?? item.name;
+                        const swatch = swatchColorRopa(color);
+                        const selected = itemSeleccionado?.id === item.id;
+                        const unlocked = estaDesbloqueado(item);
 
-              {!mostrarPaletaColor && (
-                <div className="avatar-editor-color-row flex flex-wrap justify-center gap-3">
-                  <span
-                    className="avatar-editor-color-dot avatar-editor-color-none is-selected"
-                    aria-label="Sin color configurable"
-                    title="Sin color configurable"
-                  />
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`avatar-editor-color-dot relative ${
+                              selected ? "is-selected" : ""
+                            } ${!unlocked ? "is-locked-color" : ""}`}
+                            style={{
+                              backgroundColor: swatch ?? undefined,
+                              opacity: unlocked ? 1 : 0.62,
+                              ...estiloSwatch(swatch),
+                            }}
+                            onClick={() => seleccionar(item)}
+                            disabled={avatarActualizando}
+                            title={`${etiquetaSimple(color)}${
+                              unlocked ? "" : " · Bloqueado"
+                            }`}
+                            aria-label={etiquetaSimple(color)}
+                          >
+                            {!swatch
+                              ? etiquetaSimple(color).slice(0, 1).toUpperCase()
+                              : null}
+
+                            {!unlocked && (
+                              <span className="avatar-editor-color-lock absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                  className="h-2.5 w-2.5"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
+                                </svg>
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {itemSeleccionado?.customization.type === "tint" && (
+                    <div className="avatar-editor-side-palette-list">
+                      {itemSeleccionado.customization.colors.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`avatar-editor-color-dot ${
+                            config.colors[itemSeleccionado.id] === color
+                              ? "is-selected"
+                              : ""
+                          }`}
+                          style={{
+                            backgroundColor: color,
+                            ...estiloSwatch(color),
+                          }}
+                          onClick={() => {
+                            if (avatarActualizando) return;
+                            coloresSesionRef.current[
+                              itemSeleccionado.id
+                            ] = color;
+
+                            const siguiente =
+                              establecerColorItemAvatarV2(
+                                config,
+                                itemSeleccionado,
+                                color
+                              );
+                            void aplicarConfigAtomica(
+                              siguiente,
+                              itemSeleccionado.id
+                            );
+                          }}
+                          disabled={avatarActualizando}
+                          title="Color"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {itemSeleccionado?.customization.type === "image_variants" && (
+                    <div className="avatar-editor-side-palette-list">
+                      {itemSeleccionado.customization.options
+                        .filter((option) =>
+                          Boolean(
+                            option.variants[config.gender] ??
+                              option.variants.universal
+                          )
+                        )
+                        .map((option) => {
+                          const slotActual = obtenerSlotItemAvatar(
+                            itemSeleccionado
+                          );
+                          const valorSeleccionado =
+                            slotActual === "cabello"
+                              ? obtenerVarianteGlobalCabelloEditor()
+                              : config.imageVariants[
+                                  itemSeleccionado.id
+                                ];
+
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              className={`avatar-editor-color-dot ${
+                                valorSeleccionado === option.key
+                                  ? "is-selected"
+                                  : ""
+                              }`}
+                              style={
+                                option.swatch
+                                  ? {
+                                      backgroundColor: option.swatch,
+                                      ...estiloSwatch(option.swatch),
+                                    }
+                                  : undefined
+                              }
+                              onClick={() => {
+                                if (avatarActualizando) return;
+                                variantesSesionRef.current[
+                                  itemSeleccionado.id
+                                ] = option.key;
+
+                                const siguiente =
+                                  establecerVarianteImagenAvatarV2(
+                                    config,
+                                    itemSeleccionado,
+                                    option.key
+                                  );
+                                void aplicarConfigAtomica(
+                                  siguiente,
+                                  itemSeleccionado.id
+                                );
+                              }}
+                              disabled={avatarActualizando}
+                              title={option.label}
+                              aria-label={option.label}
+                            >
+                              {!option.swatch
+                                ? option.label
+                                    .slice(0, 1)
+                                    .toUpperCase()
+                                : null}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
-
           <div className="avatar-editor-controls flex min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="avatar-editor-tabs mb-4 flex justify-start gap-2 overflow-x-auto pb-2 lg:justify-center">
-              {TABS.map((tab) => {
-                const isActive = currentTab === tab.key;
-
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setCurrentTab(tab.key)}
-                    className={`avatar-editor-tab ${isActive ? "is-active" : ""}`}
-                    style={{ whiteSpace: "nowrap" }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+            <div className="avatar-editor-tabs mb-3 flex justify-start gap-2 overflow-x-auto">
+              {secciones.map((seccion) => (
+                <button
+                  key={seccion.key}
+                  type="button"
+                  className={`avatar-editor-tab ${
+                    tab === seccion.key ? "is-active" : ""
+                  }`}
+                  style={{ whiteSpace: "nowrap" }}
+                  onClick={() => {
+                    setTab(seccion.key);
+                    setItemPersonalizacionId(null);
+                  }}
+                  disabled={avatarActualizando}
+                >
+                  {seccion.label}
+                </button>
+              ))}
             </div>
 
             <div
-              className={`avatar-editor-options-scroll h-[320px] overflow-y-auto pr-2 sm:h-[400px] ${
-                currentTab === "gender" ? "is-gender-tab" : ""
+              className={`avatar-editor-options-scroll min-h-0 flex-1 overflow-y-auto pr-2 ${
+                tab === "cuerpo" ? "is-gender-tab" : ""
               }`}
               style={{
                 overflowX: "hidden",
-                overflowY: currentTab === "gender" ? "hidden" : "auto",
+                overflowY: tab === "cuerpo" ? "hidden" : "auto",
               }}
             >
-              {(() => {
-                const currentTabData = TABS.find((t) => t.key === currentTab);
-                if (!currentTabData) return null;
+              {seccionActual?.type === "body" && (
+                <div className="avatar-editor-gender-grid grid h-full grid-cols-2 gap-3">
+                  {(["masculino", "femenino"] as GeneroAvatar[]).map(
+                    (gender) => (
+                      <button
+                        key={gender}
+                        type="button"
+                        className={`avatar-editor-option avatar-editor-gender-option group ${
+                          config.gender === gender ? "is-selected" : ""
+                        }`}
+                        onClick={() => cambiarGeneroEditor(gender)}
+                        disabled={avatarActualizando}
+                      >
+                        <span className="avatar-editor-gender-label">
+                          {gender === "masculino"
+                            ? "Masculino"
+                            : "Femenino"}
+                        </span>
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
 
-                if ((currentTabData as any).subsections) {
-                  const tabWithSubs = currentTabData as any;
+              {seccionActual?.type === "collection" &&
+                renderItems(seccionActual.items, seccionActual.key)}
 
-                  return tabWithSubs.subsections.map((sub: any) => (
-                    <div key={sub.key} className="mb-6 col-span-3">
-                      <h3 className="avatar-editor-section-title mb-3 text-center text-sm font-semibold">
-                        {sub.label}
-                      </h3>
+              {seccionActual?.type === "grouped" &&
+                (seccionActual.key === "ropa"
+                  ? renderRopaAgrupada(seccionActual)
+                  : [...seccionActual.subsections]
+                      .sort((a, b) =>
+                        a.label.localeCompare(b.label, "es", {
+                          numeric: true,
+                          sensitivity: "base",
+                        })
+                      )
+                      .map((sub) => (
+                        <div key={sub.key} className="mb-5 last:mb-0">
+                          <h3 className="avatar-editor-section-title mb-3 text-center text-sm font-semibold">
+                            {sub.label}
+                          </h3>
 
-                      <div className="grid grid-cols-3 gap-3 overflow-visible px-1">
-                        {(
-                          typeof sub.items === "function"
-                            ? sub.items()
-                            : sub.items
-                        )
-                          .filter((file: string) => {
-                            if (file === "none") {
-                              return (
-                                currentTab === "accessory" ||
-                                sub.label === "Playera"
-                              );
-                            }
-
-                            return true;
-                          })
-                          .map((file: string) => {
-                            let currentValue: string = "none";
-
-                            if (currentTab === "ropa") {
-                              if (
-                                sub.key === "playera" ||
-                                sub.label === "Playera" ||
-                                sub.key.toLowerCase().includes("playera")
-                              ) {
-                                currentValue = config.playera;
-                              } else if (
-                                sub.key === "sueter_color" ||
-                                sub.label.toLowerCase().includes("suéter")
-                              ) {
-                                currentValue = config.sueter;
-                              } else if (
-                                sub.key === "sueter_simple" ||
-                                sub.label.toLowerCase().includes("prendas")
-                              ) {
-                                currentValue = config.sueter;
-                              }
-                            } else {
-                              currentValue = (config as any)[sub.key];
-                            }
-
-                            const isSelected =
-                              currentValue === file ||
-                              (sub.key === "capas_profesor" &&
-                                config.sueter === file);
-
-                            const desbloqueado =
-                              rolUsuario === "profesor" ||
-                              desbloqueados.includes("ALL_ITEMS_UNLOCKED") ||
-                              desbloqueados.some((n) =>
-                                coincideNombre(n, file)
-                              ) ||
-                              file === "none";
-
-                            return (
-                              <div
-                                key={file}
-                                className={`avatar-editor-option group ${
-                                  isSelected ? "is-selected" : ""
-                                } ${!desbloqueado ? "is-locked" : ""}`}
-                                style={{
-                                  width: "100%",
-                                  aspectRatio: "1 / 1",
-                                  filter: desbloqueado
-                                    ? "none"
-                                    : "grayscale(100%) brightness(0.6)",
-                                  opacity: desbloqueado ? 1 : 0.7,
-                                  position: "relative",
-                                }}
-                                onClick={() => {
-                                  const newConfig = { ...config };
-
-                                  if (currentTab === "ropa") {
-                                    const isPlayera =
-                                      sub.key === "playera" ||
-                                      sub.label === "Playera";
-                                    const isSueterColor =
-                                      sub.key === "sueter_color" ||
-                                      sub.label
-                                        .toLowerCase()
-                                        .includes("suéter");
-                                    const isSueterSimple =
-                                      sub.key === "sueter_simple" ||
-                                      sub.label
-                                        .toLowerCase()
-                                        .includes("prendas");
-                                    const isProfesor =
-                                      sub.key === "capas_profesor" ||
-                                      sub.label
-                                        .toLowerCase()
-                                        .includes("profesor");
-
-                                    newConfig.playera = "none";
-                                    newConfig.sueter = "none";
-
-                                    if (isPlayera) {
-                                      newConfig.playera =
-                                        file === "none" ? "none" : file;
-                                    } else if (isSueterColor || isSueterSimple) {
-                                      newConfig.sueter =
-                                        file === "none" ? "none" : file;
-                                    } else if (isProfesor) {
-                                      newConfig.sueter =
-                                        file === "none" ? "none" : file;
-                                    }
-                                  } else {
-                                    (newConfig as any)[sub.key] = file;
-                                  }
-
-                                  setConfig(newConfig);
-                                }}
-                              >
-                                <div className="avatar-editor-option-inner">
-                                  {file === "none" ? (
-                                    <span className="avatar-editor-none-text">
-                                      Ninguno
-                                    </span>
-                                  ) : currentTab === "ropa" ? (
-                                    sub.key === "playera" ? (
-                                      <div className="avatar-editor-option-inner">
-                                        {file !== "none" ? (
-                                          <VistaPreviaCapasAtomica
-                                            key={`${config.gender}-${config.sueterColor}-${file}`}
-                                            sources={[
-                                              optimizarPreview(
-                                                `/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`
-                                              ),
-                                              optimizarPreview(
-                                                `/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`
-                                              ),
-                                            ]}
-                                          >
-                                            <div
-                                              className="absolute inset-0"
-                                              style={{
-                                                backgroundImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
-                                                backgroundRepeat: "no-repeat",
-                                                backgroundPosition: "center",
-                                                backgroundSize: "contain",
-                                              }}
-                                            />
-                                            <div
-                                              className="absolute inset-0 will-change-transform"
-                                              style={{
-                                                backgroundColor:
-                                                  config.sueterColor ??
-                                                  "#ffffff",
-                                                opacity: 0.6,
-                                                maskImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
-                                                WebkitMaskImage: `url(${optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Relleno.png`)})`,
-                                                maskSize: "contain",
-                                                maskRepeat: "no-repeat",
-                                                maskPosition: "center",
-                                                WebkitMaskSize: "contain",
-                                                WebkitMaskRepeat: "no-repeat",
-                                                WebkitMaskPosition: "center",
-                                                pointerEvents: "none",
-                                              }}
-                                            />
-                                            <img
-                                              src={optimizarPreview(`/elementos_avatar/ropa/${config.gender}/playeras/previews/${file}_Contorno.png`)}
-                                              className="absolute inset-0 h-full w-full object-contain"
-                                              alt={file}
-                                              decoding="async"
-                                            />
-                                          </VistaPreviaCapasAtomica>
-                                        ) : (
-                                          <span className="avatar-editor-none-text">
-                                            Ninguno
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      (TABS.find(
-                                        (t) => t.key === "ropa"
-                                      ) as any)?.renderItem?.(file, config) ??
-                                      null
-                                    )
-                                  ) : (
-                                    <img
-                                      src={optimizarPreview(
-                                        currentTab === "accessory"
-                                          ? sub.key === "glasses"
-                                            ? `/elementos_avatar/cara/lentes/previews/${file}`
-                                            : `/elementos_avatar/accesorios/${file}`
-                                          : currentTab === "hair"
-                                            ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
-                                            : currentTab === "eyes"
-                                              ? `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`
-                                              : currentTab === "mouth"
-                                                ? `/elementos_avatar/cara/bocas/previews/${file}`
-                                                : currentTab === "nose"
-                                                  ? `/elementos_avatar/cara/narices/previews/${file}`
-                                            : ""
-                                      )}
-                                      className="max-h-full max-w-full object-contain"
-                                      alt={file}
-                                      loading="lazy"
-                                      decoding="async"
-                                    />
-                                  )}
-                                </div>
-
-                                {!desbloqueado && (
-                                  <div className="avatar-editor-lock-layer absolute inset-0 flex items-center justify-center rounded-[18px]">
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      viewBox="0 0 24 24"
-                                      className="h-6 w-6 text-white opacity-90"
-                                      fill="currentColor"
-                                    >
-                                      <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
-                                    </svg>
-
-                                    <div className="avatar-editor-tooltip absolute left-1/2 top-1/2 z-[120] px-3 py-1.5 text-center text-[11px]">
-                                      Desbloquea cofres
-                                      <br />
-                                      para obtener este elemento
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  ));
-                }
-
-                const items =
-                  typeof (currentTabData as any).items === "function"
-                    ? (currentTabData as any).items()
-                    : (currentTabData as any).items;
-
-                return (
-                  <div
-                    className={
-                      currentTab === "gender"
-                        ? "avatar-editor-gender-grid flex h-full items-stretch justify-between gap-3"
-                        : "grid grid-cols-3 gap-3 px-2 pb-2 pt-2"
-                    }
-                  >
-                    {items?.map((file: string) => {
-                      const currentValue = (config as any)[currentTab];
-                      const isSelected = currentValue === file;
-
-                      const desbloqueado =
-                        rolUsuario === "profesor" ||
-                        desbloqueados.includes("ALL_ITEMS_UNLOCKED") ||
-                        currentTab === "gender" ||
-                        desbloqueados.some((n) => coincideNombre(n, file)) ||
-                        file === "none";
-
-                      return (
-                        <div
-                          key={file}
-                          className={`avatar-editor-option group ${
-                            isSelected ? "is-selected" : ""
-                          } ${!desbloqueado ? "is-locked" : ""} ${
-                            currentTab === "gender"
-                              ? "avatar-editor-gender-option"
-                              : ""
-                          }`}
-                          style={
-                            currentTab === "gender"
-                              ? {
-                                  height: "220px",
-                                  flex: "1 1 48%",
-                                  maxWidth: "48%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }
-                              : {
-                                  width: "100%",
-                                  aspectRatio: "1 / 1",
-                                  filter: desbloqueado
-                                    ? "none"
-                                    : "grayscale(100%) brightness(0.6)",
-                                  opacity: desbloqueado ? 1 : 0.7,
-                                  position: "relative",
-                                }
-                          }
-                          onClick={() => {
-                            if (currentTab === "gender") {
-                              setConfig((prev) => {
-                                const nuevoGenero = file as
-                                  | "masculino"
-                                  | "femenino";
-
-                                const nuevoConfig = {
-                                  ...prev,
-                                  gender: nuevoGenero,
-                                  skin: "piel.png",
-                                };
-
-                                nuevoConfig.hair = prev.hair ?? "none";
-                                nuevoConfig.sueter = prev.sueter ?? "none";
-
-                                return nuevoConfig;
-                              });
-                            } else {
-                              setConfig({ ...config, [currentTab]: file });
-                            }
-                          }}
-                        >
-                          {currentTab === "gender" ? (
-                            <span className="avatar-editor-gender-label">
-                              {file === "masculino" ? "Masculino" : "Femenino"}
-                            </span>
-                          ) : (
-                            <div
-                              className={`avatar-editor-option-inner ${
-                                currentTab === "accessory"
-                                  ? "mx-auto h-20 w-20"
-                                  : "h-full w-full"
-                              }`}
-                            >
-                              {file === "none" ? (
-                                <span className="avatar-editor-none-text">
-                                  Ninguno
-                                </span>
-                              ) : (
-                                <img
-                                  src={optimizarPreview(
-                                    currentTab === "hair"
-                                      ? `/elementos_avatar/cabello/${config.gender}/previews/${file}`
-                                      : currentTab === "eyes"
-                                        ? [
-                                            "Ojos5.png",
-                                            "Ojos6.png",
-                                            "Ojos7.png",
-                                          ].includes(file)
-                                          ? `/elementos_avatar/cara/ojos/previews/${file}`
-                                          : `/elementos_avatar/cara/ojos/${config.gender}/previews/${file}`
-                                        : currentTab === "mouth"
-                                          ? `/elementos_avatar/cara/bocas/previews/${file}`
-                                          : currentTab === "nose"
-                                            ? `/elementos_avatar/cara/narices/previews/${file}`
-                                            : ""
-                                  )}
-                                  className="max-h-full max-w-full object-contain"
-                                  alt={file}
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                              )}
-                            </div>
-                          )}
-
-                          {!desbloqueado && (
-                            <div className="avatar-editor-lock-layer absolute inset-0 flex items-center justify-center rounded-[18px]">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                className="h-6 w-6 text-white opacity-90"
-                                fill="currentColor"
-                              >
-                                <path d="M12 2a4 4 0 00-4 4v3H6a2 2 0 00-2 2v7a2 2 0 002 2h12a2 2 0 002-2v-7a2 2 0 00-2-2h-2V6a4 4 0 00-4-4zm-2 7V6a2 2 0 114 0v3h-4z" />
-                              </svg>
-
-                              <div className="avatar-editor-tooltip absolute left-1/2 top-1/2 z-[120] px-3 py-1.5 text-center text-[11px] font-normal">
-                                Desbloquea cofres
-                                <br />
-                                para obtener este elemento
-                              </div>
-                            </div>
+                          {renderItems(
+                            sub.items,
+                            `${seccionActual.key}/${sub.key}`
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                      )))}
             </div>
           </div>
         </div>
 
-        {/* Pie del modal */}
-        <div className="avatar-editor-footer mt-4 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-6 sm:flex-row sm:items-center sm:gap-4">
-          {!forzado && rolUsuario !== "profesor" && (
+        <div className="avatar-editor-footer mt-3 flex flex-col-reverse items-stretch justify-end gap-3 sm:mt-4 sm:flex-row sm:items-center sm:gap-4">
+          {!forzado && (
             <button
               type="button"
               className="avatar-editor-secondary-button px-4 py-2"
-              onClick={solicitarSalida}
+              onClick={onClose}
             >
               Cancelar
             </button>
@@ -1254,17 +1927,11 @@ export default function ModalEditorAvatar({
 
           <button
             type="button"
-            className={
-              forzado
-                ? "fcc-premium-button px-5 py-2"
-                : `fcc-premium-button px-5 py-2 ${
-                    rolUsuario === "profesor" ? "avatar-editor-save-button" : ""
-                  }`
-            }
-            onClick={() => void handleSave()}
-            disabled={guardandoAvatar}
+            className="fcc-premium-button px-5 py-2"
+            disabled={guardando || !avatarListo || avatarActualizando}
+            onClick={() => void guardar()}
           >
-            {guardandoAvatar
+            {guardando
               ? "Confirmando…"
               : forzado
                 ? "Crear avatar"
@@ -1377,27 +2044,65 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-preview-shell {
-          --fcc-user-avatar-core: color-mix(in srgb, var(--fcc-premium-cyan) 18%, transparent);
-          --fcc-user-avatar-a: color-mix(in srgb, var(--fcc-premium-accent) 34%, transparent);
-          --fcc-user-avatar-b: color-mix(in srgb, var(--fcc-premium-cyan) 28%, transparent);
-          --fcc-user-avatar-c: color-mix(in srgb, var(--fcc-premium-accent) 26%, transparent);
-          --fcc-user-avatar-border: color-mix(in srgb, var(--fcc-premium-accent) 28%, transparent);
-          --fcc-user-avatar-shadow-a: color-mix(in srgb, var(--fcc-premium-accent) 4%, transparent);
-          --fcc-user-avatar-shadow-b: color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
-          --fcc-user-orbit-a: color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent);
-          --fcc-user-orbit-b: color-mix(in srgb, var(--fcc-premium-cyan) 22%, transparent);
+          --fcc-user-avatar-core: color-mix(
+            in srgb,
+            var(--fcc-premium-cyan) 18%,
+            transparent
+          );
+          --fcc-user-avatar-a: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 34%,
+            transparent
+          );
+          --fcc-user-avatar-b: color-mix(
+            in srgb,
+            var(--fcc-premium-cyan) 28%,
+            transparent
+          );
+          --fcc-user-avatar-c: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 26%,
+            transparent
+          );
+          --fcc-user-avatar-border: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 28%,
+            transparent
+          );
+          --fcc-user-avatar-shadow-a: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 4%,
+            transparent
+          );
+          --fcc-user-avatar-shadow-b: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 18%,
+            transparent
+          );
+          --fcc-user-orbit-a: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 20%,
+            transparent
+          );
+          --fcc-user-orbit-b: color-mix(
+            in srgb,
+            var(--fcc-premium-cyan) 22%,
+            transparent
+          );
 
-          justify-content: flex-start;
+          position: relative;
+          justify-content: center;
           padding-top: 0;
           overflow: visible;
         }
 
         .avatar-editor-avatar-stage {
-          --avatar-editor-stage-size: clamp(300px, 30vw, 420px);
-          --avatar-editor-render-scale: 1.28;
-          --avatar-editor-avatar-circle-size: 82%;
-          --avatar-editor-avatar-ring-size: 70%;
-          --avatar-editor-avatar-orbit-size: 66%;
+          --avatar-editor-stage-size: min(100%, 520px);
+          --avatar-editor-render-scale: 1.48;
+          --avatar-editor-render-bottom: -18px;
+          --avatar-editor-avatar-circle-size: min(82%, 388px);
+          --avatar-editor-avatar-ring-size: min(70%, 330px);
+          --avatar-editor-avatar-orbit-size: min(66%, 310px);
 
           position: relative;
           flex: 0 0 auto;
@@ -1420,7 +2125,11 @@ export default function ModalEditorAvatar({
           border-radius: 999px;
           transform: translate(-50%, -50%);
           background:
-            radial-gradient(circle, var(--fcc-user-avatar-core), transparent 62%),
+            radial-gradient(
+              circle,
+              var(--fcc-user-avatar-core),
+              transparent 62%
+            ),
             conic-gradient(
               from 210deg,
               transparent 0deg,
@@ -1480,11 +2189,12 @@ export default function ModalEditorAvatar({
         .avatar-editor-avatar-render {
           position: absolute !important;
           left: 50%;
-          bottom: 0;
+          bottom: var(--avatar-editor-render-bottom);
           z-index: 2;
           display: grid;
           place-items: center;
-          transform: translateX(-50%) scale(var(--avatar-editor-render-scale)) !important;
+          transform: translateX(-50%)
+            scale(var(--avatar-editor-render-scale)) !important;
           transform-origin: center bottom;
         }
 
@@ -1493,30 +2203,82 @@ export default function ModalEditorAvatar({
           max-height: none !important;
         }
 
-        .avatar-editor-color-slot {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          min-height: 58px;
-          margin-top: 8px;
+        .avatar-editor-update-overlay {
+          border-radius: 999px;
+          pointer-events: none;
+          background: color-mix(
+            in srgb,
+            var(--fcc-premium-surface-strong) 54%,
+            transparent
+          );
+          backdrop-filter: blur(1.5px);
         }
 
-        .avatar-editor-color-row {
-          position: relative;
-          z-index: 3;
+        .avatar-editor-update-loader {
+          width: 184px;
+          max-width: 58%;
+          transform: scale(0.72);
+          transform-origin: center;
+        }
+
+        .avatar-editor-inline-loader {
+          min-height: 0 !important;
+          padding: 8px !important;
+        }
+
+        .avatar-editor-side-palette {
+          position: absolute;
+          right: clamp(2px, 1.5vw, 14px);
+          top: 50%;
+          z-index: 7;
           display: flex;
-          width: 100%;
+          max-height: 88%;
+          align-items: center;
           justify-content: center;
+          transform: translateY(-50%);
+          pointer-events: auto;
+        }
+
+        .avatar-editor-side-palette-list {
+          display: flex;
+          max-height: 100%;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 7px;
+          overflow-y: auto;
+          overflow-x: visible;
+          padding: 4px;
+          scrollbar-width: none;
+        }
+
+        .avatar-editor-side-palette-list::-webkit-scrollbar {
+          display: none;
+        }
+
+        .avatar-editor-side-palette .avatar-editor-color-dot {
+          width: 2.1rem;
+          height: 2.1rem;
+          flex: 0 0 auto;
         }
 
         .avatar-editor-color-dot {
+          display: grid;
+          place-items: center;
           width: 2.25rem;
           height: 2.25rem;
           border-radius: 999px;
+          color: var(--fcc-premium-text);
+          background: color-mix(
+            in srgb,
+            var(--fcc-premium-surface-strong) 92%,
+            transparent
+          );
           border: 2px solid var(--fcc-premium-border);
           box-shadow: none;
           opacity: 0.96;
+          font-size: 0.72rem;
+          font-weight: 900;
         }
 
         .avatar-editor-color-dot:hover {
@@ -1529,34 +2291,22 @@ export default function ModalEditorAvatar({
           box-shadow: none;
         }
 
-        .avatar-editor-color-none {
-          position: relative;
-          cursor: default;
+        .avatar-editor-color-dot.is-locked-color {
+          filter: grayscale(35%);
+        }
+
+        .avatar-editor-color-lock {
+          color: #ffffff;
+          background: rgba(2, 6, 23, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.82);
           pointer-events: none;
-          opacity: 0.72;
-          background:
-            linear-gradient(
-              135deg,
-              transparent calc(50% - 1px),
-              var(--fcc-premium-muted) calc(50% - 1px) calc(50% + 1px),
-              transparent calc(50% + 1px)
-            ),
-            color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, white);
-          border-style: solid;
-        }
-
-        .avatar-editor-color-none.is-selected {
-          opacity: 1;
-          border-style: solid;
-          border-color: var(--fcc-premium-accent);
-        }
-
-        .avatar-editor-color-none:hover {
-          transform: none;
         }
 
         .avatar-editor-tabs {
           scrollbar-width: thin;
+          box-sizing: border-box;
+          padding: 6px 4px 8px;
+          scroll-padding-inline: 4px;
         }
 
         .avatar-editor-tab {
@@ -1572,14 +2322,22 @@ export default function ModalEditorAvatar({
 
         .avatar-editor-tab:hover {
           color: var(--fcc-premium-text);
-          background: color-mix(in srgb, var(--fcc-premium-accent) 8%, transparent);
+          background: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 8%,
+            transparent
+          );
           border-color: var(--fcc-premium-border);
         }
 
         .avatar-editor-tab.is-active {
           color: white;
           background: var(--fcc-premium-button);
-          border-color: color-mix(in srgb, var(--fcc-premium-accent) 32%, transparent);
+          border-color: color-mix(
+            in srgb,
+            var(--fcc-premium-accent) 32%,
+            transparent
+          );
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
         }
 
@@ -1588,7 +2346,16 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-options-scroll {
-          padding-bottom: 0.35rem;
+          box-sizing: border-box;
+          min-height: 0;
+          flex: 1 1 auto;
+          height: auto !important;
+          padding: 4px 6px 8px 4px;
+          scroll-padding-top: 4px;
+          overscroll-behavior: contain;
+          scrollbar-gutter: stable;
+          scroll-behavior: auto;
+          contain: paint;
         }
 
         .avatar-editor-section-title {
@@ -1598,9 +2365,15 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-option {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 1 / 1;
           cursor: pointer;
-          overflow: visible;
+          overflow: hidden;
           border-radius: 18px;
+          contain: layout paint;
+          isolation: isolate;
+          padding: 0;
           border: 1px solid var(--fcc-premium-border);
           background:
             radial-gradient(
@@ -1615,7 +2388,6 @@ export default function ModalEditorAvatar({
             );
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
           transition:
-            transform var(--fcc-transition),
             box-shadow var(--fcc-transition),
             border-color var(--fcc-transition),
             filter var(--fcc-transition),
@@ -1627,17 +2399,25 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-option:hover {
-          transform: translateY(-2px);
           border-color: var(--fcc-premium-border-strong);
         }
 
         .avatar-editor-option.is-selected {
-          transform: translateY(-1px);
           border-width: 2px;
           border-color: var(--fcc-premium-accent);
           box-shadow:
-            inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 20%, transparent),
-            inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
+            inset 0 0 0 3px
+              color-mix(
+                in srgb,
+                var(--fcc-premium-accent) 20%,
+                transparent
+              ),
+            inset 0 0 0 1px
+              color-mix(
+                in srgb,
+                var(--fcc-premium-accent) 18%,
+                transparent
+              );
         }
 
         .avatar-editor-option-inner {
@@ -1653,12 +2433,28 @@ export default function ModalEditorAvatar({
           background:
             linear-gradient(
               135deg,
-              color-mix(in srgb, var(--fcc-premium-surface-strong) 88%, transparent),
-              color-mix(in srgb, var(--fcc-premium-surface-soft) 94%, transparent)
+              color-mix(
+                in srgb,
+                var(--fcc-premium-surface-strong) 88%,
+                transparent
+              ),
+              color-mix(
+                in srgb,
+                var(--fcc-premium-surface-soft) 94%,
+                transparent
+              )
             );
         }
 
-        .avatar-editor-none-text {
+        .avatar-editor-option-inner img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+
+        .avatar-editor-none-text,
+        .avatar-v2-empty {
           color: var(--fcc-premium-muted);
           font-size: 0.88rem;
           font-weight: 700;
@@ -1670,8 +2466,11 @@ export default function ModalEditorAvatar({
         }
 
         .avatar-editor-gender-grid {
+          width: 100%;
+          min-width: 0;
           min-height: 100%;
           height: 100%;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           align-items: stretch;
           overflow: visible;
           padding: 0.25rem;
@@ -1680,11 +2479,14 @@ export default function ModalEditorAvatar({
 
         .avatar-editor-gender-option {
           display: flex !important;
+          width: 100% !important;
+          min-width: 0 !important;
+          max-width: none !important;
+          height: 100% !important;
+          min-height: 0;
           align-items: center !important;
           justify-content: center !important;
           text-align: center;
-          height: 100% !important;
-          min-height: 220px;
           box-sizing: border-box;
         }
 
@@ -1740,8 +2542,16 @@ export default function ModalEditorAvatar({
           background:
             linear-gradient(
               135deg,
-              color-mix(in srgb, var(--fcc-premium-surface-strong) 94%, transparent),
-              color-mix(in srgb, var(--fcc-premium-surface-soft) 94%, transparent)
+              color-mix(
+                in srgb,
+                var(--fcc-premium-surface-strong) 94%,
+                transparent
+              ),
+              color-mix(
+                in srgb,
+                var(--fcc-premium-surface-soft) 94%,
+                transparent
+              )
             );
           border: 1px solid var(--fcc-premium-border);
           font-weight: 850;
@@ -1754,30 +2564,73 @@ export default function ModalEditorAvatar({
           border-color: var(--fcc-premium-border-strong);
         }
 
-        .avatar-editor-secondary-button.avatar-editor-exit-button {
-          color: #ffffff;
-          background: linear-gradient(135deg, #ef4444, #dc2626);
-          border-color: color-mix(in srgb, #ef4444 70%, white);
-        }
-
-        .avatar-editor-secondary-button.avatar-editor-exit-button:hover {
-          color: #ffffff;
-          border-color: color-mix(in srgb, #ef4444 82%, white);
-          filter: brightness(1.04);
-        }
-
-        .avatar-editor-save-button {
-          color: #ffffff !important;
-          background: linear-gradient(135deg, #10b981, #059669) !important;
-          border-color: color-mix(in srgb, #10b981 68%, white) !important;
-        }
-
-        .theme-oscuro .avatar-editor-save-button {
-          color: #ffffff !important;
-        }
-
         .avatar-editor-toast {
           animation: avatar-editor-fade-in 0.3s ease-out;
+        }
+
+
+        @media (min-width: 1024px) {
+          .avatar-editor-modal {
+            height: min(760px, calc(100dvh - 28px));
+            max-height: min(760px, calc(100dvh - 28px));
+          }
+
+          .avatar-editor-body {
+            min-height: 0;
+            flex: 1 1 auto;
+            overflow: hidden !important;
+          }
+
+          .avatar-editor-preview-shell {
+            height: 100%;
+            min-height: 0;
+            justify-content: center;
+            overflow: visible;
+          }
+
+          .avatar-editor-controls {
+            height: 100%;
+            min-height: 0;
+            overflow: hidden !important;
+          }
+
+          .avatar-editor-options-scroll {
+            min-height: 0;
+            flex: 1 1 auto;
+            height: auto !important;
+            overflow-y: auto !important;
+          }
+
+          .avatar-editor-options-scroll.is-gender-tab {
+            overflow-y: hidden !important;
+          }
+
+          .avatar-editor-gender-grid {
+            height: 100%;
+            min-height: 100%;
+          }
+
+          .avatar-editor-gender-option {
+            min-height: 0 !important;
+          }
+
+          .avatar-editor-footer {
+            flex: 0 0 auto;
+          }
+        }
+
+        @media (min-width: 1180px) {
+          .avatar-editor-tabs {
+            justify-content: center !important;
+            overflow-x: visible !important;
+            gap: 0.3rem !important;
+          }
+
+          .avatar-editor-tab {
+            padding-left: 0.58rem;
+            padding-right: 0.58rem;
+            font-size: 0.73rem;
+          }
         }
 
         @media (min-width: 641px) and (max-width: 1023px) {
@@ -1800,18 +2653,23 @@ export default function ModalEditorAvatar({
           }
 
           .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(58vw, 260px);
-            --avatar-editor-render-scale: 0.82;
+            --avatar-editor-stage-size: min(62vw, 300px);
+            --avatar-editor-render-scale: 0.74;
+            --avatar-editor-render-bottom: 0px;
           }
 
-          .avatar-editor-color-slot {
-            min-height: 44px;
-            margin-top: 0.15rem;
+          .avatar-editor-side-palette {
+            right: 2px;
+            max-height: 90%;
           }
 
-          .avatar-editor-color-dot {
-            width: 2rem;
-            height: 2rem;
+          .avatar-editor-side-palette-list {
+            gap: 6px;
+          }
+
+          .avatar-editor-side-palette .avatar-editor-color-dot {
+            width: 1.9rem;
+            height: 1.9rem;
           }
 
           .avatar-editor-controls {
@@ -1841,15 +2699,8 @@ export default function ModalEditorAvatar({
             overflow-y: hidden !important;
           }
 
-          .avatar-editor-options-scroll > .flex {
-            padding: 0.25rem;
-          }
-
           .avatar-editor-option.is-selected {
             transform: none;
-            box-shadow:
-              inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 24%, transparent),
-              inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
           }
 
           .avatar-editor-gender-option {
@@ -1873,45 +2724,6 @@ export default function ModalEditorAvatar({
 
           .avatar-editor-footer .fcc-premium-button {
             flex-grow: 1.18;
-          }
-        }
-
-        @media (min-width: 641px) and (max-width: 1023px) and (max-height: 780px) {
-          .avatar-editor-modal > .mb-3 {
-            margin-bottom: 0.35rem !important;
-          }
-
-          .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(46vw, 220px);
-            --avatar-editor-render-scale: 0.7;
-          }
-
-          .avatar-editor-color-slot {
-            min-height: 36px;
-          }
-
-          .avatar-editor-color-dot {
-            width: 1.72rem;
-            height: 1.72rem;
-          }
-
-          .avatar-editor-tab {
-            min-height: 30px;
-            font-size: 0.68rem;
-          }
-
-          .avatar-editor-gender-option {
-            height: 100% !important;
-            min-height: 96px !important;
-          }
-
-          .avatar-editor-footer {
-            margin-top: 0.5rem !important;
-          }
-
-          .avatar-editor-footer .fcc-premium-button,
-          .avatar-editor-footer .avatar-editor-secondary-button {
-            min-height: 38px;
           }
         }
 
@@ -1967,23 +2779,24 @@ export default function ModalEditorAvatar({
           }
 
           .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(72vw, 222px);
-            --avatar-editor-render-scale: 0.72;
+            --avatar-editor-stage-size: min(76vw, 246px);
+            --avatar-editor-render-scale: 0.62;
+            --avatar-editor-render-bottom: 0px;
           }
 
-          .avatar-editor-color-slot {
-            flex: 0 0 auto;
-            min-height: 38px;
-            margin-top: 0.1rem;
+          .avatar-editor-side-palette {
+            right: 0;
+            max-height: 92%;
           }
 
-          .avatar-editor-color-row {
-            gap: 0.62rem !important;
+          .avatar-editor-side-palette-list {
+            gap: 5px;
+            padding: 3px;
           }
 
-          .avatar-editor-color-dot {
-            width: 1.85rem;
-            height: 1.85rem;
+          .avatar-editor-side-palette .avatar-editor-color-dot {
+            width: 1.62rem;
+            height: 1.62rem;
             flex: 0 0 auto;
           }
 
@@ -2033,19 +2846,6 @@ export default function ModalEditorAvatar({
             gap: 0.55rem !important;
           }
 
-          .avatar-editor-options-scroll > .flex {
-            min-height: 0 !important;
-            height: auto !important;
-            align-items: stretch !important;
-            gap: 0.55rem !important;
-            padding: 0.25rem;
-          }
-
-          .avatar-editor-options-scroll > .avatar-editor-gender-grid {
-            min-height: 100% !important;
-            height: 100% !important;
-          }
-
           .avatar-editor-section-title {
             margin-bottom: 0.5rem !important;
             font-size: 0.78rem;
@@ -2061,16 +2861,14 @@ export default function ModalEditorAvatar({
 
           .avatar-editor-option.is-selected {
             transform: none;
-            box-shadow:
-              inset 0 0 0 3px color-mix(in srgb, var(--fcc-premium-accent) 24%, transparent),
-              inset 0 0 0 1px color-mix(in srgb, var(--fcc-premium-accent) 18%, transparent);
           }
 
           .avatar-editor-gender-option {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
             height: 100% !important;
             min-height: 120px !important;
-            flex: 1 1 calc(50% - 0.3rem) !important;
-            max-width: none !important;
             margin: 0 !important;
           }
 
@@ -2106,38 +2904,15 @@ export default function ModalEditorAvatar({
             padding: 0.62rem !important;
           }
 
-          .avatar-editor-modal > .mb-3 {
-            margin-bottom: 0.2rem !important;
-          }
-
-          .avatar-editor-eyebrow {
-            font-size: 0.58rem;
-          }
-
-          .avatar-editor-title {
-            font-size: clamp(1.06rem, 5.2vw, 1.24rem);
-          }
-
-          .avatar-editor-body {
-            gap: 0.34rem !important;
-          }
-
           .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(58vw, 190px);
-            --avatar-editor-render-scale: 0.63;
+            --avatar-editor-stage-size: min(62vw, 198px);
+            --avatar-editor-render-scale: 0.50;
+            --avatar-editor-render-bottom: 0px;
           }
 
-          .avatar-editor-color-slot {
-            min-height: 32px;
-          }
-
-          .avatar-editor-color-row {
-            gap: 0.5rem !important;
-          }
-
-          .avatar-editor-color-dot {
-            width: 1.55rem;
-            height: 1.55rem;
+          .avatar-editor-side-palette .avatar-editor-color-dot {
+            width: 1.45rem;
+            height: 1.45rem;
           }
 
           .avatar-editor-tab {
@@ -2153,65 +2928,12 @@ export default function ModalEditorAvatar({
 
           .avatar-editor-footer {
             margin-top: 0.42rem !important;
-            gap: 0.45rem !important;
           }
 
           .avatar-editor-footer .fcc-premium-button,
           .avatar-editor-footer .avatar-editor-secondary-button {
             min-height: 36px;
             border-radius: 12px;
-          }
-        }
-
-        @media (max-width: 380px) {
-          .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(70vw, 188px);
-            --avatar-editor-render-scale: 0.62;
-          }
-
-          .avatar-editor-tab {
-            padding: 0 0.58rem;
-          }
-        }
-
-        @media (max-width: 640px) and (max-height: 640px) {
-          .avatar-editor-close {
-            height: 2.25rem;
-            width: 2.25rem;
-          }
-
-          .avatar-editor-modal > .mb-3 {
-            padding-left: 2.7rem !important;
-            padding-right: 2.7rem !important;
-          }
-
-          .avatar-editor-eyebrow {
-            display: none;
-          }
-
-          .avatar-editor-avatar-stage {
-            --avatar-editor-stage-size: min(46vw, 160px);
-            --avatar-editor-render-scale: 0.53;
-          }
-
-          .avatar-editor-color-slot {
-            min-height: 28px;
-          }
-
-          .avatar-editor-color-dot {
-            width: 1.38rem;
-            height: 1.38rem;
-          }
-
-          .avatar-editor-gender-option {
-            height: 100% !important;
-            min-height: 76px !important;
-          }
-
-          .avatar-editor-footer .fcc-premium-button,
-          .avatar-editor-footer .avatar-editor-secondary-button {
-            min-height: 34px;
-            font-size: 0.72rem;
           }
         }
       `}</style>
@@ -2237,22 +2959,11 @@ export default function ModalEditorAvatar({
   return (
     <>
       {modal}
-      {!avatarInicialListo && (
+      {!avatarListo && (
         <CargadorFCC
           flotante
           mensaje="Preparando el editor de avatar"
           detalle=""
-        />
-      )}
-      {!forzado && rolUsuario === "profesor" && (
-        <ConfirmarSalidaEdicion
-          open={confirmarSalida}
-          titulo="¿Salir del editor de avatar?"
-          descripcion="Hay cambios sin guardar. Puedes seguir editando, descartarlos o guardar el avatar antes de salir."
-          guardando={guardandoSalida}
-          onContinuar={() => setConfirmarSalida(false)}
-          onDescartar={descartarYSalir}
-          onGuardar={guardarYSalir}
         />
       )}
     </>

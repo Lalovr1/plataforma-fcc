@@ -2,7 +2,7 @@
 
 import { supabase } from "@/utils/supabaseClient";
 
-type LogroDesbloqueado = {
+export type LogroDesbloqueado = {
   id: string;
   nombre: string;
   descripcion: string | null;
@@ -10,7 +10,7 @@ type LogroDesbloqueado = {
   icono_url?: string | null;
 };
 
-type ResultadoLogros = {
+export type ResultadoLogros = {
   logros?: LogroDesbloqueado[];
   xp_agregado?: number;
   xp_total?: number;
@@ -55,6 +55,43 @@ function programarNivelSubido(nivel: number) {
   setTimeout(esperar, 1200);
 }
 
+/**
+ * Aplica en el navegador los mismos efectos secundarios de un resultado de
+ * verificar_y_otorgar_logros, aunque el RPC haya sido ejecutado desde una API.
+ */
+export function procesarResultadoLogros(
+  resultado: ResultadoLogros,
+  tipo: string
+) {
+  const nuevos = Array.isArray(resultado.logros)
+    ? resultado.logros
+    : [];
+
+  if (
+    typeof resultado.xp_agregado === "number" &&
+    resultado.xp_agregado > 0
+  ) {
+    window.dispatchEvent(new Event("xpActualizada"));
+  }
+
+  if (
+    resultado.nuevo_nivel === true &&
+    typeof resultado.nivel_actual === "number"
+  ) {
+    programarNivelSubido(resultado.nivel_actual);
+  }
+
+  if (tipo !== "tutorial" && nuevos.length > 0) {
+    window.dispatchEvent(
+      new CustomEvent("logrosDesbloqueados", {
+        detail: nuevos,
+      })
+    );
+  }
+
+  return nuevos;
+}
+
 export async function verificarLogros(
   usuarioId: string,
   tipo: string,
@@ -86,35 +123,10 @@ export async function verificarLogros(
       return [];
     }
 
-    const resultado = (data ?? {}) as ResultadoLogros;
-
-    const nuevos = Array.isArray(resultado.logros)
-      ? resultado.logros
-      : [];
-
-    if (
-      typeof resultado.xp_agregado === "number" &&
-      resultado.xp_agregado > 0
-    ) {
-      window.dispatchEvent(new Event("xpActualizada"));
-    }
-
-    if (
-      resultado.nuevo_nivel === true &&
-      typeof resultado.nivel_actual === "number"
-    ) {
-      programarNivelSubido(resultado.nivel_actual);
-    }
-
-    if (tipo !== "tutorial" && nuevos.length > 0) {
-      window.dispatchEvent(
-        new CustomEvent("logrosDesbloqueados", {
-          detail: nuevos,
-        })
-      );
-    }
-
-    return nuevos;
+    return procesarResultadoLogros(
+      (data ?? {}) as ResultadoLogros,
+      tipo
+    );
   } catch (error) {
     console.error("Error al verificar logros:", error);
     return [];

@@ -20,22 +20,34 @@ export default function RegisterPage() {
   const [carreraId, setCarreraId] = useState<number | null>(null);
   const [semestreId, setSemestreId] = useState<number | null>(null);
   const [matricula, setMatricula] = useState("");
+  const [avatarInicial, setAvatarInicial] = useState<
+    "" | "masculino" | "femenino"
+  >("");
   const [mensaje, setMensaje] = useState("");
 
+  const correoNormalizado = correo.trim().toLowerCase();
+
+  const esProfesorBuap =
+    correoNormalizado.endsWith("@correo.buap.mx");
+
+  const esEstudianteBuap =
+    correoNormalizado.endsWith("@alumno.buap.mx") ||
+    correoNormalizado.endsWith("@alm.buap.mx");
+
   const rolDetectado =
-    correo.endsWith("@alumno.buap.mx") || correo.endsWith("@alm.buap.mx")
-      ? "estudiante"
-      : correo.endsWith("@correo.buap.mx")
+    correoNormalizado.length === 0
+      ? null
+      : esProfesorBuap
       ? "profesor"
-      : null;
+      : "estudiante";
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensaje("");
 
     try {
-      if (!rolDetectado) {
-        setMensaje("❌ Solo se permiten correos institucionales BUAP.");
+      if (!correoNormalizado) {
+        setMensaje("❌ El correo es obligatorio.");
         return;
       }
 
@@ -44,16 +56,22 @@ export default function RegisterPage() {
         return;
       }
 
+      if (!avatarInicial) {
+        setMensaje("❌ Selecciona tu avatar inicial.");
+        return;
+      }
+
       const { data, error } = await supabase.auth.signUp({
-        email: correo,
+        email: correoNormalizado,
         password: contrasena,
         options: {
           data: {
             nombre: nombre.trim(),
-            carrera_id: rolDetectado === "estudiante" ? carreraId : null,
-            semestre_id: rolDetectado === "estudiante" ? semestreId : null,
+            carrera_id: esEstudianteBuap ? carreraId : null,
+            semestre_id: esEstudianteBuap ? semestreId : null,
             matricula:
-              rolDetectado === "estudiante" ? matricula.trim() : null,
+              esEstudianteBuap ? matricula.trim() : null,
+            avatar_inicial: avatarInicial,
           },
         },
       });
@@ -601,7 +619,7 @@ export default function RegisterPage() {
 
               <input
                 type="email"
-                placeholder="Correo BUAP"
+                placeholder="Correo electrónico"
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
                 className="register-input"
@@ -617,7 +635,23 @@ export default function RegisterPage() {
                 required
               />
 
-              {rolDetectado === "estudiante" && (
+              <select
+                value={avatarInicial}
+                onChange={(e) =>
+                  setAvatarInicial(
+                    e.target.value as "" | "masculino" | "femenino"
+                  )
+                }
+                className="register-select"
+                required
+                aria-label="Avatar inicial"
+              >
+                <option value="">Selecciona tu avatar inicial</option>
+                <option value="masculino">Masculino</option>
+                <option value="femenino">Femenino</option>
+              </select>
+
+              {esEstudianteBuap && (
                 <>
                   <input
                     type="text"

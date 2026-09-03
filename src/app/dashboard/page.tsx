@@ -1,44 +1,19 @@
-/**
- * RedirecciÃ³n raÃ­z del dashboard:
- * - Si no hay usuario autenticado â†’ va a /login.
- * - Si es estudiante â†’ va a /dashboard/estudiante.
- * - Si es profesor â†’ va a /dashboard/profesor.
- * - Cualquier correo no reconocido â†’ va a /login.
- */
-
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { obtenerUsuarioConRolServidor } from "@/lib/rolServidor";
 
-export default async function DashboardRoot() {
-  const cookieStore = await cookies();
-
-  const supabase = createServerComponentClient({
-    cookies: () => cookieStore,
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export default async function DashboardPage() {
+  const { user, rol } = await obtenerUsuarioConRolServidor();
 
   if (!user) {
     redirect("/login");
   }
 
-  const correo = user.email?.toLowerCase() ?? "";
-
-  const esEstudiante =
-    correo.endsWith("@alumno.buap.mx") ||
-    correo.endsWith("@alm.buap.mx");
-
-  const esProfesor = correo.endsWith("@correo.buap.mx");
-
-  if (esEstudiante) {
-    redirect("/dashboard/estudiante");
+  if (rol === "profesor") {
+    redirect("/dashboard/profesor");
   }
 
-  if (esProfesor) {
-    redirect("/dashboard/profesor");
+  if (rol === "estudiante") {
+    redirect("/dashboard/estudiante");
   }
 
   redirect("/login");

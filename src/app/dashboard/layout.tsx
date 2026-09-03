@@ -1,35 +1,17 @@
-/**
- * Layout principal del dashboard:
- * - Determina el rol del usuario (estudiante o profesor) según su correo.
- * - Renderiza el menú lateral correspondiente y el contenido dinámico.
- */
-
-import MenuLateral from "@/components/MenuLateral";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
+import { obtenerUsuarioConRolServidor } from "@/lib/rolServidor";
 
 export default async function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const { user, rol } = await obtenerUsuarioConRolServidor();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  let rol: "estudiante" | "profesor" = "estudiante";
-  if (user) {
-    if (user?.email?.endsWith("@alumno.buap.mx") || user?.email?.endsWith("@alm.buap.mx")) {
-      rol = "estudiante";
-    } else {
-      rol = "profesor";
-    }
+  if (!user || !rol) {
+    redirect("/login");
   }
 
-  return (
-    <div className="flex-1">{children}</div>
-  );
+  return children;
 }

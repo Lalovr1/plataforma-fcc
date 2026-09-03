@@ -33,11 +33,54 @@ type TooltipState = {
 const prepararIconoLogro = (src?: string | null) =>
   obtenerUrlImagenOptimizada(src || "/ui/trophy-default.svg", 256, 75);
 
-export default function GridLogros({ logros }: { logros: Logro[] }) {
+async function esperarImagenLogroDOM(img: HTMLImageElement) {
+  if (!img.complete) {
+    await new Promise<void>((resolve) => {
+      const terminar = () => {
+        limpiar();
+        resolve();
+      };
+      const limpiar = () => {
+        img.removeEventListener("load", terminar);
+        img.removeEventListener("error", terminar);
+      };
+
+      img.addEventListener("load", terminar, { once: true });
+      img.addEventListener("error", terminar, { once: true });
+    });
+  }
+
+  if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode();
+    } catch {
+      // naturalWidth/naturalHeight siguen siendo la comprobacion final.
+    }
+  }
+}
+
+function siguienteFrameLogros() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+export default function GridLogros({
+  logros,
+  onReady,
+}: {
+  logros: Logro[];
+  onReady?: () => void;
+}) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [imagenesListas, setImagenesListas] = useState(false);
   const [usarIconoRespaldo, setUsarIconoRespaldo] = useState(false);
   const tooltipTimeoutRef = useRef<number | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const fuentesIconos = useMemo(
     () =>
       Array.from(
@@ -109,6 +152,35 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
     };
   }, [claveIconos]);
 
+  useEffect(() => {
+    if (!imagenesListas) return;
+
+    let activo = true;
+
+    const confirmarDOM = async () => {
+      await siguienteFrameLogros();
+
+      const imagenes = Array.from(
+        gridRef.current?.querySelectorAll<HTMLImageElement>("img") ?? []
+      );
+
+      await Promise.all(
+        imagenes.map((img) => esperarImagenLogroDOM(img))
+      );
+      await siguienteFrameLogros();
+
+      if (activo) {
+        onReadyRef.current?.();
+      }
+    };
+
+    void confirmarDOM();
+
+    return () => {
+      activo = false;
+    };
+  }, [imagenesListas, claveIconos, usarIconoRespaldo]);
+
   if (!logros || logros.length === 0) {
     return (
       <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -160,7 +232,10 @@ export default function GridLogros({ logros }: { logros: Logro[] }) {
 
   return (
     <>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible min-w-0">
+      <div
+        ref={gridRef}
+        className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 overflow-visible min-w-0"
+      >
         {logros.map((l) => (
           <div
             key={`${l.id}-${l.desbloqueado ? "on" : "off"}`}

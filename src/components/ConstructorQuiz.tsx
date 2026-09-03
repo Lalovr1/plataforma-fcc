@@ -8,14 +8,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
+import {
+  reconciliarStorageCurso,
+  subirArchivoCursoDeduplicado,
+} from "@/lib/cursoStorageCliente";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import EditorQuizCampo from "@/components/EditorQuizCampo";
+import EditorQuizCampo, {
+  convertirContenidoQuizATiptapHtml,
+  normalizarEntradaLatex,
+} from "@/components/EditorQuizCampo";
 import ExplicacionesQuiz from "@/components/ExplicacionesQuiz";
+import GeneradorQuizIA, {
+  type BorradorQuizIA,
+} from "@/components/GeneradorQuizIA";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
+import CargadorFCC, {
+  DURACION_MINIMA_CARGADOR_FCC_MS,
+} from "@/components/CargadorFCC";
+import CargadorIAFCC, {
+  AvisoIAFCC,
+} from "@/components/CargadorIAFCC";
+import {
+  ErrorIAVisible,
+  mensajeErrorIA,
+} from "@/lib/ai/errorPublicoCliente";
+import { contenidoQuizATextoIA } from "@/lib/ai/quizMedia";
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronUp, MessageCircle, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
 
 type Bloque = {
@@ -32,6 +53,9 @@ type Unidad = {
   nombre?: string | null;
   orden?: number | null;
 };
+
+const LIMITE_ESPERA_ANALISIS_IA_MS = 180_000;
+
 type PreguntaLocal = {
   id: string;
   enunciado: string;
@@ -44,6 +68,75 @@ export type ConstructorQuizNavigationGuard = {
   discard: () => void;
 };
 
+async function esperarMinimoCargadorFCC(inicio: number) {
+  const transcurrido = performance.now() - inicio;
+  const restante = Math.max(
+    0,
+    DURACION_MINIMA_CARGADOR_FCC_MS - transcurrido
+  );
+
+  if (restante <= 0) return;
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, restante);
+  });
+}
+
+type ResumenExplicacionesQuiz = {
+  total: number;
+  completas: number;
+  pendientes: number;
+};
+
+async function cargarIntentosIAUsadosQuiz(quizId: string) {
+  const { count, error } = await supabase
+    .from("ia_analisis_quiz")
+    .select("id", {
+      count: "exact",
+      head: true,
+    })
+    .eq("quiz_id", quizId);
+
+  if (error) throw error;
+
+  return Math.min(Number(count ?? 0), 3);
+}
+
+async function cargarResumenExplicacionesQuizInicial(
+  quizId: string
+): Promise<ResumenExplicacionesQuiz> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("No hay una sesión disponible para cargar las explicaciones.");
+  }
+
+  const response = await fetch(
+    `/api/ia/explicaciones-quiz?quizId=${encodeURIComponent(quizId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(
+      data?.error || "No se pudo cargar el resumen de explicaciones."
+    );
+  }
+
+  return {
+    total: Number(data?.resumen?.total ?? 0),
+    completas: Number(data?.resumen?.completas ?? 0),
+    pendientes: Number(data?.resumen?.pendientes ?? 0),
+  };
+}
+
 type ConstructorQuizProps = {
   materiaId: string;
   onNavigationGuardChange?: (guard: ConstructorQuizNavigationGuard) => void;
@@ -55,6 +148,7 @@ export default function ConstructorQuiz({
 }: ConstructorQuizProps) {
   const [bloques, setBloques] = useState<Bloque[]>([]);
   const [unidades, setUnidades] = useState<Unidad[]>([]);
+  const [unidadId, setUnidadId] = useState<string>("");
   const [bloqueId, setBloqueId] = useState<string>("");
   const [unidadQuizzesAbiertaId, setUnidadQuizzesAbiertaId] =
     useState<string | null>(null);
@@ -68,6 +162,8 @@ export default function ConstructorQuiz({
   const [intentosMax, setIntentosMax] = useState(1);
 
   const [preguntas, setPreguntas] = useState<PreguntaLocal[]>([]);
+  const [bloquesContextoGeneracionIA, setBloquesContextoGeneracionIA] =
+    useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const [quizzesGuardados, setQuizzesGuardados] = useState<any[]>([]);
@@ -86,7 +182,14 @@ export default function ConstructorQuiz({
   const [portalReady, setPortalReady] = useState(false);
 
   const [vistaIA, setVistaIA] = useState<
-    "editor" | "confirmar" | "preparar" | "cargando" | "resultado" | "confirmar_aplicados"
+    | "editor"
+    | "confirmar"
+    | "preparar"
+    | "cargando"
+    | "resultado_listo"
+    | "tiempo_agotado"
+    | "resultado"
+    | "confirmar_aplicados"
   >("editor");
 
   const [analizandoIA, setAnalizandoIA] = useState(false);
@@ -130,6 +233,14 @@ export default function ConstructorQuiz({
     setPortalReady(true);
   }, []);
 
+
+  /* FCC_STORAGE_RECONCILIACION_QUIZ */
+  useEffect(() => {
+    // Una sola pasada al entrar a Quizzes.
+    // Crear, editar, borrar o descartar ya solicita
+    // su propia reconciliacion.
+    void reconciliarStorageCurso(materiaId);
+  }, [materiaId]);
   useEffect(() => {
     if (!editQuiz && !showFormulaModal && !quizAEliminar && !quizCargando) return;
 
@@ -151,7 +262,13 @@ export default function ConstructorQuiz({
     setAnalisisIA(null);
     setAnalisisIdIA(null);
     setMostrarExplicacionesQuiz(false);
-    setResumenExplicacionesQuiz({ total: 0, completas: 0, pendientes: 0 });
+    setResumenExplicacionesQuiz(
+      editQuiz._resumenExplicacionesPrecargado ?? {
+        total: 0,
+        completas: 0,
+        pendientes: 0,
+      }
+    );
     setFirmaGuardadaIA("");
     setAccionesAplicadasIA([]);
     setAccionesIgnoradasIA([]);
@@ -189,6 +306,17 @@ export default function ConstructorQuiz({
   useEffect(() => {
     if (!editQuiz?.id) {
       setIntentosIAUsados(0);
+      setCargandoIntentosIA(false);
+      return;
+    }
+
+    if (
+      typeof editQuiz._intentosIAUsadosPrecargados === "number"
+    ) {
+      setIntentosIAUsados(
+        editQuiz._intentosIAUsadosPrecargados
+      );
+      setCargandoIntentosIA(false);
       return;
     }
 
@@ -198,20 +326,11 @@ export default function ConstructorQuiz({
       setCargandoIntentosIA(true);
 
       try {
-        const { count, error } = await supabase
-          .from("ia_analisis_quiz")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
-          .eq("quiz_id", editQuiz.id);
-
-        if (error) throw error;
+        const intentosUsados =
+          await cargarIntentosIAUsadosQuiz(editQuiz.id);
 
         if (!cancelado) {
-          setIntentosIAUsados(
-            Math.min(Number(count ?? 0), 3)
-          );
+          setIntentosIAUsados(intentosUsados);
         }
       } catch (error) {
         console.error(
@@ -242,40 +361,25 @@ export default function ConstructorQuiz({
       return;
     }
 
+    if (editQuiz._resumenExplicacionesPrecargado) {
+      setResumenExplicacionesQuiz(
+        editQuiz._resumenExplicacionesPrecargado
+      );
+      return;
+    }
+
     let cancelado = false;
 
     const cargarResumenExplicaciones = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const resumen =
+          await cargarResumenExplicacionesQuizInicial(
+            editQuiz.id
+          );
 
-        if (!session?.access_token) return;
-
-        const response = await fetch(
-          `/api/ia/explicaciones-quiz?quizId=${encodeURIComponent(editQuiz.id)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        if (
-          cancelado ||
-          !response.ok ||
-          !data?.ok
-        ) {
-          return;
+        if (!cancelado) {
+          setResumenExplicacionesQuiz(resumen);
         }
-
-        setResumenExplicacionesQuiz({
-          total: Number(data?.resumen?.total ?? 0),
-          completas: Number(data?.resumen?.completas ?? 0),
-          pendientes: Number(data?.resumen?.pendientes ?? 0),
-        });
       } catch {
         // El editor puede seguir usándose aunque el resumen no esté disponible.
       }
@@ -299,6 +403,7 @@ export default function ConstructorQuiz({
     let cancelado = false;
 
     const cargarRecursosIA = async () => {
+      const inicioCarga = performance.now();
       setCargandoRecursosIA(true);
       setErrorRecursosIA("");
 
@@ -412,6 +517,8 @@ export default function ConstructorQuiz({
             : "No se pudieron cargar los recursos."
         );
       } finally {
+        await esperarMinimoCargadorFCC(inicioCarga);
+
         if (!cancelado) {
           setCargandoRecursosIA(false);
         }
@@ -492,25 +599,17 @@ export default function ConstructorQuiz({
   };
 
   const uploadQuizImage = async (file: File) => {
-    const ext = file.name.split(".").pop();
-    const originalName = file.name;
-
-    const key = `${materiaId}/quizzes/imagenes/${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2)}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("curso-contenido")
-      .upload(key, file, { upsert: false });
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage
-      .from("curso-contenido")
-      .getPublicUrl(key);
+    const {
+      url,
+      originalName,
+    } = await subirArchivoCursoDeduplicado(
+      materiaId,
+      file,
+      "imagenes"
+    );
 
     return {
-      url: data.publicUrl,
+      url,
       originalName,
     };
   };
@@ -623,7 +722,7 @@ export default function ConstructorQuiz({
     return agrupados;
   }, [quizzesGuardados]);
 
-  const unidadesListado = useMemo(() => {
+  const unidadesSeleccionables = useMemo(() => {
     const salida: Array<Unidad & { synthetic?: boolean }> = [...unidades];
 
     if ((bloquesPorUnidad["__sin_unidad__"] || []).length > 0) {
@@ -637,6 +736,21 @@ export default function ConstructorQuiz({
 
     return salida;
   }, [unidades, bloquesPorUnidad]);
+
+  const bloquesUnidadSeleccionada = useMemo(
+    () => (unidadId ? bloquesPorUnidad[unidadId] || [] : []),
+    [unidadId, bloquesPorUnidad]
+  );
+
+  const unidadesListado = useMemo(
+    () =>
+      unidadesSeleccionables.filter((unidad) =>
+        (bloquesPorUnidad[unidad.id] || []).some(
+          (bloque) => (quizzesPorBloque[bloque.id]?.length || 0) > 0
+        )
+      ),
+    [unidadesSeleccionables, bloquesPorUnidad, quizzesPorBloque]
+  );
 
   const contarQuizzesDeUnidad = (unidadId: string) => {
     const bloquesUnidad = bloquesPorUnidad[unidadId] || [];
@@ -737,22 +851,54 @@ export default function ConstructorQuiz({
   };
 
   const abrirQuizGuardado = async (quiz: any) => {
+    if (quizCargando) return;
+
+    const inicioCarga = performance.now();
     setQuizCargando(quiz);
 
-    try {
-      const preguntasCargadas = await cargarPreguntasDeQuiz(quiz.id);
+    let quizPreparado: any | null = null;
 
-      setDeletedPreguntas([]);
-      setDeletedRespuestas([]);
-      setEditQuiz({
+    try {
+      const [
+        preguntasCargadas,
+        intentosIAUsadosPrecargados,
+        resumenExplicacionesPrecargado,
+      ] = await Promise.all([
+        cargarPreguntasDeQuiz(quiz.id),
+        cargarIntentosIAUsadosQuiz(quiz.id),
+        cargarResumenExplicacionesQuizInicial(quiz.id),
+      ]);
+
+      quizPreparado = {
         ...quiz,
         preguntas: preguntasCargadas,
         preguntasCargadas: true,
-      });
+        _intentosIAUsadosPrecargados:
+          intentosIAUsadosPrecargados,
+        _resumenExplicacionesPrecargado:
+          resumenExplicacionesPrecargado,
+      };
     } catch (error) {
-      console.error("Error cargando quiz:", error);
-      toast.error("No se pudo cargar el quiz");
+      console.error("Error preparando quiz:", error);
+      toast.error(
+        "No se pudo cargar toda la información del quiz"
+      );
     } finally {
+      await esperarMinimoCargadorFCC(inicioCarga);
+
+      if (quizPreparado) {
+        setDeletedPreguntas([]);
+        setDeletedRespuestas([]);
+        setIntentosIAUsados(
+          quizPreparado._intentosIAUsadosPrecargados
+        );
+        setCargandoIntentosIA(false);
+        setResumenExplicacionesQuiz(
+          quizPreparado._resumenExplicacionesPrecargado
+        );
+        setEditQuiz(quizPreparado);
+      }
+
       setQuizCargando(null);
     }
   };
@@ -797,7 +943,8 @@ export default function ConstructorQuiz({
     return bloques
       .filter(
         (bloque) =>
-          bloque.unidad_id === bloquePrincipal.unidad_id
+          bloque.unidad_id === bloquePrincipal.unidad_id &&
+          Number(bloque.orden ?? 0) <= Number(bloquePrincipal.orden ?? 0)
       )
       .sort(
         (a, b) =>
@@ -864,6 +1011,13 @@ export default function ConstructorQuiz({
     );
   };
 
+  const abrirPreparacionAsistenteIA = () => {
+    // La preparación aparece de inmediato. Los recursos opcionales terminan de
+    // cargarse dentro del mismo modal, sin superponer otra pantalla.
+    setCargandoRecursosIA(true);
+    setVistaIA("preparar");
+  };
+
   const abrirAsistenteIA = () => {
     if (intentosIAUsados >= 3) {
       toast.error(
@@ -879,7 +1033,7 @@ export default function ConstructorQuiz({
       return;
     }
 
-    setVistaIA("preparar");
+    abrirPreparacionAsistenteIA();
   };
 
   const guardarYContinuarIA = async () => {
@@ -888,16 +1042,7 @@ export default function ConstructorQuiz({
 
     if (!guardado) return;
 
-    setVistaIA("preparar");
-  };
-
-  const textoPlanoQuizIA = (value: unknown) => {
-    if (typeof value !== "string") return "";
-
-    return decodeQuizEntities(value)
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    abrirPreparacionAsistenteIA();
   };
 
   const normalizarTextoAnalisisIA = (
@@ -959,6 +1104,115 @@ export default function ConstructorQuiz({
       .trim();
 
     return resultado;
+  };
+
+  const prepararContenidoMatematicoIA = (
+    value: unknown
+  ) => {
+    let resultado = normalizarTextoAnalisisIA(
+      contenidoQuizATextoIA(value)
+    );
+
+    if (
+      resultado &&
+      !/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/.test(resultado) &&
+      /\\(?:text|frac|dfrac|tfrac|sqrt|sum|prod|int|lim|begin|left|right|cdot|times|pm|leq|geq|neq)\b|[_^]\{/.test(
+        resultado
+      )
+    ) {
+      resultado = `$${normalizarEntradaLatex(resultado)}$`;
+    }
+
+    return resultado;
+  };
+
+  const renderContenidoMatematicoIA = (
+    value: unknown,
+    fallback = ""
+  ) => {
+    const contenido =
+      prepararContenidoMatematicoIA(value) || fallback;
+
+    if (!contenido) return null;
+
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          p: ({ children }) => <span>{children}</span>,
+        }}
+      >
+        {contenido}
+      </ReactMarkdown>
+    );
+  };
+
+  const renderFormulaIA = (value: unknown) => {
+    const latex = normalizarEntradaLatex(
+      String(value ?? "")
+    );
+
+    return renderContenidoMatematicoIA(
+      latex ? `$${latex}$` : "",
+      "Fórmula no disponible"
+    );
+  };
+
+  const convertirPropuestaIAAContenidoQuiz = (
+    value: unknown
+  ) => {
+    const original = String(value ?? "").trim();
+    if (!original) return "";
+
+    let contenido = original;
+    const visible = contenidoQuizATextoIA(original);
+
+    if (
+      !/<\/?[a-z][\s\S]*>/i.test(original) &&
+      !/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/.test(original) &&
+      /\\(?:text|frac|dfrac|tfrac|sqrt|sum|prod|int|lim|begin|left|right|cdot|times|pm|leq|geq|neq)\b|[_^]\{/.test(
+        visible
+      )
+    ) {
+      contenido = `$${normalizarEntradaLatex(visible)}$`;
+    }
+
+    return convertirContenidoQuizATiptapHtml(contenido);
+  };
+
+  const obtenerContenidoActualAccionIA = (
+    preguntaId: string,
+    accion: any
+  ) => {
+    const pregunta = (editQuiz?.preguntas || []).find(
+      (item: any) => item.id === preguntaId
+    );
+
+    if (!pregunta) return accion?.texto_actual || "";
+
+    if (accion?.tipo === "reescribir_pregunta") {
+      return pregunta.enunciado || "";
+    }
+
+    if (accion?.tipo === "reescribir_respuesta") {
+      return (
+        (pregunta.respuestas || []).find(
+          (respuesta: any) =>
+            respuesta.id === accion.respuesta_objetivo_id
+        )?.texto || accion?.texto_actual || ""
+      );
+    }
+
+    if (accion?.tipo === "cambiar_respuesta_correcta") {
+      return (
+        (pregunta.respuestas || []).find(
+          (respuesta: any) => Boolean(respuesta.es_correcta)
+        )?.texto || accion?.texto_actual || ""
+      );
+    }
+
+    return accion?.texto_actual || "";
   };
 
   const advertenciasGeneralesVisiblesIA = () => {
@@ -1066,7 +1320,9 @@ export default function ConstructorQuiz({
                     ...pregunta,
 
                     enunciado:
-                      accion.texto_propuesto,
+                      convertirPropuestaIAAContenidoQuiz(
+                        accion.texto_propuesto
+                      ),
                   };
                 }
 
@@ -1089,7 +1345,9 @@ export default function ConstructorQuiz({
                                 ...respuesta,
 
                                 texto:
-                                  accion.texto_propuesto,
+                                  convertirPropuestaIAAContenidoQuiz(
+                                    accion.texto_propuesto
+                                  ),
                               }
                             : respuesta
                       ),
@@ -1305,6 +1563,65 @@ export default function ConstructorQuiz({
     );
   };
 
+  const severidadPreguntaIA = (
+    pregunta: any
+  ): "academico" | "editorial" | "correcto" => {
+    const acciones = Array.isArray(pregunta?.acciones)
+      ? pregunta.acciones
+      : [];
+
+    if (
+      pregunta?.estado_respuesta_correcta === "revisar" ||
+      acciones.some((accion: any) => accion?.impacto === "academico")
+    ) {
+      return "academico";
+    }
+
+    if (
+      acciones.length > 0 ||
+      pregunta?.contexto_suficiente === false ||
+      (Array.isArray(pregunta?.advertencias) &&
+        pregunta.advertencias.length > 0)
+    ) {
+      return "editorial";
+    }
+
+    return "correcto";
+  };
+
+  const resumenResultadoIA = () => {
+    const preguntasAnalizadas = Array.isArray(analisisIA?.preguntas)
+      ? analisisIA.preguntas
+      : [];
+    let academicas = 0;
+    let editoriales = 0;
+    let correctas = 0;
+    let accionesAcademicas = 0;
+    let accionesEditoriales = 0;
+
+    preguntasAnalizadas.forEach((pregunta: any) => {
+      const severidad = severidadPreguntaIA(pregunta);
+
+      if (severidad === "academico") academicas += 1;
+      else if (severidad === "editorial") editoriales += 1;
+      else correctas += 1;
+
+      (pregunta.acciones || []).forEach((accion: any) => {
+        if (accion?.impacto === "academico") accionesAcademicas += 1;
+        else accionesEditoriales += 1;
+      });
+    });
+
+    return {
+      total: preguntasAnalizadas.length,
+      academicas,
+      editoriales,
+      correctas,
+      accionesAcademicas,
+      accionesEditoriales,
+    };
+  };
+
   const revisionResueltaIA = () => {
     return (
       Boolean(analisisIdIA) &&
@@ -1513,6 +1830,12 @@ export default function ConstructorQuiz({
   const analizarQuizConIA = async () => {
     if (!editQuiz?.id) return;
 
+    const controlador = new AbortController();
+    const temporizador = window.setTimeout(
+      () => controlador.abort(),
+      LIMITE_ESPERA_ANALISIS_IA_MS
+    );
+
     try {
       setAnalizandoIA(true);
       setAnalisisIA(null);
@@ -1526,7 +1849,7 @@ export default function ConstructorQuiz({
       } = await supabase.auth.getSession();
 
       if (sessionError || !session?.access_token) {
-        throw new Error(
+        throw new ErrorIAVisible(
           "Tu sesión no está disponible. Vuelve a iniciar sesión."
         );
       }
@@ -1556,30 +1879,26 @@ export default function ConstructorQuiz({
             contextoAdicional:
               contextoAdicionalIA.trim(),
           }),
+
+          signal: controlador.signal,
         }
       );
 
-      const data =
-        await response.json();
+      const data = await response
+        .json()
+        .catch(() => null);
 
-      if (
-        response.status === 429 &&
-        data?.code === "IA_QUOTA"
-      ) {
-        setVistaIA("preparar");
-
-        toast.error(
-          data?.error ||
-            "La IA alcanzó temporalmente su límite. Intenta nuevamente más tarde."
-        );
-
+      if (data?.code === "AI_TIMEOUT") {
+        setVistaIA("tiempo_agotado");
         return;
       }
 
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.error ||
-            "No se pudo analizar el quiz."
+        throw new ErrorIAVisible(
+          mensajeErrorIA(
+            data,
+            "analizar"
+          )
         );
       }
 
@@ -1604,25 +1923,31 @@ export default function ConstructorQuiz({
         );
       }
 
-      setVistaIA("resultado");
-
-      toast.success(
-        "Análisis con IA completado"
-      );
+      setVistaIA("resultado_listo");
     } catch (error) {
       console.warn(
         "No se pudo completar el análisis con IA:",
         error
       );
 
-      setVistaIA("preparar");
+      const tiempoAgotado =
+        controlador.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError");
+
+      if (tiempoAgotado) {
+        setVistaIA("tiempo_agotado");
+        return;
+      }
+
+      abrirPreparacionAsistenteIA();
 
       toast.error(
-        error instanceof Error
+        error instanceof ErrorIAVisible
           ? error.message
-          : "No se pudo analizar el quiz."
+          : "No se pudo analizar el quiz con IA en este momento. No se descontó ningún intento."
       );
     } finally {
+      window.clearTimeout(temporizador);
       setAnalizandoIA(false);
     }
   };
@@ -1635,6 +1960,61 @@ export default function ConstructorQuiz({
         respuestas: [],
       },
     ]);
+  };
+
+  const aplicarBorradorGeneradoIA = (
+    borrador: BorradorQuizIA,
+    bloqueIds: string[]
+  ) => {
+    setTitulo(borrador.titulo || "");
+    setDescripcion(borrador.descripcion || "");
+    setPreguntas(
+      (borrador.preguntas || []).map((pregunta) => ({
+        id: crypto.randomUUID(),
+        enunciado: convertirContenidoQuizATiptapHtml(pregunta.enunciado),
+        respuestas: (pregunta.respuestas || []).map((respuesta) => ({
+          id: crypto.randomUUID(),
+          texto: convertirContenidoQuizATiptapHtml(respuesta.texto),
+          es_correcta: Boolean(respuesta.es_correcta),
+        })),
+      }))
+    );
+    setBloquesContextoGeneracionIA(
+      Array.from(new Set([bloqueId, ...bloqueIds].filter(Boolean)))
+    );
+  };
+
+  const registrarContextoGeneracionQuiz = async (quizId: string) => {
+    if (bloquesContextoGeneracionIA.length <= 1) return;
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("Tu sesión no está disponible para registrar el contexto del quiz.");
+    }
+
+    const response = await fetch("/api/ia/contexto-quiz", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        materiaId,
+        quizId,
+        origen: "generacion",
+        bloqueIds: bloquesContextoGeneracionIA,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error || "No se pudo registrar el contenido utilizado por el quiz."
+      );
+    }
   };
 
   const updatePregunta = (id: string, enunciado: string) => {
@@ -1772,6 +2152,8 @@ export default function ConstructorQuiz({
         }
       }
 
+      await registrarContextoGeneracionQuiz(quizId);
+
       toast.success("Quiz guardado");
 
       setTitulo("");
@@ -1779,6 +2161,7 @@ export default function ConstructorQuiz({
       setTiempoMin(null);
       setIntentosMax(1);
       setPreguntas([]);
+      setBloquesContextoGeneracionIA([]);
 
       const { data } = await supabase
         .from("quizzes")
@@ -1786,9 +2169,11 @@ export default function ConstructorQuiz({
         .eq("materia_id", materiaId)
         .order("orden", { ascending: true });
       setQuizzesGuardados(data || []);
+      await reconciliarStorageCurso(materiaId);
       return true;
     } catch (err) {
       console.error(err);
+      void reconciliarStorageCurso(materiaId);
       toast.error("No se pudo guardar el quiz");
       return false;
     } finally {
@@ -1803,6 +2188,9 @@ export default function ConstructorQuiz({
       toast.error("Error al eliminar quiz");
       return;
     }
+
+    await reconciliarStorageCurso(materiaId);
+
     toast.success("Quiz eliminado");
     setQuizzesGuardados((prev) => prev.filter((q) => q.id !== id));
   };
@@ -2088,6 +2476,7 @@ export default function ConstructorQuiz({
       setDeletedPreguntas([]);
       setDeletedRespuestas([]);
 
+      await reconciliarStorageCurso(materiaId);
       return true;
     } catch (err: any) {
       console.error("Error real al actualizar quiz:", {
@@ -2112,6 +2501,8 @@ export default function ConstructorQuiz({
     setEditQuiz(null);
     setDeletedPreguntas([]);
     setDeletedRespuestas([]);
+
+    void reconciliarStorageCurso(materiaId);
   };
 
   const solicitarSalidaQuiz = () => {
@@ -2147,7 +2538,8 @@ export default function ConstructorQuiz({
       descripcion.trim() ||
       tiempoMin !== null ||
       intentosMax !== 1 ||
-      preguntas.length > 0
+      preguntas.length > 0 ||
+      bloquesContextoGeneracionIA.length > 0
     );
 
   const hayCambiosNavegacionQuiz = () =>
@@ -2175,6 +2567,7 @@ export default function ConstructorQuiz({
     setTiempoMin(null);
     setIntentosMax(1);
     setPreguntas([]);
+    setBloquesContextoGeneracionIA([]);
   };
 
   useEffect(() => {
@@ -2204,6 +2597,7 @@ export default function ConstructorQuiz({
     tiempoMin,
     intentosMax,
     preguntas,
+    bloquesContextoGeneracionIA,
     editQuiz,
     deletedPreguntas,
     deletedRespuestas,
@@ -2452,6 +2846,7 @@ export default function ConstructorQuiz({
       .constructor-quiz-ai-kicker {
         display: inline-flex;
         align-items: center;
+        justify-self: center;
         gap: 7px;
         color: color-mix(
           in srgb,
@@ -2626,6 +3021,16 @@ export default function ConstructorQuiz({
           );
       }
 
+      .constructor-quiz-ai-status.danger {
+        color: #dc2626;
+        background:
+          color-mix(
+            in srgb,
+            #ef4444 9%,
+            transparent
+          );
+      }
+
       .constructor-quiz-ai-feedback-grid {
         display: grid;
         grid-template-columns:
@@ -2777,7 +3182,7 @@ export default function ConstructorQuiz({
       .constructor-quiz-ai-result-summary {
         display: grid;
         grid-template-columns:
-          repeat(3, minmax(0, 1fr));
+          repeat(4, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -2846,6 +3251,22 @@ export default function ConstructorQuiz({
           color-mix(
             in srgb,
             #f59e0b 28%,
+            var(--quiz-border)
+          );
+      }
+
+      .constructor-quiz-ai-stat.danger {
+        color: #dc2626;
+        background:
+          color-mix(
+            in srgb,
+            #ef4444 7%,
+            var(--quiz-surface)
+          );
+        border-color:
+          color-mix(
+            in srgb,
+            #ef4444 23%,
             var(--quiz-border)
           );
       }
@@ -2928,6 +3349,21 @@ export default function ConstructorQuiz({
           color-mix(
             in srgb,
             #f59e0b 30%,
+            var(--quiz-border)
+          );
+      }
+
+      .constructor-quiz-ai-question.is-danger {
+        background:
+          color-mix(
+            in srgb,
+            #ef4444 3.5%,
+            var(--quiz-surface)
+          );
+        border-color:
+          color-mix(
+            in srgb,
+            #ef4444 25%,
             var(--quiz-border)
           );
       }
@@ -3075,6 +3511,30 @@ export default function ConstructorQuiz({
           );
       }
 
+      .constructor-quiz-ai-action-card.academic {
+        background:
+          color-mix(
+            in srgb,
+            #ef4444 5%,
+            var(--quiz-surface)
+          );
+        border-color:
+          color-mix(
+            in srgb,
+            #ef4444 23%,
+            var(--quiz-border)
+          );
+      }
+
+      .constructor-quiz-ai-action-card.editorial {
+        background:
+          color-mix(
+            in srgb,
+            #f59e0b 6%,
+            var(--quiz-surface)
+          );
+      }
+
       .constructor-quiz-ai-action-card.applied {
         background:
           color-mix(
@@ -3157,17 +3617,78 @@ export default function ConstructorQuiz({
 
       .constructor-quiz-ai-change-text {
         margin: 0;
+        min-width: 0;
+        overflow-x: auto;
         color: var(--quiz-text);
         font-size: 0.81rem;
         font-weight: 750;
         line-height: 1.4;
       }
 
+      .constructor-quiz-ai-change-text .katex-display,
+      .constructor-quiz-ai-confirm-formula .katex-display {
+        margin: 2px 0;
+        text-align: left;
+      }
+
       .constructor-quiz-ai-action-buttons {
         display: flex;
-        justify-content: flex-end;
+        justify-content: center;
         gap: 8px;
         flex-wrap: wrap;
+      }
+
+      .constructor-quiz-ai-result-breakdown {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: -4px;
+        border-radius: 14px;
+        padding: 9px 12px;
+        color: var(--quiz-text-soft);
+        background: color-mix(in srgb, #6366f1 5%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, #6366f1 17%, var(--quiz-border));
+        font-size: 0.8rem;
+        font-weight: 750;
+        text-align: center;
+      }
+
+      .constructor-quiz-ai-result-breakdown strong {
+        color: var(--quiz-text);
+      }
+
+      .constructor-quiz-ai-manual-note {
+        display: grid;
+        gap: 7px;
+        border-radius: 14px;
+        padding: 11px 12px;
+        color: var(--quiz-text-soft);
+        font-size: 0.82rem;
+        font-weight: 750;
+        line-height: 1.45;
+      }
+
+      .constructor-quiz-ai-manual-note.editorial {
+        background: color-mix(in srgb, #f59e0b 6%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, #f59e0b 22%, var(--quiz-border));
+      }
+
+      .constructor-quiz-ai-manual-note.academic {
+        background: color-mix(in srgb, #ef4444 5%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, #ef4444 22%, var(--quiz-border));
+      }
+
+      .constructor-quiz-ai-manual-note p {
+        margin: 0;
+      }
+
+      .constructor-quiz-ai-manual-note ul {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        padding-left: 18px;
       }
 
       .constructor-quiz-ai-apply {
@@ -3220,6 +3741,12 @@ export default function ConstructorQuiz({
 
         .constructor-quiz-ai-stat {
           min-height: 68px;
+        }
+      }
+
+      @media (max-width: 900px) and (min-width: 641px) {
+        .constructor-quiz-ai-result-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
       .constructor-quiz-ai-confirm-list {
@@ -3276,7 +3803,9 @@ export default function ConstructorQuiz({
         font-weight: 900;
       }
 
-      .constructor-quiz-ai-confirm-item span:last-child {
+      .constructor-quiz-ai-confirm-formula {
+        min-width: 0;
+        overflow-x: auto;
         color: var(--quiz-text-soft);
         font-size: 0.8rem;
         font-weight: 700;
@@ -3761,6 +4290,24 @@ export default function ConstructorQuiz({
         font-size: 0.72rem;
       }
 
+      .constructor-quiz-ai-rendered-formula {
+        width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        color: var(--quiz-text);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+
+      .constructor-quiz-ai-rendered-formula .katex-display {
+        margin: 0;
+        text-align: left;
+      }
+
+      .constructor-quiz-ai-rendered-formula .katex {
+        font-size: 1em;
+      }
+
       .constructor-quiz-ai-formula-included small {
         color: var(--quiz-muted);
         font-size: 0.62rem;
@@ -4033,13 +4580,14 @@ export default function ConstructorQuiz({
       .constructor-quiz-actions {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: center;
         flex-wrap: wrap;
         gap: 10px;
       }
 
       .constructor-quiz-actions {
         margin-top: 16px;
+        justify-content: center;
       }
 
       .constructor-quiz-button {
@@ -4322,6 +4870,11 @@ export default function ConstructorQuiz({
         align-items: center;
         justify-content: center;
         padding: 14px;
+        background: rgba(2, 8, 23, 0.58);
+        backdrop-filter: blur(8px);
+      }
+
+      .constructor-quiz-subview-overlay {
         background: rgba(2, 8, 23, 0.58);
         backdrop-filter: blur(8px);
       }
@@ -4677,14 +5230,50 @@ export default function ConstructorQuiz({
             </div>
 
             <div className="constructor-quiz-field constructor-quiz-full">
+              <label className="constructor-quiz-label">Unidad</label>
+              <select
+                value={unidadId}
+                onChange={(e) => {
+                  setUnidadId(e.target.value);
+                  setBloqueId("");
+                  setBloquesContextoGeneracionIA([]);
+                }}
+                className="constructor-quiz-select"
+              >
+                <option value="">— Selecciona una unidad —</option>
+                {unidadesSeleccionables.map((unidad) => (
+                  <option key={unidad.id} value={unidad.id}>
+                    {unidad.synthetic
+                      ? "Sin unidad"
+                      : `Unidad ${unidad.numero}${
+                          unidad.nombre?.trim()
+                            ? ` — ${unidad.nombre.trim()}`
+                            : ""
+                        }`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="constructor-quiz-field constructor-quiz-full">
               <label className="constructor-quiz-label">Ligar a bloque</label>
               <select
                 value={bloqueId}
-                onChange={(e) => setBloqueId(e.target.value)}
+                onChange={(e) => {
+                  setBloqueId(e.target.value);
+                  setBloquesContextoGeneracionIA([]);
+                }}
                 className="constructor-quiz-select"
+                disabled={!unidadId || bloquesUnidadSeleccionada.length === 0}
               >
-                <option value="">— Selecciona un bloque —</option>
-                {bloques.map((b) => (
+                <option value="">
+                  {!unidadId
+                    ? "— Selecciona primero una unidad —"
+                    : bloquesUnidadSeleccionada.length === 0
+                      ? "— Esta unidad no tiene bloques —"
+                      : "— Selecciona un bloque —"}
+                </option>
+                {bloquesUnidadSeleccionada.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.titulo || "(Sin título)"} — {b.tipo.toUpperCase()}
                   </option>
@@ -4793,6 +5382,15 @@ export default function ConstructorQuiz({
           </div>
 
           <div className="constructor-quiz-actions">
+            <GeneradorQuizIA
+              materiaId={materiaId}
+              bloquePrincipalId={bloqueId}
+              bloques={bloques}
+              unidades={unidades}
+              hayBorrador={preguntas.length > 0}
+              onAplicar={aplicarBorradorGeneradoIA}
+            />
+
             <button
               type="button"
               onClick={addPregunta}
@@ -4819,7 +5417,7 @@ export default function ConstructorQuiz({
           <div className="constructor-quiz-card-content">
           <h4 className="constructor-quiz-section-title">Quizzes guardados</h4>
 
-          {quizzesGuardados.length === 0 ? (
+          {unidadesListado.length === 0 ? (
             <p className="constructor-quiz-empty">
               Aún no hay quizzes en este curso.
             </p>
@@ -4828,7 +5426,9 @@ export default function ConstructorQuiz({
               {unidadesListado.map((unidadItem) => {
                 const unidadId = unidadItem.id;
                 const abierta = unidadQuizzesAbiertaId === unidadId;
-                const bloquesUnidad = bloquesPorUnidad[unidadId] || [];
+                const bloquesUnidad = (bloquesPorUnidad[unidadId] || []).filter(
+                  (bloque) => (quizzesPorBloque[bloque.id]?.length || 0) > 0
+                );
                 const quizzesUnidad = contarQuizzesDeUnidad(unidadId);
 
                 return (
@@ -4983,36 +5583,20 @@ export default function ConstructorQuiz({
         </section>
       </div>
 
-      {quizCargando &&
-        renderPortal(
-          <div className="constructor-quiz-overlay">
-            <div className="constructor-quiz-modal small">
-              <div className="constructor-quiz-modal-scroll">
-                <h3 className="constructor-quiz-modal-title">
-                  Cargando quiz
-                </h3>
-
-                <p className="constructor-quiz-modal-description">
-                  Estamos preparando las preguntas y respuestas.
-                </p>
-
-                <div className="constructor-quiz-loading-box">
-                  <span className="constructor-quiz-loading-dot" />
-                  <span className="constructor-quiz-loading-dot" />
-                  <span className="constructor-quiz-loading-dot" />
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {quizCargando && (
+        <CargadorFCC
+          flotante
+          mensaje="Cargando el quiz"
+          detalle=""
+        />
+      )}
 
       {editQuiz &&
         vistaIA === "editor" &&
         !mostrarExplicacionesQuiz &&
         renderPortal(
-          <div className="constructor-quiz-overlay">
-            <div className="constructor-quiz-modal constructor-quiz-edit-modal">
+          <div className="constructor-quiz-overlay fcc-modal-backdrop-enter-standard">
+            <div className="constructor-quiz-modal constructor-quiz-edit-modal fcc-modal-enter-standard">
               <button
                 type="button"
                 onClick={solicitarSalidaQuiz}
@@ -5389,22 +5973,12 @@ export default function ConstructorQuiz({
 
       {editQuiz &&
         vistaIA !== "editor" &&
+        vistaIA !== "cargando" &&
+        vistaIA !== "resultado_listo" &&
+        vistaIA !== "tiempo_agotado" &&
         renderPortal(
-          <div className="constructor-quiz-overlay">
-            <div className="constructor-quiz-modal constructor-quiz-edit-modal">
-              {vistaIA !== "cargando" && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setVistaIA("editor")
-                  }
-                  className="constructor-quiz-modal-close"
-                  aria-label="Volver al quiz"
-                >
-                  <X size={20} strokeWidth={2.5} />
-                </button>
-              )}
-
+          <div className="constructor-quiz-overlay constructor-quiz-subview-overlay fcc-modal-backdrop-enter-standard">
+            <div className="constructor-quiz-modal constructor-quiz-edit-modal fcc-modal-enter-standard">
               <div className="constructor-quiz-modal-scroll">
                 {vistaIA === "confirmar" && (
                   <div className="constructor-quiz-ai-screen center">
@@ -5625,9 +6199,11 @@ export default function ConstructorQuiz({
                                         ƒx
                                       </span>
 
-                                      <code>
-                                        {formula.formula}
-                                      </code>
+                                      <div className="constructor-quiz-ai-rendered-formula">
+                                        {renderFormulaIA(
+                                          formula.formula
+                                        )}
+                                      </div>
                                     </div>
 
                                     <small>
@@ -5720,9 +6296,11 @@ export default function ConstructorQuiz({
                                     <div className="constructor-quiz-ai-formula-preview">
                                       <span>ƒx</span>
 
-                                      <code>
-                                        {recurso.texto}
-                                      </code>
+                                      <div className="constructor-quiz-ai-rendered-formula">
+                                        {renderFormulaIA(
+                                          recurso.texto
+                                        )}
+                                      </div>
                                     </div>
                                   )}
 
@@ -5857,11 +6435,11 @@ export default function ConstructorQuiz({
                                     : "Corregir una respuesta"}
                               </p>
 
-                              <span>
-                                {normalizarTextoAnalisisIA(
+                              <div className="constructor-quiz-ai-confirm-formula">
+                                {renderContenidoMatematicoIA(
                                   item.accion.texto_propuesto
                                 )}
-                              </span>
+                              </div>
                             </div>
                           </div>
                         )
@@ -5869,27 +6447,6 @@ export default function ConstructorQuiz({
                     </div>
                   </div>
                 )}
-                {vistaIA === "cargando" && (
-                  <div className="constructor-quiz-ai-screen center">
-                    <div className="constructor-quiz-ai-loader">
-                      <RefreshCw
-                        size={29}
-                        strokeWidth={2.4}
-                        className="animate-spin"
-                      />
-                    </div>
-
-                    <h3 className="constructor-quiz-ai-screen-title">
-                      Analizando tu quiz
-                    </h3>
-
-                    <p className="constructor-quiz-ai-screen-description">
-                      Estamos contrastando las preguntas, respuestas y contenido
-                      académico seleccionado. Este proceso puede tardar unos minutos.
-                    </p>
-                  </div>
-                )}
-
                 {vistaIA === "resultado" &&
                   analisisIA && (
                     <div className="constructor-quiz-ai-screen">
@@ -5923,7 +6480,7 @@ export default function ConstructorQuiz({
                           </span>
 
                           <strong>
-                            {analisisIA.preguntas?.length || 0}
+                            {resumenResultadoIA().total}
                           </strong>
 
                           <span>
@@ -5931,7 +6488,7 @@ export default function ConstructorQuiz({
                           </span>
                         </div>
 
-                        <div className="constructor-quiz-ai-stat warn">
+                        <div className="constructor-quiz-ai-stat danger">
                           <span className="constructor-quiz-ai-stat-icon">
                             <AlertTriangle
                               size={18}
@@ -5940,24 +6497,28 @@ export default function ConstructorQuiz({
                           </span>
 
                           <strong>
-                            {
-                              (
-                                analisisIA.preguntas || []
-                              ).filter(
-                                (pregunta: any) =>
-                                  pregunta.estado_respuesta_correcta ===
-                                  "revisar" ||
-                                  pregunta.contexto_suficiente === false ||
-                                  (
-                                    pregunta.advertencias ||
-                                    []
-                                  ).length > 0
-                              ).length
-                            }
+                            {resumenResultadoIA().academicas}
                           </strong>
 
                           <span>
-                            Necesitan atención
+                            Problemas académicos
+                          </span>
+                        </div>
+
+                        <div className="constructor-quiz-ai-stat warn">
+                          <span className="constructor-quiz-ai-stat-icon">
+                            <Sparkles
+                              size={18}
+                              strokeWidth={2.5}
+                            />
+                          </span>
+
+                          <strong>
+                            {resumenResultadoIA().editoriales}
+                          </strong>
+
+                          <span>
+                            Ajustes editoriales
                           </span>
                         </div>
 
@@ -5970,21 +6531,7 @@ export default function ConstructorQuiz({
                           </span>
 
                           <strong>
-                            {
-                              (
-                                analisisIA.preguntas || []
-                              ).filter(
-                                (pregunta: any) =>
-                                  pregunta.estado_respuesta_correcta ===
-                                    "coherente" &&
-                                  pregunta.contexto_suficiente !==
-                                    false &&
-                                  (
-                                    pregunta.advertencias ||
-                                    []
-                                  ).length === 0
-                              ).length
-                            }
+                            {resumenResultadoIA().correctas}
                           </strong>
 
                           <span>
@@ -5992,6 +6539,17 @@ export default function ConstructorQuiz({
                           </span>
                         </div>
                       </div>
+
+                      {(resumenResultadoIA().accionesAcademicas > 0 ||
+                        resumenResultadoIA().accionesEditoriales > 0) && (
+                        <div className="constructor-quiz-ai-result-breakdown">
+                          <strong>Propuestas detectadas:</strong>
+                          <span>
+                            {resumenResultadoIA().accionesAcademicas} académicas · {" "}
+                            {resumenResultadoIA().accionesEditoriales} editoriales
+                          </span>
+                        </div>
+                      )}
 
                       {advertenciasGeneralesVisiblesIA().map(
                         (
@@ -6022,6 +6580,13 @@ export default function ConstructorQuiz({
                           ) => {
                             const preguntaOriginal =
                               editQuiz.preguntas?.[index];
+                            const accionesPregunta = Array.isArray(
+                              preguntaIA.acciones
+                            )
+                              ? preguntaIA.acciones
+                              : [];
+                            const severidad =
+                              severidadPreguntaIA(preguntaIA);
 
                             return (
                               <article
@@ -6030,12 +6595,11 @@ export default function ConstructorQuiz({
                                   index
                                 }
                                 className={`constructor-quiz-ai-question ${
-                                  (
-                                    preguntaIA.acciones ||
-                                    []
-                                  ).length > 0
-                                    ? "is-review"
-                                    : "is-ok"
+                                  severidad === "academico"
+                                    ? "is-danger"
+                                    : severidad === "editorial"
+                                      ? "is-review"
+                                      : "is-ok"
                                 }`}
                               >
                                 <div className="constructor-quiz-ai-question-head">
@@ -6052,14 +6616,14 @@ export default function ConstructorQuiz({
                                           maxWidth: 620,
                                         }}
                                       >
-                                        {textoPlanoQuizIA(
+                                        {renderContenidoMatematicoIA(
                                           preguntaOriginal.enunciado
                                         )}
                                       </p>
                                     )}
                                   </div>
 
-                                  {(preguntaIA.acciones || []).length === 0 ? (
+                                  {severidad === "correcto" ? (
                                     <span className="constructor-quiz-ai-status ok">
                                       <CheckCircle2
                                         size={14}
@@ -6067,18 +6631,26 @@ export default function ConstructorQuiz({
                                       />
                                       Coherente
                                     </span>
-                                  ) : (
-                                    <span className="constructor-quiz-ai-status warn">
+                                  ) : severidad === "academico" ? (
+                                    <span className="constructor-quiz-ai-status danger">
                                       <AlertTriangle
                                         size={14}
                                         strokeWidth={2.6}
                                       />
-                                      Revisar
+                                      Problema importante
+                                    </span>
+                                  ) : (
+                                    <span className="constructor-quiz-ai-status warn">
+                                      <Sparkles
+                                        size={14}
+                                        strokeWidth={2.6}
+                                      />
+                                      Mejorar redacción
                                     </span>
                                   )}
                                 </div>
 
-                                {(preguntaIA.acciones || []).length === 0 ? (
+                                {severidad === "correcto" ? (
                                   <div className="constructor-quiz-ai-clean">
                                     <CheckCircle2
                                       size={17}
@@ -6089,9 +6661,9 @@ export default function ConstructorQuiz({
                                       Sin observaciones.
                                     </span>
                                   </div>
-                                ) : (
+                                ) : accionesPregunta.length > 0 ? (
                                   <div className="constructor-quiz-ai-actions-list">
-                                    {(preguntaIA.acciones || []).map(
+                                    {accionesPregunta.map(
                                       (
                                         accion: any,
                                         accionIndex: number
@@ -6112,19 +6684,30 @@ export default function ConstructorQuiz({
                                             clave
                                           );
 
+                                        const esAcademica =
+                                          accion.impacto === "academico";
+
                                         const tituloAccion =
                                           accion.tipo ===
                                           "cambiar_respuesta_correcta"
-                                            ? "Revisar respuesta correcta"
+                                            ? "Corregir respuesta correcta"
                                             : accion.tipo ===
                                                 "reescribir_pregunta"
-                                              ? "Mejorar pregunta"
-                                              : "Mejorar respuesta";
+                                              ? esAcademica
+                                                ? "Revisar contenido de la pregunta"
+                                                : "Mejorar redacción de la pregunta"
+                                              : esAcademica
+                                                ? "Revisar contenido de la respuesta"
+                                                : "Mejorar redacción de la respuesta";
 
                                         return (
                                           <div
                                             key={clave}
                                             className={`constructor-quiz-ai-action-card ${
+                                              esAcademica
+                                                ? "academic"
+                                                : "editorial"
+                                            } ${
                                               aplicada
                                                 ? "applied"
                                                 : ignorada
@@ -6152,11 +6735,11 @@ export default function ConstructorQuiz({
                                               </span>
                                             </div>
 
-                                            <p className="constructor-quiz-ai-action-reason">
-                                              {normalizarTextoAnalisisIA(
+                                            <div className="constructor-quiz-ai-action-reason">
+                                              {renderContenidoMatematicoIA(
                                                 accion.motivo
                                               )}
-                                            </p>
+                                            </div>
 
                                             {!aplicada &&
                                               !ignorada && (
@@ -6166,11 +6749,15 @@ export default function ConstructorQuiz({
                                                       Actual
                                                     </span>
 
-                                                    <p className="constructor-quiz-ai-change-text">
-                                                      {normalizarTextoAnalisisIA(
-                                                        accion.texto_actual
+                                                    <div className="constructor-quiz-ai-change-text">
+                                                      {renderContenidoMatematicoIA(
+                                                        obtenerContenidoActualAccionIA(
+                                                          preguntaIA.pregunta_id,
+                                                          accion
+                                                        ),
+                                                        "Sin contenido"
                                                       )}
-                                                    </p>
+                                                    </div>
                                                   </div>
 
                                                   <div className="constructor-quiz-ai-change-box proposed">
@@ -6178,11 +6765,12 @@ export default function ConstructorQuiz({
                                                       Propuesta
                                                     </span>
 
-                                                    <p className="constructor-quiz-ai-change-text">
-                                                      {normalizarTextoAnalisisIA(
-                                                        accion.texto_propuesto
+                                                    <div className="constructor-quiz-ai-change-text">
+                                                      {renderContenidoMatematicoIA(
+                                                        accion.texto_propuesto,
+                                                        "Sin propuesta"
                                                       )}
-                                                    </p>
+                                                    </div>
                                                   </div>
                                                 </div>
                                               )}
@@ -6231,6 +6819,35 @@ export default function ConstructorQuiz({
                                           </div>
                                         );
                                       }
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div
+                                    className={`constructor-quiz-ai-manual-note ${
+                                      severidad === "academico"
+                                        ? "academic"
+                                        : "editorial"
+                                    }`}
+                                  >
+                                    <p>
+                                      {normalizarTextoAnalisisIA(
+                                        preguntaIA.motivo_revision
+                                      ) ||
+                                        (severidad === "academico"
+                                          ? "La respuesta o el contenido necesita una revisión manual."
+                                          : "La pregunta necesita una revisión de claridad o contexto.")}
+                                    </p>
+
+                                    {(preguntaIA.advertencias || []).length > 0 && (
+                                      <ul>
+                                        {(preguntaIA.advertencias || []).map(
+                                          (advertencia: string, advertenciaIndex: number) => (
+                                            <li key={advertenciaIndex}>
+                                              {normalizarTextoAnalisisIA(advertencia)}
+                                            </li>
+                                          )
+                                        )}
+                                      </ul>
                                     )}
                                   </div>
                                 )}
@@ -6332,13 +6949,16 @@ export default function ConstructorQuiz({
                         onClick={() =>
                           void analizarQuizConIA()
                         }
+                        disabled={cargandoRecursosIA}
                         className="constructor-quiz-button success"
                       >
                         <Sparkles
                           size={17}
                           strokeWidth={2.6}
                         />
-                        Generar análisis
+                        {cargandoRecursosIA
+                          ? "Preparando…"
+                          : "Generar análisis"}
                       </button>
                     </>
                   )}
@@ -6382,6 +7002,49 @@ export default function ConstructorQuiz({
           document.body
         )}
       {editQuiz &&
+        vistaIA === "resultado_listo" &&
+        renderPortal(
+          <AvisoIAFCC
+            etiqueta="Análisis terminado"
+            titulo="La revisión está lista"
+            descripcion="La IA puede cometer errores. Revisa cada observación y decide qué propuestas deseas aplicar antes de finalizar."
+            nota="Ningún cambio se aplicará sin tu autorización."
+            textoPrincipal="Entendido"
+            onPrincipal={() => setVistaIA("resultado")}
+          />,
+          document.body
+        )}
+      {editQuiz &&
+        vistaIA === "tiempo_agotado" &&
+        renderPortal(
+          <AvisoIAFCC
+            tipo="tiempo"
+            etiqueta="Tiempo de espera agotado"
+            titulo="El análisis tardó más de lo esperado"
+            descripcion="El servicio está tardando más de lo esperado. Revisa tu conexión o vuelve a intentarlo más tarde."
+            nota="No se descontó ningún intento."
+            textoSecundario="Volver al quiz"
+            onSecundario={() => setVistaIA("editor")}
+            textoPrincipal="Preparar otro intento"
+            onPrincipal={abrirPreparacionAsistenteIA}
+          />,
+          document.body
+        )}
+      {editQuiz &&
+        vistaIA === "cargando" &&
+        renderPortal(
+          <CargadorIAFCC
+            mensaje="Analizando tu quiz"
+            frases={[
+              "Revisando cada pregunta…",
+              "Comprobando las respuestas…",
+              "Mejorando la redacción…",
+              "Preparando recomendaciones…",
+            ]}
+          />,
+          document.body
+        )}
+      {editQuiz &&
         mostrarExplicacionesQuiz && (
           <ExplicacionesQuiz
             quizId={editQuiz.id}
@@ -6398,11 +7061,11 @@ export default function ConstructorQuiz({
       {quizAEliminar &&
         renderPortal(
           <div
-            className="constructor-quiz-overlay"
+            className="constructor-quiz-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setQuizAEliminar(null)}
           >
             <div
-              className="constructor-quiz-modal small"
+              className="constructor-quiz-modal small fcc-modal-enter-standard"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -6457,8 +7120,8 @@ export default function ConstructorQuiz({
 
       {showFormulaModal &&
         renderPortal(
-          <div className="constructor-quiz-overlay">
-            <div className="constructor-quiz-modal small">
+          <div className="constructor-quiz-overlay fcc-modal-backdrop-enter-standard">
+            <div className="constructor-quiz-modal small fcc-modal-enter-standard">
               <button
                 type="button"
                 onClick={() => setShowFormulaModal(false)}

@@ -2,23 +2,32 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { readFile } from "fs/promises";
-import path from "path";
 import { rarezaConfig, type Rareza } from "@/lib/rarezaConfig";
+import {
+  obtenerTodosItemsEstudianteAvatar,
+  resolverOpcionImagenAvatar,
+  resolverVarianteItemAvatar,
+  type GeneroAvatar,
+  type ItemCatalogoAvatar,
+} from "@/lib/avatarCatalogo";
 
 export const runtime = "nodejs";
 
-type ItemIndice = {
-  nombre: string;
-  preview: string;
-  tipo: string;
-};
-
 type RecompensaDisponible = {
+  id: string;
   nombre: string;
   imagen: string;
   tipo: string;
   rareza: Rareza;
+};
+
+type PerfilCofre = {
+  rol?: string | null;
+  nivel?: number | null;
+  tutorial_visto?: boolean | null;
+  avatar_config?: {
+    gender?: string | null;
+  } | null;
 };
 
 const ORDEN_RAREZA: Rareza[] = [
@@ -28,11 +37,115 @@ const ORDEN_RAREZA: Rareza[] = [
   "legendario",
 ];
 
-function normalizarNombre(nombre: string) {
-  return nombre
+function esRarezaCofre(valor: unknown): valor is Rareza {
+  return (
+    typeof valor === "string" &&
+    ORDEN_RAREZA.includes(valor as Rareza)
+  );
+}
+
+function normalizarClave(valor: unknown) {
+  if (typeof valor !== "string") return "";
+
+  return valor
     .toLowerCase()
     .replace(/\.[^/.]+$/, "")
     .trim();
+}
+
+function obtenerGenero(perfil: PerfilCofre): GeneroAvatar {
+  return perfil.avatar_config?.gender === "femenino"
+    ? "femenino"
+    : "masculino";
+}
+
+function obtenerImagenRecompensa(
+  item: ItemCatalogoAvatar,
+  genero: GeneroAvatar
+) {
+  if (item.customization.type === "image_variants") {
+    const resuelta = resolverOpcionImagenAvatar(
+      item,
+      item.customization.defaultOption,
+      genero
+    );
+
+    return (
+      resuelta?.layer?.preview ??
+      resuelta?.layer?.image ??
+      null
+    );
+  }
+
+  const variante = resolverVarianteItemAvatar(item, genero) as any;
+  if (!variante) return null;
+
+  if (
+    typeof variante.preview === "string" &&
+    variante.preview
+  ) {
+    return variante.preview;
+  }
+
+  if (
+    typeof variante.image === "string" &&
+    variante.image
+  ) {
+    return variante.image;
+  }
+
+  if (variante.preview && typeof variante.preview === "object") {
+    if (
+      typeof variante.preview.outline === "string" &&
+      variante.preview.outline
+    ) {
+      return variante.preview.outline;
+    }
+
+    if (
+      typeof variante.preview.fill === "string" &&
+      variante.preview.fill
+    ) {
+      return variante.preview.fill;
+    }
+  }
+
+  if (variante.image && typeof variante.image === "object") {
+    if (
+      typeof variante.image.outline === "string" &&
+      variante.image.outline
+    ) {
+      return variante.image.outline;
+    }
+
+    if (
+      typeof variante.image.fill === "string" &&
+      variante.image.fill
+    ) {
+      return variante.image.fill;
+    }
+
+    if (
+      variante.image.front &&
+      typeof variante.image.front === "object"
+    ) {
+      if (
+        typeof variante.image.front.outline === "string" &&
+        variante.image.front.outline
+      ) {
+        return variante.image.front.outline;
+      }
+
+      if (
+        typeof variante.image.front.fill === "string" &&
+        variante.image.front.fill
+      ) {
+        return variante.image.front.fill;
+      }
+    }
+  }
+
+  return null;
 }
 
 function crearMapaVacio(): Record<Rareza, RecompensaDisponible[]> {
@@ -44,53 +157,129 @@ function crearMapaVacio(): Record<Rareza, RecompensaDisponible[]> {
   };
 }
 
-async function leerCatalogo() {
-  const base = path.join(process.cwd(), "public", "recompensas");
+function crearCatalogoActual(genero: GeneroAvatar) {
+  const porRareza = crearMapaVacio();
+  const porId = new Map<string, RecompensaDisponible>();
+  const porNombre = new Map<string, RecompensaDisponible>();
 
-  const catalogoTexto = await readFile(
-    path.join(base, "catalogo.json"),
-    "utf8"
-  );
+  for (const item of obtenerTodosItemsEstudianteAvatar()) {
+    // "inicial" pertenece al starter pack y NUNCA debe salir de un cofre.
+    if (!esRarezaCofre(item.rarity)) continue;
 
-  const catalogo = JSON.parse(catalogoTexto) as Record<
-    string,
-    Record<string, Rareza>
-  >;
+    const imagen = obtenerImagenRecompensa(item, genero);
+    if (!imagen) continue;
 
-  const previews = new Map<string, ItemIndice>();
+    const recompensa: RecompensaDisponible = {
+      id: item.id,
+      nombre: item.name,
+      imagen,
+      // Se usa la sección principal. Así "accesorios/lentes" cuenta como
+      // accesorios y no pueden salir dos accesorios en el mismo cofre.
+      tipo: item.section,
+      rareza: item.rarity,
+    };
 
-  for (const rareza of ORDEN_RAREZA) {
-    const texto = await readFile(
-      path.join(base, rareza, "index.json"),
-      "utf8"
-    );
+    porRareza[item.rarity].push(recompensa);
+    porId.set(normalizarClave(item.id), recompensa);
 
-    const items = JSON.parse(texto) as ItemIndice[];
-
-    for (const item of items) {
-      previews.set(normalizarNombre(item.nombre), item);
+    const nombreNormalizado = normalizarClave(item.name);
+    if (!porNombre.has(nombreNormalizado)) {
+      porNombre.set(nombreNormalizado, recompensa);
     }
   }
 
+  return {
+    porRareza,
+    porId,
+    porNombre,
+  };
+}
+
+function resolverRecompensaHistorica(
+  valor: any,
+  catalogo: ReturnType<typeof crearCatalogoActual>
+) {
+  const candidatas = [
+    valor?.id,
+    valor?.nombre,
+  ]
+    .map(normalizarClave)
+    .filter(Boolean);
+
+  for (const candidata of candidatas) {
+    const porId = catalogo.porId.get(candidata);
+    if (porId) return porId;
+
+    const porNombre = catalogo.porNombre.get(candidata);
+    if (porNombre) return porNombre;
+  }
+
+  return null;
+}
+
+function recompensaYaDesbloqueada(
+  item: RecompensaDisponible,
+  inventario: Set<string>
+) {
+  return (
+    inventario.has(normalizarClave(item.id)) ||
+    inventario.has(normalizarClave(item.nombre))
+  );
+}
+
+function crearDisponibles(
+  catalogo: ReturnType<typeof crearCatalogoActual>,
+  inventario: Set<string>,
+  permitirIds: Set<string> = new Set()
+) {
   const resultado = crearMapaVacio();
 
-  for (const [tipo, items] of Object.entries(catalogo)) {
-    for (const [nombreCatalogo, rareza] of Object.entries(items)) {
-      if (!ORDEN_RAREZA.includes(rareza)) continue;
+  for (const rareza of ORDEN_RAREZA) {
+    resultado[rareza] = catalogo.porRareza[rareza].filter(
+      (item) =>
+        permitirIds.has(item.id) ||
+        !recompensaYaDesbloqueada(item, inventario)
+    );
+  }
 
-      const itemIndice = previews.get(
-        normalizarNombre(nombreCatalogo)
-      );
+  return resultado;
+}
 
-      if (!itemIndice) continue;
+function quitarSeleccionadas(
+  disponibles: Record<Rareza, RecompensaDisponible[]>,
+  seleccionadas: RecompensaDisponible[]
+) {
+  const ids = new Set(seleccionadas.map((item) => item.id));
 
-      resultado[rareza].push({
-        nombre: itemIndice.nombre,
-        imagen: itemIndice.preview,
-        tipo,
-        rareza,
-      });
-    }
+  for (const rareza of ORDEN_RAREZA) {
+    disponibles[rareza] = disponibles[rareza].filter(
+      (item) => !ids.has(item.id)
+    );
+  }
+}
+
+function obtenerTiposUsados(
+  seleccionadas: RecompensaDisponible[]
+) {
+  return new Set(
+    seleccionadas
+      .filter((item) => item.tipo !== "ropa")
+      .map((item) => item.tipo)
+  );
+}
+
+function disponiblesRespetandoTipos(
+  disponibles: Record<Rareza, RecompensaDisponible[]>,
+  tiposUsados: Set<string>
+) {
+  const resultado = crearMapaVacio();
+
+  for (const rareza of ORDEN_RAREZA) {
+    resultado[rareza] = disponibles[rareza].filter(
+      (item) =>
+        item.tipo === "ropa" ||
+        !tiposUsados.has(item.tipo)
+    );
   }
 
   return resultado;
@@ -121,7 +310,7 @@ function elegirRareza(
     }
   }
 
-  return candidatas[candidatas.length - 1];
+  return candidatas[candidatas.length - 1] ?? null;
 }
 
 function extraerAleatoria(
@@ -129,13 +318,355 @@ function extraerAleatoria(
   rareza: Rareza
 ) {
   const lista = disponibles[rareza];
-
   if (lista.length === 0) return null;
 
   const indice = Math.floor(Math.random() * lista.length);
   const [item] = lista.splice(indice, 1);
 
-  return item;
+  return item ?? null;
+}
+
+function retirarDelMapaPrincipal(
+  disponibles: Record<Rareza, RecompensaDisponible[]>,
+  item: RecompensaDisponible
+) {
+  disponibles[item.rareza] = disponibles[item.rareza].filter(
+    (candidato) => candidato.id !== item.id
+  );
+}
+
+function barajar<T>(items: T[]) {
+  const copia = [...items];
+
+  for (let i = copia.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+
+  return copia;
+}
+
+function rarezaHasta(maxima: Rareza): Rareza[] {
+  const indice = ORDEN_RAREZA.indexOf(maxima);
+  return ORDEN_RAREZA.slice(0, indice + 1);
+}
+
+function candidatosSlotBienvenida({
+  disponibles,
+  rarezasPermitidas,
+  debeSerRopa,
+  idsUsados,
+  tiposNoRopaUsados,
+}: {
+  disponibles: Record<Rareza, RecompensaDisponible[]>;
+  rarezasPermitidas: Rareza[];
+  debeSerRopa: boolean;
+  idsUsados: Set<string>;
+  tiposNoRopaUsados: Set<string>;
+}) {
+  const porRareza = crearMapaVacio();
+
+  for (const rareza of rarezasPermitidas) {
+    porRareza[rareza] = disponibles[rareza].filter((item) => {
+      if (idsUsados.has(item.id)) return false;
+
+      if (debeSerRopa) {
+        return item.tipo === "ropa";
+      }
+
+      return (
+        item.tipo !== "ropa" &&
+        !tiposNoRopaUsados.has(item.tipo)
+      );
+    });
+  }
+
+  // Conserva la lógica de probabilidades por rareza que ya usa el cofre,
+  // pero sin sacrificar las reglas estructurales del cofre de bienvenida.
+  const ordenRarezas: Rareza[] = [];
+  const copiaRarezas = crearMapaVacio();
+
+  for (const rareza of rarezasPermitidas) {
+    copiaRarezas[rareza] = [...porRareza[rareza]];
+  }
+
+  while (true) {
+    const rareza = elegirRareza(copiaRarezas);
+    if (!rareza) break;
+
+    ordenRarezas.push(rareza);
+    copiaRarezas[rareza] = [];
+  }
+
+  const resultado: RecompensaDisponible[] = [];
+
+  for (const rareza of ordenRarezas) {
+    resultado.push(...barajar(porRareza[rareza]));
+  }
+
+  return resultado;
+}
+
+function completarBienvenidaCinco(
+  disponibles: Record<Rareza, RecompensaDisponible[]>
+) {
+  const legendariasRopa = barajar(
+    disponibles.legendario.filter(
+      (item) => item.tipo === "ropa"
+    )
+  );
+
+  if (legendariasRopa.length === 0) {
+    return [] as RecompensaDisponible[];
+  }
+
+  // En las posiciones 2-5 deben existir EXACTAMENTE otras dos prendas.
+  // Se prueban las seis distribuciones posibles en orden aleatorio.
+  const patronesRopa = barajar([
+    [true, true, false, false],
+    [true, false, true, false],
+    [true, false, false, true],
+    [false, true, true, false],
+    [false, true, false, true],
+    [false, false, true, true],
+  ]);
+
+  // Posiciones 2 y 3: hasta épico.
+  // Posiciones 4 y 5: la calidad baja y queda como máximo en raro.
+  const limites: Rareza[] = [
+    "epico",
+    "epico",
+    "raro",
+    "raro",
+  ];
+
+  function completarSlots(
+    seleccionadas: RecompensaDisponible[],
+    patron: boolean[],
+    indiceSlot: number,
+    idsUsados: Set<string>,
+    tiposNoRopaUsados: Set<string>
+  ): RecompensaDisponible[] | null {
+    if (indiceSlot >= 4) {
+      return seleccionadas;
+    }
+
+    const candidatas = candidatosSlotBienvenida({
+      disponibles,
+      rarezasPermitidas: rarezaHasta(limites[indiceSlot]),
+      debeSerRopa: patron[indiceSlot],
+      idsUsados,
+      tiposNoRopaUsados,
+    });
+
+    for (const candidata of candidatas) {
+      const nuevosIds = new Set(idsUsados);
+      nuevosIds.add(candidata.id);
+
+      const nuevosTipos = new Set(tiposNoRopaUsados);
+      if (candidata.tipo !== "ropa") {
+        nuevosTipos.add(candidata.tipo);
+      }
+
+      const resultado = completarSlots(
+        [...seleccionadas, candidata],
+        patron,
+        indiceSlot + 1,
+        nuevosIds,
+        nuevosTipos
+      );
+
+      if (resultado) return resultado;
+    }
+
+    return null;
+  }
+
+  for (const primera of legendariasRopa) {
+    for (const patron of patronesRopa) {
+      const resultado = completarSlots(
+        [primera],
+        patron,
+        0,
+        new Set([primera.id]),
+        new Set()
+      );
+
+      if (resultado?.length === 5) {
+        return resultado;
+      }
+    }
+  }
+
+  return [] as RecompensaDisponible[];
+}
+
+function bienvenidaCincoEsValida(
+  recompensas: RecompensaDisponible[]
+) {
+  if (recompensas.length !== 5) return false;
+
+  // 1) Primera recompensa: prenda legendaria obligatoria.
+  if (
+    recompensas[0]?.tipo !== "ropa" ||
+    recompensas[0]?.rareza !== "legendario"
+  ) {
+    return false;
+  }
+
+  // 2) Después de la primera ya no puede salir ninguna legendaria.
+  if (
+    recompensas
+      .slice(1)
+      .some((item) => item.rareza === "legendario")
+  ) {
+    return false;
+  }
+
+  // 3) Recompensas 2 y 3: máximo épico.
+  if (
+    recompensas
+      .slice(1, 3)
+      .some(
+        (item) =>
+          ORDEN_RAREZA.indexOf(item.rareza) >
+          ORDEN_RAREZA.indexOf("epico")
+      )
+  ) {
+    return false;
+  }
+
+  // 4) Recompensas 4 y 5: máximo raro.
+  if (
+    recompensas
+      .slice(3, 5)
+      .some(
+        (item) =>
+          ORDEN_RAREZA.indexOf(item.rareza) >
+          ORDEN_RAREZA.indexOf("raro")
+      )
+  ) {
+    return false;
+  }
+
+  // 5) EXACTAMENTE tres prendas entre las cinco.
+  if (
+    recompensas.filter((item) => item.tipo === "ropa").length !== 3
+  ) {
+    return false;
+  }
+
+  // 6) Toda categoría distinta de ropa puede aparecer como máximo una vez.
+  const tiposNoRopa = recompensas
+    .filter((item) => item.tipo !== "ropa")
+    .map((item) => item.tipo);
+
+  if (new Set(tiposNoRopa).size !== tiposNoRopa.length) {
+    return false;
+  }
+
+  // 7) Nunca repetir exactamente el mismo objeto.
+  const ids = recompensas.map((item) => item.id);
+  return new Set(ids).size === ids.length;
+}
+
+function canonizarBienvenidaCinco(
+  historicas: any[],
+  catalogo: ReturnType<typeof crearCatalogoActual>
+) {
+  const resueltas: RecompensaDisponible[] = [];
+  const ids = new Set<string>();
+
+  for (const historica of historicas.slice(0, 5)) {
+    const actual = resolverRecompensaHistorica(
+      historica,
+      catalogo
+    );
+
+    if (!actual || ids.has(actual.id)) {
+      return [] as RecompensaDisponible[];
+    }
+
+    resueltas.push(actual);
+    ids.add(actual.id);
+  }
+
+  return bienvenidaCincoEsValida(resueltas)
+    ? resueltas
+    : [];
+}
+
+function completarSeleccion(
+  disponibles: Record<Rareza, RecompensaDisponible[]>,
+  iniciales: RecompensaDisponible[],
+  tipoCofre: "bienvenida" | "nivel"
+) {
+  let seleccionadas = [...iniciales].slice(0, 3);
+
+  // Corrige cofres históricos que contenían dos cabellos/lentes/etc.
+  const tiposVistos = new Set<string>();
+
+  seleccionadas = seleccionadas.filter((item) => {
+    if (item.tipo === "ropa") return true;
+    if (tiposVistos.has(item.tipo)) return false;
+
+    tiposVistos.add(item.tipo);
+    return true;
+  });
+
+  // Si una bienvenida histórica ya traía tres objetos pero ninguno era
+  // legendario, liberamos un espacio ANTES de retirar las selecciones del
+  // catálogo disponible.
+  if (
+    tipoCofre === "bienvenida" &&
+    !seleccionadas.some((item) => item.rareza === "legendario") &&
+    seleccionadas.length >= 3
+  ) {
+    seleccionadas = seleccionadas.slice(0, 2);
+  }
+
+  quitarSeleccionadas(disponibles, seleccionadas);
+
+  // La bienvenida conserva la regla existente: una recompensa legendaria
+  // siempre que el catálogo actual tenga alguna disponible.
+  if (
+    tipoCofre === "bienvenida" &&
+    !seleccionadas.some((item) => item.rareza === "legendario")
+  ) {
+    const tiposUsados = obtenerTiposUsados(seleccionadas);
+    const permitidas = disponiblesRespetandoTipos(
+      disponibles,
+      tiposUsados
+    );
+    const legendaria = extraerAleatoria(
+      permitidas,
+      "legendario"
+    );
+
+    if (legendaria) {
+      seleccionadas.push(legendaria);
+      retirarDelMapaPrincipal(disponibles, legendaria);
+    }
+  }
+
+  while (seleccionadas.length < 3) {
+    const tiposUsados = obtenerTiposUsados(seleccionadas);
+    const permitidas = disponiblesRespetandoTipos(
+      disponibles,
+      tiposUsados
+    );
+    const rareza = elegirRareza(permitidas);
+
+    if (!rareza) break;
+
+    const item = extraerAleatoria(permitidas, rareza);
+    if (!item) break;
+
+    seleccionadas.push(item);
+    retirarDelMapaPrincipal(disponibles, item);
+  }
+
+  return seleccionadas;
 }
 
 function obtenerRarezaMaxima(
@@ -149,6 +680,204 @@ function obtenerRarezaMaxima(
       ? actual.rareza
       : maxima;
   }, "comun");
+}
+
+async function registrarDesbloqueos(
+  admin: any,
+  userId: string,
+  recompensas: RecompensaDisponible[]
+) {
+  if (recompensas.length === 0) return;
+
+  const fecha = new Date().toISOString();
+
+  const registros = recompensas.map((item) => ({
+    user_id: userId,
+    tipo: item.tipo,
+    // Desde ahora el inventario guarda el ID canónico del catálogo V2.
+    // El editor mantiene compatibilidad de lectura con nombres antiguos.
+    nombre: item.id,
+    rareza: item.rareza,
+    fecha_desbloqueo: fecha,
+  }));
+
+  const { error } = await admin
+    .from("recompensas_usuario")
+    .upsert(registros, {
+      onConflict: "user_id,nombre",
+      ignoreDuplicates: true,
+    });
+
+  if (error) throw error;
+}
+
+function canonizarHistoricas(
+  recompensas: any[],
+  catalogo: ReturnType<typeof crearCatalogoActual>
+) {
+  const resultado: RecompensaDisponible[] = [];
+  const ids = new Set<string>();
+  const tipos = new Set<string>();
+
+  for (const historica of recompensas) {
+    const actual = resolverRecompensaHistorica(
+      historica,
+      catalogo
+    );
+
+    // Si el objeto ya no existe en elementos_avatar_nuevo, se descarta.
+    if (!actual || ids.has(actual.id)) continue;
+
+    if (actual.tipo !== "ropa" && tipos.has(actual.tipo)) {
+      continue;
+    }
+
+    resultado.push(actual);
+    ids.add(actual.id);
+
+    if (actual.tipo !== "ropa") {
+      tipos.add(actual.tipo);
+    }
+
+    if (resultado.length >= 3) break;
+  }
+
+  return resultado;
+}
+
+async function repararCofreExistente({
+  admin,
+  existente,
+  userId,
+  tipo,
+  catalogo,
+  inventario,
+}: {
+  admin: any;
+  existente: { id: string; recompensas: any };
+  userId: string;
+  tipo: "bienvenida" | "nivel";
+  catalogo: ReturnType<typeof crearCatalogoActual>;
+  inventario: Set<string>;
+}) {
+  const historicas = Array.isArray(existente.recompensas)
+    ? existente.recompensas
+    : [];
+
+  // Un cofre histórico vacío sigue siendo un bloqueo histórico explícito.
+  if (historicas.length === 0) {
+    return {
+      recompensas: [] as RecompensaDisponible[],
+      bloqueadoHistorico: true,
+    };
+  }
+
+  // Los cofres de bienvenida nuevos guardan cinco recompensas.
+  // Si ya cumplen todas las reglas, se conservan exactamente.
+  if (tipo === "bienvenida" && historicas.length >= 5) {
+    const validasCinco = canonizarBienvenidaCinco(
+      historicas,
+      catalogo
+    );
+
+    if (validasCinco.length === 5) {
+      await registrarDesbloqueos(
+        admin,
+        userId,
+        validasCinco
+      );
+
+      return {
+        recompensas: validasCinco,
+        bloqueadoHistorico: false,
+      };
+    }
+
+    // Si un futuro cambio del catálogo vuelve inválido un cofre nuevo,
+    // se reconstruye respetando nuevamente las cinco reglas.
+    const historicasResueltas = historicas
+      .map((item) =>
+        resolverRecompensaHistorica(item, catalogo)
+      )
+      .filter(
+        (item): item is RecompensaDisponible => Boolean(item)
+      );
+
+    const permitirIds = new Set(
+      historicasResueltas.map((item) => item.id)
+    );
+
+    const disponiblesCinco = crearDisponibles(
+      catalogo,
+      inventario,
+      permitirIds
+    );
+
+    const reparadasCinco = completarBienvenidaCinco(
+      disponiblesCinco
+    );
+
+    if (reparadasCinco.length === 5) {
+      const { error: errorActualizarCinco } = await admin
+        .from("cofres_reclamados")
+        .update({ recompensas: reparadasCinco })
+        .eq("id", existente.id);
+
+      if (errorActualizarCinco) {
+        throw errorActualizarCinco;
+      }
+
+      await registrarDesbloqueos(
+        admin,
+        userId,
+        reparadasCinco
+      );
+
+      return {
+        recompensas: reparadasCinco,
+        bloqueadoHistorico: false,
+      };
+    }
+  }
+
+  // Los cofres de bienvenida antiguos de tres objetos se conservan como
+  // históricos: no se agregan dos recompensas retroactivamente.
+  const validas = canonizarHistoricas(
+    historicas,
+    catalogo
+  );
+  const permitirIds = new Set(validas.map((item) => item.id));
+  const disponibles = crearDisponibles(
+    catalogo,
+    inventario,
+    permitirIds
+  );
+
+  const reparadas = completarSeleccion(
+    disponibles,
+    validas,
+    tipo
+  );
+
+  if (reparadas.length > 0) {
+    const { error: errorActualizar } = await admin
+      .from("cofres_reclamados")
+      .update({ recompensas: reparadas })
+      .eq("id", existente.id);
+
+    if (errorActualizar) throw errorActualizar;
+
+    await registrarDesbloqueos(
+      admin,
+      userId,
+      reparadas
+    );
+  }
+
+  return {
+    recompensas: reparadas,
+    bloqueadoHistorico: reparadas.length === 0,
+  };
 }
 
 export async function POST(req: Request) {
@@ -225,8 +954,8 @@ export async function POST(req: Request) {
       body?.tipo === "bienvenida"
         ? "bienvenida"
         : body?.tipo === "nivel"
-        ? "nivel"
-        : null;
+          ? "nivel"
+          : null;
 
     if (!tipo) {
       return NextResponse.json(
@@ -235,18 +964,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: perfil, error: perfilError } = await admin
+    const { data: perfilRaw, error: perfilError } = await admin
       .from("usuarios")
-      .select("rol,nivel,tutorial_visto")
+      .select("rol,nivel,tutorial_visto,avatar_config")
       .eq("id", user.id)
       .single();
 
-    if (perfilError || !perfil) {
+    if (perfilError || !perfilRaw) {
       return NextResponse.json(
         { error: "Usuario no encontrado" },
         { status: 404 }
       );
     }
+
+    const perfil = perfilRaw as PerfilCofre;
 
     if (perfil.rol !== "estudiante") {
       return NextResponse.json(
@@ -258,18 +989,20 @@ export async function POST(req: Request) {
     const nivelActual = Number(perfil.nivel ?? 0);
 
     if (tipo === "bienvenida" && !perfil.tutorial_visto) {
-      const { data: logrosTutorial, error: errorLogrosTutorial } = await admin
-        .from("logros_usuarios")
-        .select("logro_id")
-        .eq("usuario_id", user.id);
+      const { data: logrosTutorial, error: errorLogrosTutorial } =
+        await admin
+          .from("logros_usuarios")
+          .select("logro_id")
+          .eq("usuario_id", user.id);
 
       if (errorLogrosTutorial) {
         throw errorLogrosTutorial;
       }
 
       const tutorialCompletado = (logrosTutorial ?? []).some(
-        (logro) =>
-          logro.logro_id === "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
+        (logro: any) =>
+          logro.logro_id ===
+            "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
           logro.logro_id === "tutorial"
       );
 
@@ -291,6 +1024,25 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+
+    const genero = obtenerGenero(perfil);
+    const catalogo = crearCatalogoActual(genero);
+
+    const { data: desbloqueadas, error: errorDesbloqueadas } =
+      await admin
+        .from("recompensas_usuario")
+        .select("nombre")
+        .eq("user_id", user.id);
+
+    if (errorDesbloqueadas) {
+      throw errorDesbloqueadas;
+    }
+
+    const inventario = new Set(
+      (desbloqueadas ?? [])
+        .map((item: any) => normalizarClave(item.nombre))
+        .filter(Boolean)
+    );
 
     let consultaExistente = admin
       .from("cofres_reclamados")
@@ -318,49 +1070,33 @@ export async function POST(req: Request) {
     }
 
     if (existente) {
-      const recompensasExistentes = Array.isArray(
-        existente.recompensas
-      )
-        ? (existente.recompensas as RecompensaDisponible[])
-        : [];
+      const reparado = await repararCofreExistente({
+        admin,
+        existente: existente as {
+          id: string;
+          recompensas: any;
+        },
+        userId: user.id,
+        tipo,
+        catalogo,
+        inventario,
+      });
 
       return NextResponse.json({
         rareza: obtenerRarezaMaxima(
-          recompensasExistentes
+          reparado.recompensas
         ),
-        recompensas: recompensasExistentes,
+        recompensas: reparado.recompensas,
         ya_reclamado: true,
         bloqueado_historico:
-          recompensasExistentes.length === 0,
+          reparado.bloqueadoHistorico,
       });
     }
 
-    const catalogo = await leerCatalogo();
-
-    const { data: desbloqueadas, error: errorDesbloqueadas } =
-      await admin
-        .from("recompensas_usuario")
-        .select("nombre")
-        .eq("user_id", user.id);
-
-    if (errorDesbloqueadas) {
-      throw errorDesbloqueadas;
-    }
-
-    const yaTiene = new Set(
-      (desbloqueadas ?? []).map((item) =>
-        normalizarNombre(item.nombre)
-      )
+    const disponibles = crearDisponibles(
+      catalogo,
+      inventario
     );
-
-    const disponibles = crearMapaVacio();
-
-    for (const rareza of ORDEN_RAREZA) {
-      disponibles[rareza] = catalogo[rareza].filter(
-        (item) =>
-          !yaTiene.has(normalizarNombre(item.nombre))
-      );
-    }
 
     const totalDisponibles = ORDEN_RAREZA.reduce(
       (total, rareza) =>
@@ -377,41 +1113,33 @@ export async function POST(req: Request) {
       });
     }
 
-    const seleccionadas: RecompensaDisponible[] = [];
+    const seleccionadas =
+      tipo === "bienvenida"
+        ? completarBienvenidaCinco(disponibles)
+        : completarSeleccion(disponibles, [], tipo);
 
+    // Con el catálogo actual esta condición no debe ocurrir. Es únicamente
+    // una protección por si en el futuro se eliminan del catálogo las piezas
+    // necesarias para cumplir las reglas del cofre de bienvenida.
     if (
       tipo === "bienvenida" &&
-      disponibles.legendario.length > 0
+      !bienvenidaCincoEsValida(seleccionadas)
     ) {
-      const legendaria = extraerAleatoria(
-        disponibles,
-        "legendario"
+      return NextResponse.json(
+        {
+          error:
+            "El catálogo actual no permite construir el cofre de bienvenida",
+          codigo: "COFRE_BIENVENIDA_CATALOGO_INSUFICIENTE",
+        },
+        { status: 409 }
       );
-
-      if (legendaria) {
-        seleccionadas.push(legendaria);
-      }
-    }
-
-    while (seleccionadas.length < 3) {
-      const rareza = elegirRareza(disponibles);
-
-      if (!rareza) break;
-
-      const item = extraerAleatoria(
-        disponibles,
-        rareza
-      );
-
-      if (!item) break;
-
-      seleccionadas.push(item);
     }
 
     if (seleccionadas.length === 0) {
       return NextResponse.json(
         {
-          error: "No se pudieron seleccionar recompensas para el cofre",
+          error:
+            "No se pudieron seleccionar recompensas para el cofre",
           codigo: "COFRE_SIN_SELECCION",
         },
         { status: 409 }
@@ -421,7 +1149,10 @@ export async function POST(req: Request) {
     const registroCofre = {
       user_id: user.id,
       tipo,
-      nivel: tipo === "nivel" ? nivelActual : null,
+      nivel:
+        tipo === "nivel"
+          ? nivelActual
+          : null,
       recompensas: seleccionadas,
     };
 
@@ -433,7 +1164,7 @@ export async function POST(req: Request) {
       if (errorCofre.code === "23505") {
         let repetido = admin
           .from("cofres_reclamados")
-          .select("recompensas")
+          .select("id,recompensas")
           .eq("user_id", user.id)
           .eq("tipo", tipo);
 
@@ -442,51 +1173,50 @@ export async function POST(req: Request) {
             ? repetido.eq("nivel", nivelActual)
             : repetido.is("nivel", null);
 
-        const { data, error: errorRepetido } =
-          await repetido.maybeSingle();
+        const {
+          data: dataRepetido,
+          error: errorRepetido,
+        } = await repetido.maybeSingle();
 
         if (errorRepetido) {
           throw errorRepetido;
         }
 
-        const recompensasRepetidas = Array.isArray(
-          data?.recompensas
-        )
-          ? (data.recompensas as RecompensaDisponible[])
-          : [];
+        if (dataRepetido) {
+          const reparado = await repararCofreExistente({
+            admin,
+            existente: dataRepetido as {
+              id: string;
+              recompensas: any;
+            },
+            userId: user.id,
+            tipo,
+            catalogo,
+            inventario,
+          });
 
-        return NextResponse.json({
-          rareza: obtenerRarezaMaxima(
-            recompensasRepetidas
-          ),
-          recompensas: recompensasRepetidas,
-          ya_reclamado: true,
-          bloqueado_historico:
-            recompensasRepetidas.length === 0,
-        });
+          return NextResponse.json({
+            rareza: obtenerRarezaMaxima(
+              reparado.recompensas
+            ),
+            recompensas: reparado.recompensas,
+            ya_reclamado: true,
+            bloqueado_historico:
+              reparado.bloqueadoHistorico,
+          });
+        }
       }
 
       throw errorCofre;
     }
 
-    const fecha = new Date().toISOString();
-
-    const registros = seleccionadas.map((item) => ({
-      user_id: user.id,
-      tipo: item.tipo,
-      nombre: item.nombre,
-      rareza: item.rareza,
-      fecha_desbloqueo: fecha,
-    }));
-
-    const { error: errorRecompensas } = await admin
-      .from("recompensas_usuario")
-      .upsert(registros, {
-        onConflict: "user_id,nombre",
-        ignoreDuplicates: true,
-      });
-
-    if (errorRecompensas) {
+    try {
+      await registrarDesbloqueos(
+        admin,
+        user.id,
+        seleccionadas
+      );
+    } catch (errorRecompensas) {
       let limpiezaCofre = admin
         .from("cofres_reclamados")
         .delete()
@@ -499,7 +1229,6 @@ export async function POST(req: Request) {
           : limpiezaCofre.is("nivel", null);
 
       await limpiezaCofre;
-
       throw errorRecompensas;
     }
 

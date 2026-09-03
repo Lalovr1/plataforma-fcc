@@ -2,17 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   AlertCircle,
   CheckCircle2,
   RefreshCw,
   Save,
   Sparkles,
-  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/utils/supabaseClient";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
+import CargadorFCC, {
+  DURACION_MINIMA_CARGADOR_FCC_MS,
+} from "@/components/CargadorFCC";
+import { contenidoQuizATextoIA } from "@/lib/ai/quizMedia";
 
 type EstadoExplicacion =
   | "ia"
@@ -43,20 +50,27 @@ type Props = {
   onResumenChange?: (resumen: ResumenExplicaciones) => void;
 };
 
+async function esperarMinimoCargadorFCC(inicio: number) {
+  const transcurrido = performance.now() - inicio;
+  const restante = Math.max(
+    0,
+    DURACION_MINIMA_CARGADOR_FCC_MS - transcurrido
+  );
+
+  if (restante <= 0) return;
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, restante);
+  });
+}
+
 function textoVisible(value: string) {
-  return String(value || "")
-    .replace(
-      /<span[^>]*data-latex=["']([^"']+)["'][^>]*><\/span>/gi,
-      " $1 "
+  return contenidoQuizATextoIA(
+    String(value || "").replace(
+      /<img[^>]*>/gi,
+      " [Imagen] "
     )
-    .replace(/<img[^>]*>/gi, " [Imagen] ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
+  ).trim();
 }
 
 export default function ExplicacionesQuiz({
@@ -136,6 +150,7 @@ export default function ExplicacionesQuiz({
   }, [open, hayCambios]);
 
   const cargar = async () => {
+    const inicioCarga = performance.now();
     setLoading(true);
     setError("");
 
@@ -203,6 +218,7 @@ export default function ExplicacionesQuiz({
 
       setError(mensaje);
     } finally {
+      await esperarMinimoCargadorFCC(inicioCarga);
       setLoading(false);
     }
   };
@@ -366,10 +382,21 @@ export default function ExplicacionesQuiz({
 
   if (!mounted) return null;
 
+  if (loading) {
+    return createPortal(
+      <CargadorFCC
+        sobreModal
+        mensaje="Preparando explicaciones"
+        detalle=""
+      />,
+      document.body
+    );
+  }
+
   return (
     <>
       {createPortal(
-        <div className="explicaciones-quiz-overlay">
+        <div className="explicaciones-quiz-overlay fcc-modal-backdrop-enter-standard">
       <style>{`
         .explicaciones-quiz-overlay {
           --exp-accent: var(--fcc-premium-accent);
@@ -389,7 +416,7 @@ export default function ExplicacionesQuiz({
           align-items: center;
           justify-content: center;
           padding: 14px;
-          background: rgba(2, 8, 23, 0.6);
+          background: rgba(2, 8, 23, 0.58);
           backdrop-filter: blur(8px);
         }
 
@@ -585,6 +612,21 @@ export default function ExplicacionesQuiz({
           line-height: 1.4;
         }
 
+        .explicaciones-quiz-question-content {
+          min-width: 0;
+          margin-top: 4px;
+          overflow-x: auto;
+          color: var(--exp-text-soft);
+          font-size: 0.8rem;
+          font-weight: 700;
+          line-height: 1.4;
+        }
+
+        .explicaciones-quiz-question-content .katex-display {
+          margin: 2px 0;
+          text-align: left;
+        }
+
         .explicaciones-quiz-status {
           flex: 0 0 auto;
           display: inline-flex;
@@ -682,7 +724,7 @@ export default function ExplicacionesQuiz({
         .explicaciones-quiz-footer {
           flex: 0 0 auto;
           display: flex;
-          justify-content: flex-end;
+          justify-content: center;
           gap: 10px;
           flex-wrap: wrap;
           padding: 14px 22px 20px;
@@ -800,17 +842,7 @@ export default function ExplicacionesQuiz({
         }
       `}</style>
 
-      <section className="explicaciones-quiz-modal">
-        <button
-          type="button"
-          onClick={cerrar}
-          className="explicaciones-quiz-close"
-          aria-label="Cerrar explicaciones"
-          title="Cerrar"
-        >
-          <X size={20} strokeWidth={2.5} />
-        </button>
-
+      <section className="explicaciones-quiz-modal fcc-modal-enter-standard">
         <div className="explicaciones-quiz-scroll">
           <header className="explicaciones-quiz-header">
             <span className="explicaciones-quiz-kicker">
@@ -838,7 +870,7 @@ export default function ExplicacionesQuiz({
             )}
           </header>
 
-          {!loading && !error && (
+          {!error && (
             <>
               <div className="explicaciones-quiz-summary">
                 <div className="explicaciones-quiz-stat">
@@ -884,15 +916,7 @@ export default function ExplicacionesQuiz({
             </>
           )}
 
-          {loading ? (
-            <div className="explicaciones-quiz-loading">
-              <RefreshCw
-                size={28}
-                className="animate-spin"
-              />
-              Cargando explicaciones...
-            </div>
-          ) : error ? (
+          {error ? (
             <div className="explicaciones-quiz-error">
               <AlertCircle size={28} />
               <span>{error}</span>
@@ -929,10 +953,18 @@ export default function ExplicacionesQuiz({
                           Pregunta {index + 1}
                         </strong>
 
-                        <p>
-                          {textoVisible(pregunta.enunciado) ||
-                            "Pregunta sin texto visible"}
-                        </p>
+                        <div className="explicaciones-quiz-question-content">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{
+                              p: ({ children }) => <span>{children}</span>,
+                            }}
+                          >
+                            {textoVisible(pregunta.enunciado) ||
+                              "Pregunta sin texto visible"}
+                          </ReactMarkdown>
+                        </div>
                       </div>
 
                       <span
@@ -1024,6 +1056,14 @@ export default function ExplicacionesQuiz({
         </div>
 
         <footer className="explicaciones-quiz-footer">
+          <button
+            type="button"
+            onClick={cerrar}
+            disabled={loading || saving}
+            className="explicaciones-quiz-button secondary"
+          >
+            Volver
+          </button>
 
           <button
             type="button"

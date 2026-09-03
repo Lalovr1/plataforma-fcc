@@ -10,15 +10,13 @@ import TarjetaUsuario from "@/components/TarjetaUsuario";
 import BloqueXPEnVivo from "@/components/BloqueXPEnVivo";
 import SeccionCursos from "@/components/SeccionCursos";
 
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { crearSupabaseServidor } from "@/utils/supabaseServer";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function EstudianteDashboard() {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = await crearSupabaseServidor();
 
   const {
     data: { user },
@@ -196,12 +194,12 @@ export default async function EstudianteDashboard() {
           </div>
         </div>
 
-        <div className="space-y-4 md:space-y-6 min-w-0">
-          <div className="widget-ranking">
+        <div className="fcc-dashboard-side-column min-w-0 flex flex-col gap-4 md:gap-6 xl:h-[calc(100dvh-3rem)] xl:min-h-0 xl:overflow-hidden">
+          <div className="widget-ranking flex-1 min-h-0 overflow-hidden">
             <WidgetRanking />
           </div>
 
-          <div className="barra-xp">
+          <div className="barra-xp flex-none">
             <BloqueXPEnVivo
               userId={usuario?.id ?? user.id}
               initialXp={usuario?.puntos ?? 0}

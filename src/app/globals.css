@@ -1619,3 +1619,2501 @@ html[data-fcc-navigation-boot="pantalla"] body::before {
     animation: none;
   }
 }
+
+/* FCC_AVATAR_TECH_HALO_V1_START */
+
+/*
+  Primer checkpoint visual del rediseÃ±o FCC Academy.
+  IMPORTANTE:
+  - No cambia layout.
+  - No cambia dimensiones de tarjetas.
+  - No cambia cursos.
+  - No cambia ranking.
+  - No cambia navegaciÃ³n.
+  - No fija un color concreto: usa las variables existentes del tema.
+*/
+
+/* Contenedor original: solo damos un poco mas de presencia al halo. */
+.fcc-user-card .fcc-user-avatar-stage {
+  --fcc-user-avatar-circle-size: 91% !important;
+  --fcc-user-avatar-ring-size: 73% !important;
+  --fcc-user-avatar-orbit-size: 78% !important;
+}
+
+/*
+  Capa exterior:
+  sustituye el circulo visual plano por varias pistas concentricas,
+  segmentos y resplandor, manteniendo las variables dinamicas del tema.
+*/
+.fcc-user-card .fcc-user-avatar-stage::before {
+  width: var(--fcc-user-avatar-circle-size) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+
+  background:
+    /* puntos/nodos muy discretos sobre la circunferencia */
+    radial-gradient(
+      circle at 50% 2%,
+      color-mix(in srgb, var(--fcc-user-accent) 68%, transparent) 0 2px,
+      transparent 2.5px
+    ),
+    radial-gradient(
+      circle at 88% 28%,
+      color-mix(in srgb, var(--fcc-user-cyan) 64%, transparent) 0 2px,
+      transparent 2.5px
+    ),
+    radial-gradient(
+      circle at 13% 67%,
+      color-mix(in srgb, var(--fcc-user-accent) 54%, transparent) 0 1.7px,
+      transparent 2.2px
+    ),
+
+    /* anillos concentricos finos */
+    radial-gradient(
+      circle at center,
+      transparent 0 31%,
+      color-mix(in srgb, var(--fcc-user-accent) 20%, transparent) 31.3% 31.8%,
+      transparent 32.1% 41%,
+      color-mix(in srgb, var(--fcc-user-cyan) 24%, transparent) 41.3% 41.8%,
+      transparent 42.1% 51%,
+      color-mix(in srgb, var(--fcc-user-accent) 16%, transparent) 51.3% 51.8%,
+      transparent 52.1% 61%,
+      color-mix(in srgb, var(--fcc-user-cyan) 13%, transparent) 61.3% 61.7%,
+      transparent 62%
+    ),
+
+    /* segmentos tecnologicos */
+    conic-gradient(
+      from 205deg,
+      transparent 0deg 20deg,
+      color-mix(in srgb, var(--fcc-user-accent) 40%, transparent) 20deg 27deg,
+      transparent 27deg 76deg,
+      color-mix(in srgb, var(--fcc-user-cyan) 42%, transparent) 76deg 82deg,
+      transparent 82deg 151deg,
+      color-mix(in srgb, var(--fcc-user-accent) 28%, transparent) 151deg 158deg,
+      transparent 158deg 247deg,
+      color-mix(in srgb, var(--fcc-user-cyan) 32%, transparent) 247deg 253deg,
+      transparent 253deg 329deg,
+      color-mix(in srgb, var(--fcc-user-accent) 34%, transparent) 329deg 336deg,
+      transparent 336deg 360deg
+    ),
+
+    /* nucleo luminoso original del tema */
+    radial-gradient(
+      circle at center,
+      color-mix(in srgb, var(--fcc-user-avatar-core) 82%, transparent) 0%,
+      color-mix(in srgb, var(--fcc-user-avatar-core) 48%, transparent) 40%,
+      transparent 70%
+    ) !important;
+
+  opacity: 1 !important;
+  filter:
+    drop-shadow(
+      0 0 18px
+      color-mix(in srgb, var(--fcc-user-accent) 12%, transparent)
+    )
+    drop-shadow(
+      0 0 34px
+      color-mix(in srgb, var(--fcc-user-cyan) 7%, transparent)
+    ) !important;
+
+  transition:
+    transform 360ms cubic-bezier(.2,.8,.2,1),
+    filter 360ms ease,
+    opacity 360ms ease !important;
+}
+
+/*
+  Aro medio. Varias lineas sin llenar el centro:
+  el avatar sigue siendo el protagonista.
+*/
+.fcc-user-card .fcc-user-avatar-stage::after {
+  width: var(--fcc-user-avatar-ring-size) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+
+  border:
+    1px solid
+    color-mix(
+      in srgb,
+      var(--fcc-user-accent) 31%,
+      var(--fcc-user-avatar-border)
+    ) !important;
+
+  box-shadow:
+    0 0 0 9px
+      color-mix(in srgb, var(--fcc-user-accent) 3.5%, transparent),
+    0 0 0 18px
+      color-mix(in srgb, var(--fcc-user-cyan) 2.7%, transparent),
+    0 0 0 29px
+      color-mix(in srgb, var(--fcc-user-accent) 2.1%, transparent),
+    0 0 34px
+      color-mix(in srgb, var(--fcc-user-accent) 16%, transparent),
+    0 0 58px
+      color-mix(in srgb, var(--fcc-user-cyan) 8%, transparent) !important;
+
+  transition:
+    transform 360ms cubic-bezier(.2,.8,.2,1),
+    border-color 300ms ease,
+    box-shadow 300ms ease !important;
+}
+
+/*
+  Orbita existente del componente:
+  ahora parece una pista parcial en lugar de dos lineas planas.
+*/
+.fcc-user-card .fcc-avatar-orbit {
+  width: var(--fcc-user-avatar-orbit-size) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  inset: auto !important;
+  left: 50% !important;
+  top: 50% !important;
+
+  border:
+    1px solid
+    color-mix(in srgb, var(--fcc-user-cyan) 13%, transparent) !important;
+
+  background:
+    conic-gradient(
+      from 26deg,
+      transparent 0deg 38deg,
+      color-mix(in srgb, var(--fcc-user-accent) 44%, transparent) 38deg 45deg,
+      transparent 45deg 124deg,
+      color-mix(in srgb, var(--fcc-user-cyan) 46%, transparent) 124deg 130deg,
+      transparent 130deg 217deg,
+      color-mix(in srgb, var(--fcc-user-accent) 34%, transparent) 217deg 224deg,
+      transparent 224deg 308deg,
+      color-mix(in srgb, var(--fcc-user-cyan) 30%, transparent) 308deg 314deg,
+      transparent 314deg 360deg
+    ) !important;
+
+  box-shadow:
+    inset 0 0 22px
+      color-mix(in srgb, var(--fcc-user-accent) 4%, transparent) !important;
+
+  transform:
+    translate(-50%, -50%)
+    rotate(-18deg) !important;
+
+  opacity: .98 !important;
+
+  transition:
+    transform 520ms cubic-bezier(.2,.8,.2,1),
+    opacity 300ms ease !important;
+}
+
+/* Movimiento pequeÃ±o: comunica que la interfaz esta viva sin marear. */
+@media (hover: hover) {
+  .fcc-user-card:hover .fcc-user-avatar-stage::before {
+    transform:
+      translate(-50%, -50%)
+      rotate(5deg)
+      scale(1.018) !important;
+
+    filter:
+      drop-shadow(
+        0 0 20px
+        color-mix(in srgb, var(--fcc-user-accent) 17%, transparent)
+      )
+      drop-shadow(
+        0 0 42px
+        color-mix(in srgb, var(--fcc-user-cyan) 10%, transparent)
+      ) !important;
+  }
+
+  .fcc-user-card:hover .fcc-user-avatar-stage::after {
+    transform:
+      translate(-50%, -50%)
+      scale(1.025) !important;
+  }
+
+  .fcc-user-card:hover .fcc-avatar-orbit {
+    transform:
+      translate(-50%, -50%)
+      rotate(-5deg)
+      scale(1.018) !important;
+  }
+}
+
+/* Accesibilidad: sin movimiento para quien lo solicite. */
+@media (prefers-reduced-motion: reduce) {
+  .fcc-user-card .fcc-user-avatar-stage::before,
+  .fcc-user-card .fcc-user-avatar-stage::after,
+  .fcc-user-card .fcc-avatar-orbit {
+    transition: none !important;
+  }
+
+  .fcc-user-card:hover .fcc-user-avatar-stage::before {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .fcc-user-card:hover .fcc-user-avatar-stage::after {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .fcc-user-card:hover .fcc-avatar-orbit {
+    transform:
+      translate(-50%, -50%)
+      rotate(-18deg) !important;
+  }
+}
+
+/* FCC_AVATAR_TECH_HALO_V1_END */
+
+/* FCC_TARJETA_AVATAR_AJUSTE_V1_START */
+
+/*
+  TarjetaUsuario - ajuste de margenes del avatar.
+
+  IMPORTANTE:
+  - NO modifica la distribucion interna de texto ni acciones.
+  - Panel docente/estudiante, nombre, nivel y Ver perfil vuelven
+    a depender exclusivamente del CSS original de la plataforma.
+  - Solo se conserva el hover limitado al avatar y se ajusta
+    tamano/margen del personaje.
+*/
+
+/* =========================================================
+   HOVER DEL HALO: SOLO SOBRE EL AVATAR
+   ========================================================= */
+
+.fcc-user-card:hover .fcc-user-avatar-stage::before {
+  transform: translate(-50%, -50%) !important;
+}
+
+.fcc-user-card:hover .fcc-user-avatar-stage::after {
+  transform: translate(-50%, -50%) !important;
+}
+
+.fcc-user-card:hover .fcc-avatar-orbit {
+  transform:
+    translate(-50%, -50%)
+    rotate(-18deg) !important;
+}
+
+.fcc-user-card .fcc-user-avatar-stage::before,
+.fcc-user-card .fcc-user-avatar-stage::after,
+.fcc-user-card .fcc-avatar-orbit {
+  pointer-events: none !important;
+}
+
+@media (hover: hover) {
+  .fcc-user-card .fcc-user-avatar-stage:hover::before {
+    transform:
+      translate(-50%, -50%)
+      rotate(5deg)
+      scale(1.018) !important;
+
+    filter:
+      drop-shadow(
+        0 0 20px
+        color-mix(in srgb, var(--fcc-user-accent) 17%, transparent)
+      )
+      drop-shadow(
+        0 0 42px
+        color-mix(in srgb, var(--fcc-user-cyan) 10%, transparent)
+      ) !important;
+  }
+
+  .fcc-user-card .fcc-user-avatar-stage:hover::after {
+    transform:
+      translate(-50%, -50%)
+      scale(1.025) !important;
+  }
+
+  .fcc-user-card .fcc-user-avatar-stage:hover .fcc-avatar-orbit {
+    transform:
+      translate(-50%, -50%)
+      rotate(-5deg)
+      scale(1.018) !important;
+  }
+}
+
+/* =========================================================
+   AVATAR: UN POCO MAS PEQUENO + MARGEN ARRIBA Y ABAJO
+   ========================================================= */
+
+.fcc-user-card .fcc-avatar-render {
+  /*
+    Fade solo abajo.
+    La parte superior del personaje permanece completamente definida.
+  */
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 91%,
+      rgba(0, 0, 0, 0.95) 94%,
+      rgba(0, 0, 0, 0.55) 97.5%,
+      transparent 100%
+    ) !important;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 91%,
+      rgba(0, 0, 0, 0.95) 94%,
+      rgba(0, 0, 0, 0.55) 97.5%,
+      transparent 100%
+    ) !important;
+
+  -webkit-mask-repeat: no-repeat !important;
+  mask-repeat: no-repeat !important;
+  -webkit-mask-size: 100% 100% !important;
+  mask-size: 100% 100% !important;
+
+  transform-origin: center bottom !important;
+}
+
+/*
+  Escritorio grande:
+  respecto al ajuste anterior, reducimos ligeramente la escala
+  y dejamos de empujar tanto el avatar hacia abajo.
+  Resultado esperado:
+  - pequeno margen de seguridad arriba;
+  - pequeno margen visual abajo;
+  - cuerpo aun grande y protagonista.
+*/
+@media (min-width: 1280px) {
+  .fcc-user-card .fcc-user-avatar-stage {
+    --fcc-user-avatar-render-scale: 1.18 !important;
+  }
+
+  .fcc-user-card .fcc-avatar-render {
+    bottom: -24px !important;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .fcc-user-card .fcc-user-avatar-stage {
+    --fcc-user-avatar-render-scale: 1.045 !important;
+  }
+
+  .fcc-user-card .fcc-avatar-render {
+    bottom: -20px !important;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1023px) {
+  .fcc-user-card .fcc-user-avatar-stage {
+    --fcc-user-avatar-render-scale: 0.955 !important;
+  }
+
+  .fcc-user-card .fcc-avatar-render {
+    bottom: -14px !important;
+  }
+}
+
+/*
+  En movil se conserva la composicion original.
+*/
+@media (max-width: 860px) {
+  .fcc-user-card .fcc-avatar-render {
+    bottom: 0 !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcc-user-card .fcc-user-avatar-stage:hover::before {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .fcc-user-card .fcc-user-avatar-stage:hover::after {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .fcc-user-card .fcc-user-avatar-stage:hover .fcc-avatar-orbit {
+    transform:
+      translate(-50%, -50%)
+      rotate(-18deg) !important;
+  }
+}
+
+/* FCC_TARJETA_AVATAR_AJUSTE_V1_END */
+
+/* FCC_GLOBAL_AVATAR_RANKING_VISUAL_V1_START */
+
+/*
+  Estandar visual global FCC Academy.
+  Esta capa NO cambia datos, rutas, Supabase ni logica de componentes.
+
+  Objetivos:
+  - Reutilizar el halo aprobado de TarjetaUsuario.
+  - Mantener el avatar siempre delante del halo.
+  - Aplicar fade inferior sin cortar el personaje.
+  - Unificar superficies de rankings.
+  - Evitar sombras exteriores recortadas que pintan rectangulos
+    alrededor de tarjetas redondeadas.
+  - Mantener colores dependientes del tema.
+*/
+
+/* =========================================================
+   1. HALO GLOBAL DE AVATAR
+   ========================================================= */
+
+:is(
+  .ranking-avatar-stage,
+  .amigos-avatar-stage,
+  .profesores-avatar-stage,
+  .perfil-avatar-stage,
+  .perfil-profesor-avatar-stage,
+  .avatar-editor-avatar-stage,
+  .analytics-avatar-stage,
+  .curso-profesor-avatar-stage
+) {
+  --fcc-shared-avatar-accent: var(
+    --fcc-premium-accent,
+    var(--color-primary)
+  );
+  --fcc-shared-avatar-cyan: var(
+    --fcc-premium-cyan,
+    #38bdf8
+  );
+  --fcc-shared-avatar-core: color-mix(
+    in srgb,
+    var(--fcc-shared-avatar-cyan) 18%,
+    transparent
+  );
+  --fcc-shared-avatar-border: color-mix(
+    in srgb,
+    var(--fcc-shared-avatar-accent) 31%,
+    var(--fcc-premium-border)
+  );
+  --fcc-shared-avatar-spread: 5px;
+  --fcc-shared-avatar-glow: 28px;
+
+  position: relative !important;
+  isolation: isolate !important;
+  background: transparent !important;
+}
+
+:is(
+  .perfil-avatar-stage,
+  .perfil-profesor-avatar-stage,
+  .avatar-editor-avatar-stage
+) {
+  --fcc-shared-avatar-spread: 12px;
+  --fcc-shared-avatar-glow: 48px;
+}
+
+.analytics-avatar-stage {
+  --fcc-shared-avatar-spread: 3px;
+  --fcc-shared-avatar-glow: 18px;
+  overflow: visible !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+/* Exterior: mismo lenguaje aprobado de la tarjeta principal. */
+:is(
+  .ranking-avatar-stage,
+  .amigos-avatar-stage,
+  .profesores-avatar-stage,
+  .perfil-avatar-stage,
+  .perfil-profesor-avatar-stage,
+  .avatar-editor-avatar-stage,
+  .analytics-avatar-stage,
+  .curso-profesor-avatar-stage
+)::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 91% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 999px !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+
+  background:
+    radial-gradient(
+      circle at 50% 2%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 68%,
+        transparent
+      ) 0 2px,
+      transparent 2.5px
+    ),
+    radial-gradient(
+      circle at 88% 28%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 64%,
+        transparent
+      ) 0 2px,
+      transparent 2.5px
+    ),
+    radial-gradient(
+      circle at 13% 67%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 54%,
+        transparent
+      ) 0 1.7px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at center,
+      transparent 0 31%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 20%,
+        transparent
+      ) 31.3% 31.8%,
+      transparent 32.1% 41%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 24%,
+        transparent
+      ) 41.3% 41.8%,
+      transparent 42.1% 51%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 16%,
+        transparent
+      ) 51.3% 51.8%,
+      transparent 52.1% 61%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 13%,
+        transparent
+      ) 61.3% 61.7%,
+      transparent 62%
+    ),
+    conic-gradient(
+      from 205deg,
+      transparent 0deg 20deg,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 40%,
+        transparent
+      ) 20deg 27deg,
+      transparent 27deg 76deg,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 42%,
+        transparent
+      ) 76deg 82deg,
+      transparent 82deg 151deg,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 28%,
+        transparent
+      ) 151deg 158deg,
+      transparent 158deg 247deg,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 32%,
+        transparent
+      ) 247deg 253deg,
+      transparent 253deg 329deg,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 34%,
+        transparent
+      ) 329deg 336deg,
+      transparent 336deg 360deg
+    ),
+    radial-gradient(
+      circle at center,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-core) 82%,
+        transparent
+      ) 0%,
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-core) 48%,
+        transparent
+      ) 40%,
+      transparent 70%
+    ) !important;
+
+  opacity: 1 !important;
+  filter:
+    drop-shadow(
+      0 0 12px
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 12%,
+        transparent
+      )
+    )
+    drop-shadow(
+      0 0 24px
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 7%,
+        transparent
+      )
+    ) !important;
+
+  transition:
+    transform 360ms cubic-bezier(.2,.8,.2,1),
+    filter 360ms ease,
+    opacity 360ms ease !important;
+}
+
+/* Aro medio. */
+:is(
+  .ranking-avatar-stage,
+  .amigos-avatar-stage,
+  .profesores-avatar-stage,
+  .perfil-avatar-stage,
+  .perfil-profesor-avatar-stage,
+  .avatar-editor-avatar-stage,
+  .analytics-avatar-stage,
+  .curso-profesor-avatar-stage
+)::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 73% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 999px !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+
+  background: transparent !important;
+  border:
+    1px solid
+    var(--fcc-shared-avatar-border) !important;
+
+  box-shadow:
+    0 0 0 var(--fcc-shared-avatar-spread)
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 3.5%,
+        transparent
+      ),
+    0 0 0 calc(var(--fcc-shared-avatar-spread) * 2)
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-cyan) 2.7%,
+        transparent
+      ),
+    0 0 0 calc(var(--fcc-shared-avatar-spread) * 3)
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 2.1%,
+        transparent
+      ),
+    0 0 var(--fcc-shared-avatar-glow)
+      color-mix(
+        in srgb,
+        var(--fcc-shared-avatar-accent) 14%,
+        transparent
+      ) !important;
+
+  transition:
+    transform 360ms cubic-bezier(.2,.8,.2,1),
+    border-color 300ms ease,
+    box-shadow 300ms ease !important;
+}
+
+/* Orbita existente de cada interfaz. */
+:is(
+  .ranking-avatar-orbit,
+  .amigos-avatar-orbit,
+  .profesores-avatar-orbit,
+  .perfil-avatar-orbit,
+  .perfil-profesor-avatar-orbit,
+  .avatar-editor-avatar-orbit,
+  .curso-profesor-avatar-orbit
+) {
+  position: absolute !important;
+  inset: auto !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 78% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  z-index: 2 !important;
+  border-radius: 999px !important;
+  pointer-events: none !important;
+
+  border:
+    1px solid
+    color-mix(
+      in srgb,
+      var(--fcc-premium-cyan) 13%,
+      transparent
+    ) !important;
+
+  background:
+    conic-gradient(
+      from 26deg,
+      transparent 0deg 38deg,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-accent) 44%,
+        transparent
+      ) 38deg 45deg,
+      transparent 45deg 124deg,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-cyan) 46%,
+        transparent
+      ) 124deg 130deg,
+      transparent 130deg 217deg,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-accent) 34%,
+        transparent
+      ) 217deg 224deg,
+      transparent 224deg 308deg,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-cyan) 30%,
+        transparent
+      ) 308deg 314deg,
+      transparent 314deg 360deg
+    ) !important;
+
+  box-shadow:
+    inset 0 0 22px
+    color-mix(
+      in srgb,
+      var(--fcc-premium-accent) 4%,
+      transparent
+    ) !important;
+
+  transform:
+    translate(-50%, -50%)
+    rotate(-18deg) !important;
+
+  opacity: .98 !important;
+
+  transition:
+    transform 520ms cubic-bezier(.2,.8,.2,1),
+    opacity 300ms ease !important;
+}
+
+/* =========================================================
+   2. EL AVATAR SIEMPRE DELANTE DEL HALO
+   ========================================================= */
+
+:is(
+  .ranking-avatar-render,
+  .amigos-avatar-render,
+  .profesores-avatar-render,
+  .perfil-avatar-render,
+  .perfil-profesor-avatar-render,
+  .avatar-editor-avatar-render
+) {
+  z-index: 4 !important;
+}
+
+/*
+  Fade inferior global. Se aplica al RenderizadorAvatar real,
+  no al halo ni a loaders del editor.
+*/
+:is(
+  .ranking-avatar-stage,
+  .amigos-avatar-stage,
+  .profesores-avatar-stage,
+  .perfil-avatar-stage,
+  .perfil-profesor-avatar-stage,
+  .avatar-editor-avatar-stage,
+  .analytics-avatar-stage,
+  .curso-profesor-avatar-stage
+) .fcc-avatar-atomic {
+  position: relative !important;
+  z-index: 4 !important;
+
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 91%,
+      rgba(0, 0, 0, 0.95) 94%,
+      rgba(0, 0, 0, 0.55) 97.5%,
+      transparent 100%
+    ) !important;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 91%,
+      rgba(0, 0, 0, 0.95) 94%,
+      rgba(0, 0, 0, 0.55) 97.5%,
+      transparent 100%
+    ) !important;
+
+  -webkit-mask-repeat: no-repeat !important;
+  mask-repeat: no-repeat !important;
+  -webkit-mask-size: 100% 100% !important;
+  mask-size: 100% 100% !important;
+}
+
+/*
+  Widget del dashboard:
+  centrar el canvas del avatar con anclaje inferior.
+  El scale sigue viniendo de las Container Queries existentes.
+*/
+.fcc-dashboard-ranking-avatar .ranking-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 0 !important;
+  transform:
+    translateX(-50%)
+    scale(var(--fcc-widget-avatar-scale-top)) !important;
+  transform-origin: center bottom !important;
+}
+
+.fcc-widget-ranking-row.is-small
+  .fcc-dashboard-ranking-avatar
+  .ranking-avatar-render {
+  transform:
+    translateX(-50%)
+    scale(var(--fcc-widget-avatar-scale-small)) !important;
+}
+
+/* Analiticas: el Renderizador es 102px y su stage es 62px. */
+.analytics-avatar-stage > .fcc-avatar-atomic {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 0 !important;
+  transform: translateX(-50%) scale(.58) !important;
+  transform-origin: center bottom !important;
+}
+
+/*
+  Editor escritorio:
+  evita que el avatar supere la caja de 520px.
+  Los breakpoints moviles propios del editor siguen intactos.
+*/
+@media (min-width: 1024px) {
+  .avatar-editor-avatar-stage {
+    --avatar-editor-render-scale: 1.34 !important;
+    --avatar-editor-render-bottom: 0px !important;
+  }
+}
+
+/* =========================================================
+   3. MOVIMIENTO DEL HALO
+   ========================================================= */
+
+@media (hover: hover) {
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage,
+    .analytics-avatar-stage,
+    .curso-profesor-avatar-stage
+  ):hover::before {
+    transform:
+      translate(-50%, -50%)
+      rotate(5deg)
+      scale(1.018) !important;
+
+    filter:
+      drop-shadow(
+        0 0 18px
+        color-mix(
+          in srgb,
+          var(--fcc-shared-avatar-accent) 17%,
+          transparent
+        )
+      )
+      drop-shadow(
+        0 0 36px
+        color-mix(
+          in srgb,
+          var(--fcc-shared-avatar-cyan) 10%,
+          transparent
+        )
+      ) !important;
+  }
+
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage,
+    .analytics-avatar-stage,
+    .curso-profesor-avatar-stage
+  ):hover::after {
+    transform:
+      translate(-50%, -50%)
+      scale(1.025) !important;
+  }
+
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage,
+    .curso-profesor-avatar-stage
+  ):hover
+  :is(
+    .ranking-avatar-orbit,
+    .amigos-avatar-orbit,
+    .profesores-avatar-orbit,
+    .perfil-avatar-orbit,
+    .perfil-profesor-avatar-orbit,
+    .avatar-editor-avatar-orbit,
+    .curso-profesor-avatar-orbit
+  ) {
+    transform:
+      translate(-50%, -50%)
+      rotate(-5deg)
+      scale(1.018) !important;
+  }
+
+  /*
+    Rankings: la animacion responde al hover de TODA la tarjeta,
+    no solamente al avatar.
+  */
+  :is(
+    .fcc-widget-ranking-row,
+    .ranking-row,
+    .analytics-row.clickable
+  ):hover
+  :is(
+    .ranking-avatar-stage,
+    .analytics-avatar-stage
+  )::before {
+    transform:
+      translate(-50%, -50%)
+      rotate(5deg)
+      scale(1.018) !important;
+  }
+
+  :is(
+    .fcc-widget-ranking-row,
+    .ranking-row,
+    .analytics-row.clickable
+  ):hover
+  :is(
+    .ranking-avatar-stage,
+    .analytics-avatar-stage
+  )::after {
+    transform:
+      translate(-50%, -50%)
+      scale(1.025) !important;
+  }
+
+  :is(
+    .fcc-widget-ranking-row,
+    .ranking-row
+  ):hover
+  .ranking-avatar-orbit {
+    transform:
+      translate(-50%, -50%)
+      rotate(-5deg)
+      scale(1.018) !important;
+  }
+}
+
+/* =========================================================
+   4. SUPERFICIE UNIFICADA DE RANKINGS
+   ========================================================= */
+
+:is(
+  .fcc-widget-ranking-row,
+  .ranking-row,
+  .ranking-user-card,
+  .analytics-row,
+  .curso-ranking-item
+) {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+  border-radius: 22px !important;
+
+  border:
+    1px solid
+    var(--fcc-premium-border) !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--fcc-premium-surface),
+      var(--fcc-premium-surface-soft)
+    ) !important;
+
+  /*
+    Sin sombra exterior:
+    evita el rectangulo tenue que aparecia cuando el padre
+    tenia overflow-hidden.
+  */
+  box-shadow:
+    inset 0 1px 0
+    color-mix(
+      in srgb,
+      var(--fcc-premium-surface-strong) 72%,
+      transparent
+    ) !important;
+}
+
+:is(
+  .fcc-widget-ranking-row,
+  .ranking-row,
+  .ranking-user-card,
+  .analytics-row,
+  .curso-ranking-item
+)::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+
+  background:
+    linear-gradient(
+      128deg,
+      transparent 0 62%,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-cyan) 5%,
+        transparent
+      ) 62% 65%,
+      transparent 65% 72%,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-accent) 4%,
+        transparent
+      ) 72% 74%,
+      transparent 74% 100%
+    ) !important;
+
+  opacity: .95 !important;
+}
+
+:is(
+  .fcc-widget-ranking-row,
+  .ranking-row,
+  .ranking-user-card,
+  .analytics-row,
+  .curso-ranking-item
+) > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Top 1: exactamente la familia cromatica usada en Ranking. */
+:is(
+  .fcc-widget-ranking-row.is-first,
+  .ranking-row.is-first,
+  .analytics-row.top-1,
+  .curso-ranking-item:nth-child(1)
+) {
+  border-color:
+    color-mix(
+      in srgb,
+      #facc15 48%,
+      var(--fcc-premium-border)
+    ) !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(
+        in srgb,
+        #facc15 13%,
+        var(--fcc-premium-surface)
+      ),
+      var(--fcc-premium-surface-soft)
+    ) !important;
+}
+
+/* Top 2. */
+:is(
+  .fcc-widget-ranking-row.is-second,
+  .ranking-row.is-second,
+  .analytics-row.top-2,
+  .curso-ranking-item:nth-child(2)
+) {
+  border-color:
+    color-mix(
+      in srgb,
+      #94a3b8 44%,
+      var(--fcc-premium-border)
+    ) !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(
+        in srgb,
+        #94a3b8 12%,
+        var(--fcc-premium-surface)
+      ),
+      var(--fcc-premium-surface-soft)
+    ) !important;
+}
+
+/* Top 3. */
+:is(
+  .fcc-widget-ranking-row.is-third,
+  .ranking-row.is-third,
+  .analytics-row.top-3,
+  .curso-ranking-item:nth-child(3)
+) {
+  border-color:
+    color-mix(
+      in srgb,
+      #fb923c 42%,
+      var(--fcc-premium-border)
+    ) !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(
+        in srgb,
+        #fb923c 12%,
+        var(--fcc-premium-surface)
+      ),
+      var(--fcc-premium-surface-soft)
+    ) !important;
+}
+
+/* Analiticas conserva su forma unida cuando se expande. */
+.analytics-row.open {
+  border-radius: 20px 20px 8px 8px !important;
+}
+
+/* Hover solo donde ya existe una accion real. */
+@media (hover: hover) {
+  :is(
+    .fcc-widget-ranking-row,
+    .ranking-row,
+    .analytics-row.clickable
+  ):hover {
+    transform: translateY(-1px) !important;
+    border-color:
+      var(--fcc-premium-border-strong) !important;
+
+    box-shadow:
+      inset 0 1px 0
+      color-mix(
+        in srgb,
+        var(--fcc-premium-surface-strong) 82%,
+        transparent
+      ) !important;
+  }
+}
+
+/* =========================================================
+   5. RANKING + EXPERIENCIA SIN RECTANGULO EXTERIOR
+   ========================================================= */
+
+.fcc-widget-ranking-card,
+.fcc-xp-card {
+  background-clip: padding-box !important;
+
+  box-shadow:
+    inset 0 1px 0
+    color-mix(
+      in srgb,
+      var(--fcc-premium-surface-strong) 74%,
+      transparent
+    ) !important;
+}
+
+.fcc-widget-ranking-card::before,
+.fcc-xp-card::before,
+.fcc-xp-card::after {
+  border-radius: inherit !important;
+}
+
+/*
+  El contenido mantiene profundidad mediante bordes, degradados
+  y capas internas. No se usa una sombra exterior que pueda ser
+  cortada como rectangulo por la columna lateral.
+*/
+.widget-ranking,
+.barra-xp {
+  background: transparent !important;
+}
+
+/* Experiencia: misma superficie y lenguaje de Top 5. */
+.fcc-xp-card {
+  border-color:
+    var(--fcc-premium-border) !important;
+
+  background:
+    radial-gradient(
+      circle at 8% 10%,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-cyan) 8%,
+        transparent
+      ),
+      transparent 29%
+    ),
+    linear-gradient(
+      126deg,
+      transparent 0 65%,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-cyan) 5%,
+        transparent
+      ) 65% 69%,
+      transparent 69% 75%,
+      color-mix(
+        in srgb,
+        var(--fcc-premium-accent) 4%,
+        transparent
+      ) 75% 78%,
+      transparent 78% 100%
+    ),
+    linear-gradient(
+      135deg,
+      var(--fcc-premium-surface),
+      var(--fcc-premium-surface-soft)
+    ) !important;
+}
+
+/* =========================================================
+   6. MOVIL Y ACCESIBILIDAD
+   ========================================================= */
+
+@media (max-width: 640px) {
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .analytics-avatar-stage,
+    .curso-profesor-avatar-stage
+  ) {
+    --fcc-shared-avatar-spread: 3px;
+    --fcc-shared-avatar-glow: 18px;
+  }
+
+  :is(
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage
+  ) {
+    --fcc-shared-avatar-spread: 7px;
+    --fcc-shared-avatar-glow: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage,
+    .analytics-avatar-stage,
+    .curso-profesor-avatar-stage
+  )::before,
+  :is(
+    .ranking-avatar-stage,
+    .amigos-avatar-stage,
+    .profesores-avatar-stage,
+    .perfil-avatar-stage,
+    .perfil-profesor-avatar-stage,
+    .avatar-editor-avatar-stage,
+    .analytics-avatar-stage,
+    .curso-profesor-avatar-stage
+  )::after,
+  :is(
+    .ranking-avatar-orbit,
+    .amigos-avatar-orbit,
+    .profesores-avatar-orbit,
+    .perfil-avatar-orbit,
+    .perfil-profesor-avatar-orbit,
+    .avatar-editor-avatar-orbit,
+    .curso-profesor-avatar-orbit
+  ) {
+    transition: none !important;
+  }
+}
+
+/* FCC_GLOBAL_AVATAR_RANKING_VISUAL_V1_END */
+
+/* FCC_GLOBAL_AVATAR_RANKING_VISUAL_V2_START */
+
+/*
+  Ajuste fino posterior a la auditoria global.
+
+  V2:
+  1) Widget Top 5 usa mejor el alto extra, especialmente en profesor.
+  2) Perfil estudiante/profesor crece en escritorio sin romper movil.
+  3) Ranking completo gana presencia visual.
+  4) Analiticas conserva el alto de fila pero el avatar aprovecha el espacio.
+*/
+
+/* =========================================================
+   1. TOP 5 DEL DASHBOARD: CRECER CUANDO HAY ALTURA REAL
+   ========================================================= */
+
+/*
+  No se tocan etiqueta ni medalla.
+  Solo crecen avatar, nombre, puntos y espacios interiores.
+  El estudiante normalmente no alcanza estos altos porque comparte
+  columna con Experiencia; el profesor si puede aprovecharlos.
+*/
+
+@container fcc-ranking-slot (min-height: 720px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-gap: 11px !important;
+    --fcc-widget-row-py: 9px !important;
+    --fcc-widget-row-px: 14px !important;
+
+    --fcc-widget-avatar-stage-top: 90px !important;
+    --fcc-widget-avatar-stage-small: 70px !important;
+
+    --fcc-widget-avatar-scale-top: 1.04 !important;
+    --fcc-widget-avatar-scale-small: .88 !important;
+
+    --fcc-widget-name: 1.22rem !important;
+    --fcc-widget-name-small: 1.04rem !important;
+
+    --fcc-widget-points: 1.06rem !important;
+    --fcc-widget-points-small: .92rem !important;
+
+    padding: 16px !important;
+  }
+
+  .fcc-widget-ranking-header {
+    margin-bottom: 12px !important;
+  }
+
+  .fcc-widget-ranking-main {
+    gap: 12px !important;
+  }
+}
+
+@container fcc-ranking-slot (min-height: 840px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-gap: 14px !important;
+    --fcc-widget-row-py: 12px !important;
+    --fcc-widget-row-px: 16px !important;
+
+    --fcc-widget-avatar-stage-top: 108px !important;
+    --fcc-widget-avatar-stage-small: 82px !important;
+
+    --fcc-widget-avatar-scale-top: 1.20 !important;
+    --fcc-widget-avatar-scale-small: 1 !important;
+
+    --fcc-widget-name: 1.34rem !important;
+    --fcc-widget-name-small: 1.12rem !important;
+
+    --fcc-widget-points: 1.14rem !important;
+    --fcc-widget-points-small: .98rem !important;
+
+    padding: 18px !important;
+  }
+
+  .fcc-widget-ranking-header {
+    margin-bottom: 14px !important;
+  }
+
+  .fcc-widget-ranking-main {
+    gap: 14px !important;
+  }
+}
+
+.fcc-dashboard-ranking-avatar .ranking-avatar-render {
+  left: 50% !important;
+  bottom: 0 !important;
+  top: auto !important;
+  transform:
+    translateX(-50%)
+    scale(var(--fcc-widget-avatar-scale-top)) !important;
+  transform-origin: center bottom !important;
+}
+
+.fcc-widget-ranking-row.is-small
+  .fcc-dashboard-ranking-avatar
+  .ranking-avatar-render {
+  transform:
+    translateX(-50%)
+    scale(var(--fcc-widget-avatar-scale-small)) !important;
+}
+
+/* =========================================================
+   2. PERFIL ESTUDIANTE Y PROFESOR
+   ========================================================= */
+
+@media (min-width: 1025px) {
+  .perfil-user-card,
+  .perfil-profesor-user-card {
+    min-height: 670px !important;
+    padding-top: 26px !important;
+    padding-bottom: 26px !important;
+  }
+
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(440px, calc(100cqw - 24px)) !important;
+    --perfil-avatar-render-scale: 1.18 !important;
+    margin-bottom: 8px !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(440px, calc(100cqw - 24px)) !important;
+    --perfil-profesor-avatar-render-scale: 1.18 !important;
+    margin-bottom: 8px !important;
+  }
+
+  .perfil-name,
+  .perfil-profesor-name {
+    font-size:
+      clamp(2rem, 2.6vw, 2.72rem) !important;
+  }
+
+  .perfil-primary-button,
+  .perfil-profesor-primary-button {
+    min-height: 50px !important;
+    font-size: .98rem !important;
+  }
+}
+
+@container perfil-user (max-width: 470px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(400px, calc(100cqw - 20px)) !important;
+    --perfil-avatar-render-scale: 1.08 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 470px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(400px, calc(100cqw - 20px)) !important;
+    --perfil-profesor-avatar-render-scale: 1.08 !important;
+  }
+}
+
+@container perfil-user (max-width: 430px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(350px, calc(100cqw - 24px)) !important;
+    --perfil-avatar-render-scale: .94 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 430px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(350px, calc(100cqw - 24px)) !important;
+    --perfil-profesor-avatar-render-scale: .94 !important;
+  }
+}
+
+@container perfil-user (max-width: 360px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(310px, calc(100cqw - 20px)) !important;
+    --perfil-avatar-render-scale: .82 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 360px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(310px, calc(100cqw - 20px)) !important;
+    --perfil-profesor-avatar-render-scale: .82 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .perfil-user-card,
+  .perfil-profesor-user-card {
+    min-height: unset !important;
+  }
+
+  .perfil-name,
+  .perfil-profesor-name {
+    font-size:
+      clamp(1.8rem, 9vw, 2.35rem) !important;
+  }
+
+  .perfil-primary-button,
+  .perfil-profesor-primary-button {
+    min-height: 46px !important;
+    font-size: .92rem !important;
+  }
+}
+
+/* =========================================================
+   3. RANKING COMPLETO: TARJETAS Y CONTENIDO MAS PROTAGONISTAS
+   ========================================================= */
+
+@media (min-width: 768px) {
+  .ranking-panel {
+    padding:
+      clamp(20px, 2.6vw, 30px) !important;
+  }
+
+  .ranking-list {
+    gap: 16px !important;
+  }
+
+  .ranking-row {
+    min-height: 132px !important;
+    padding: 20px 22px !important;
+    gap: 20px !important;
+    border-radius: 26px !important;
+  }
+
+  .ranking-row.is-first,
+  .ranking-row.is-second,
+  .ranking-row.is-third {
+    min-height: 150px !important;
+  }
+
+  .ranking-row .ranking-avatar-stage {
+    width: 104px !important;
+    height: 104px !important;
+  }
+
+  .ranking-row .ranking-avatar-render {
+    transform: scale(1.18) !important;
+    transform-origin: center !important;
+    z-index: 4 !important;
+  }
+
+  .ranking-row.is-first .ranking-avatar-stage,
+  .ranking-row.is-second .ranking-avatar-stage,
+  .ranking-row.is-third .ranking-avatar-stage {
+    width: 124px !important;
+    height: 124px !important;
+  }
+
+  .ranking-row.is-first .ranking-avatar-render,
+  .ranking-row.is-second .ranking-avatar-render,
+  .ranking-row.is-third .ranking-avatar-render {
+    transform: scale(1.32) !important;
+  }
+
+  .ranking-row .ranking-name,
+  .ranking-row .ranking-user-name {
+    font-size: 1.28rem !important;
+    line-height: 1.08 !important;
+  }
+
+  .ranking-row .ranking-points {
+    font-size: 1.16rem !important;
+  }
+
+  .ranking-row .ranking-medal {
+    min-width: 64px !important;
+    min-height: 54px !important;
+    border-radius: 18px !important;
+    font-size: 1.08rem !important;
+  }
+
+  .ranking-user-card {
+    min-height: 166px !important;
+    padding: 26px !important;
+    gap: 22px !important;
+  }
+
+  .ranking-user-card .ranking-avatar-stage {
+    width: 132px !important;
+    height: 132px !important;
+  }
+
+  .ranking-user-card .ranking-avatar-render {
+    transform: scale(1.16) !important;
+    transform-origin: center !important;
+    z-index: 4 !important;
+  }
+
+  .ranking-user-card .ranking-position-pill {
+    min-width: 98px !important;
+    min-height: 78px !important;
+  }
+
+  .ranking-user-card .ranking-user-name {
+    font-size: 1.42rem !important;
+  }
+
+  .ranking-user-card .ranking-points {
+    font-size: 1.18rem !important;
+  }
+}
+
+/* =========================================================
+   4. ANALITICAS PROFESOR
+   ========================================================= */
+
+@media (min-width: 761px) {
+  .analytics-row {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .analytics-avatar-stage {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .analytics-avatar-stage > .fcc-avatar-atomic {
+    left: 50% !important;
+    bottom: 0 !important;
+    top: auto !important;
+
+    transform:
+      translateX(-50%)
+      scale(.72) !important;
+
+    transform-origin:
+      center bottom !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .analytics-avatar-stage > .fcc-avatar-atomic {
+    left: 50% !important;
+    bottom: 0 !important;
+    top: auto !important;
+
+    transform:
+      translateX(-50%)
+      scale(.94) !important;
+
+    transform-origin:
+      center bottom !important;
+  }
+}
+
+/* =========================================================
+   5. SEGURIDAD RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 640px) {
+  .ranking-row .ranking-avatar-render,
+  .ranking-row.is-first .ranking-avatar-render,
+  .ranking-row.is-second .ranking-avatar-render,
+  .ranking-row.is-third .ranking-avatar-render,
+  .ranking-user-card .ranking-avatar-render {
+    transform: scale(1) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcc-widget-ranking-row,
+  .ranking-row {
+    transition: none !important;
+  }
+}
+
+/* FCC_GLOBAL_AVATAR_RANKING_VISUAL_V2_END */
+
+/* FCC_COMPONENT_AVATAR_SIZING_V4_START */
+
+/*
+  V4 segura:
+  - RenderizadorAvatar recibe un size REAL mayor.
+  - Las vistas pequenas solo reducen hacia abajo.
+  - Nunca se modifica .fcc-avatar-atomic.
+  - Nunca se fuerza width/height interno del renderizador.
+*/
+
+/* =========================================================
+   1. TOP 5 DASHBOARD
+   ========================================================= */
+
+/* 112px top / 96px small. */
+.fcc-widget-ranking-card {
+  --fcc-widget-avatar-scale-top: .56 !important;
+  --fcc-widget-avatar-scale-small: .52 !important;
+}
+
+@container fcc-ranking-slot (min-height: 610px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-avatar-scale-top: .62 !important;
+    --fcc-widget-avatar-scale-small: .58 !important;
+  }
+}
+
+@container fcc-ranking-slot (min-height: 720px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-avatar-scale-top: .78 !important;
+    --fcc-widget-avatar-scale-small: .70 !important;
+  }
+}
+
+@container fcc-ranking-slot (min-height: 840px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-avatar-scale-top: .94 !important;
+    --fcc-widget-avatar-scale-small: .82 !important;
+  }
+}
+
+@container fcc-ranking-slot (max-height: 515px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-avatar-scale-top: .44 !important;
+    --fcc-widget-avatar-scale-small: .42 !important;
+  }
+}
+
+@container fcc-ranking-slot (max-height: 430px) {
+  .fcc-widget-ranking-card {
+    --fcc-widget-avatar-scale-top: .35 !important;
+    --fcc-widget-avatar-scale-small: .35 !important;
+  }
+}
+
+/* =========================================================
+   2. RANKING GLOBAL
+   ========================================================= */
+
+@media (min-width: 768px) {
+  .ranking-row .ranking-avatar-render,
+  .ranking-row.is-first .ranking-avatar-render,
+  .ranking-row.is-second .ranking-avatar-render,
+  .ranking-row.is-third .ranking-avatar-render,
+  .ranking-user-card .ranking-avatar-render {
+    transform: none !important;
+  }
+
+  .ranking-row.is-first .ranking-avatar-stage {
+    width: 138px !important;
+    height: 138px !important;
+  }
+
+  .ranking-row.is-second .ranking-avatar-stage {
+    width: 132px !important;
+    height: 132px !important;
+  }
+
+  .ranking-row.is-third .ranking-avatar-stage {
+    width: 126px !important;
+    height: 126px !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-avatar-stage {
+    width: 112px !important;
+    height: 112px !important;
+  }
+
+  .ranking-user-card .ranking-avatar-stage {
+    width: 132px !important;
+    height: 132px !important;
+  }
+}
+
+/* En movil se conserva la misma imagen de alta densidad, pero se reduce. */
+@media (max-width: 640px) {
+  .ranking-row.is-first .ranking-avatar-stage {
+    width: 108px !important;
+    height: 108px !important;
+  }
+
+  .ranking-row.is-second .ranking-avatar-stage {
+    width: 104px !important;
+    height: 104px !important;
+  }
+
+  .ranking-row.is-third .ranking-avatar-stage {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-avatar-stage {
+    width: 92px !important;
+    height: 92px !important;
+  }
+
+  .ranking-user-card .ranking-avatar-stage {
+    width: 104px !important;
+    height: 104px !important;
+  }
+
+  .ranking-row.is-first .ranking-avatar-render {
+    transform: scale(.78) !important;
+  }
+
+  .ranking-row.is-second .ranking-avatar-render {
+    transform: scale(.79) !important;
+  }
+
+  .ranking-row.is-third .ranking-avatar-render {
+    transform: scale(.79) !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-avatar-render {
+    transform: scale(.82) !important;
+  }
+
+  .ranking-user-card .ranking-avatar-render {
+    transform: scale(.79) !important;
+  }
+}
+
+/* =========================================================
+   3. MODALES DE USUARIO
+   ========================================================= */
+
+/* Render real: 300px. */
+@media (min-width: 769px) {
+  .ranking-profile-modal,
+  .amigos-profile-modal {
+    width: min(94vw, 860px) !important;
+  }
+
+  .profesores-modal {
+    width: min(94vw, 920px) !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-stage,
+  .amigos-profile-header .amigos-avatar-stage,
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 300px !important;
+    height: 300px !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render,
+  .profesores-modal-header .profesores-avatar-render {
+    transform: none !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  .ranking-profile-header .ranking-avatar-stage,
+  .amigos-profile-header .amigos-avatar-stage,
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 260px !important;
+    height: 260px !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render,
+  .profesores-modal-header .profesores-avatar-render {
+    transform: scale(.86) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ranking-profile-modal,
+  .amigos-profile-modal,
+  .profesores-modal {
+    width: min(94vw, 520px) !important;
+    max-height: 90dvh !important;
+    overflow-y: auto !important;
+  }
+
+  .ranking-profile-header,
+  .amigos-profile-header,
+  .profesores-modal-header {
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+    text-align: center !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-stage,
+  .amigos-profile-header .amigos-avatar-stage,
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 240px !important;
+    height: 240px !important;
+    max-width: calc(100vw - 76px) !important;
+    max-height: calc(100vw - 76px) !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render,
+  .profesores-modal-header .profesores-avatar-render {
+    transform: scale(.80) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .ranking-profile-header .ranking-avatar-stage,
+  .amigos-profile-header .amigos-avatar-stage,
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 200px !important;
+    height: 200px !important;
+  }
+
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render,
+  .profesores-modal-header .profesores-avatar-render {
+    transform: scale(.66) !important;
+  }
+}
+
+/* =========================================================
+   4. TARJETAS DE PROFESORES
+   ========================================================= */
+
+/* Render real: 140px. */
+@media (min-width: 768px) {
+  .profesores-card {
+    min-height: 170px !important;
+  }
+
+  .profesores-card .profesores-avatar-stage {
+    width: 140px !important;
+    height: 140px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .profesores-card .profesores-avatar-stage {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: scale(.85) !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .profesores-card .profesores-avatar-stage {
+    width: 108px !important;
+    height: 108px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: scale(.77) !important;
+  }
+}
+
+/* =========================================================
+   5. ANALITICAS
+   ========================================================= */
+
+/* Render real: 96px. */
+@media (min-width: 761px) {
+  .analytics-avatar-stage {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .analytics-avatar-stage > .fcc-avatar-atomic {
+    left: 50% !important;
+    bottom: 0 !important;
+    top: auto !important;
+    transform: translateX(-50%) scale(.75) !important;
+    transform-origin: center bottom !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .analytics-avatar-stage {
+    width: 96px !important;
+    height: 96px !important;
+  }
+
+  .analytics-avatar-stage > .fcc-avatar-atomic {
+    left: 50% !important;
+    bottom: 0 !important;
+    top: auto !important;
+    transform: translateX(-50%) !important;
+    transform-origin: center bottom !important;
+  }
+}
+
+/* =========================================================
+   6. PERFILES ESTUDIANTE / PROFESOR
+   ========================================================= */
+
+/* Render real: 440px. */
+@media (min-width: 1025px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size: 440px !important;
+    --perfil-avatar-render-scale: 1 !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size: 440px !important;
+    --perfil-profesor-avatar-render-scale: 1 !important;
+  }
+}
+
+@container perfil-user (max-width: 470px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(400px, calc(100cqw - 20px)) !important;
+    --perfil-avatar-render-scale: .90 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 470px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(400px, calc(100cqw - 20px)) !important;
+    --perfil-profesor-avatar-render-scale: .90 !important;
+  }
+}
+
+@container perfil-user (max-width: 430px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(350px, calc(100cqw - 24px)) !important;
+    --perfil-avatar-render-scale: .79 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 430px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(350px, calc(100cqw - 24px)) !important;
+    --perfil-profesor-avatar-render-scale: .79 !important;
+  }
+}
+
+@container perfil-user (max-width: 360px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(310px, calc(100cqw - 20px)) !important;
+    --perfil-avatar-render-scale: .70 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 360px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(310px, calc(100cqw - 20px)) !important;
+    --perfil-profesor-avatar-render-scale: .70 !important;
+  }
+}
+
+/* FCC_COMPONENT_AVATAR_SIZING_V4_END */
+
+/* FCC_TARGETED_UI_FIXES_V5_START */
+
+/*
+  Ajustes focalizados:
+  - Perfil: corregir avatar sobredimensionado.
+  - Profesores: texto mas protagonista y nombres largos seguros.
+  - Modal de profesor: avatar un poco mas grande.
+  - Ranking global: aumentar texto sin volver a agrandar avatares.
+*/
+
+/* PERFIL ESTUDIANTE / PROFESOR */
+@media (min-width: 1025px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size: 390px !important;
+    --perfil-avatar-render-scale: .90 !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size: 390px !important;
+    --perfil-profesor-avatar-render-scale: .90 !important;
+  }
+}
+
+@container perfil-user (max-width: 470px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(360px, calc(100cqw - 22px)) !important;
+    --perfil-avatar-render-scale: .84 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 470px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(360px, calc(100cqw - 22px)) !important;
+    --perfil-profesor-avatar-render-scale: .84 !important;
+  }
+}
+
+@container perfil-user (max-width: 430px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(320px, calc(100cqw - 24px)) !important;
+    --perfil-avatar-render-scale: .74 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 430px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(320px, calc(100cqw - 24px)) !important;
+    --perfil-profesor-avatar-render-scale: .74 !important;
+  }
+}
+
+@container perfil-user (max-width: 360px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(282px, calc(100cqw - 20px)) !important;
+    --perfil-avatar-render-scale: .65 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 360px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(282px, calc(100cqw - 20px)) !important;
+    --perfil-profesor-avatar-render-scale: .65 !important;
+  }
+}
+
+/* TARJETAS DE PROFESORES */
+.profesores-card-name-size-v5 {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  line-height: 1.08 !important;
+  font-size: clamp(1.18rem, 1.55vw, 1.36rem) !important;
+}
+
+.profesores-card-name-size-v5.is-long {
+  font-size: clamp(1.02rem, 1.22vw, 1.18rem) !important;
+}
+
+.profesores-card-name-size-v5.is-very-long {
+  font-size: clamp(.92rem, 1.02vw, 1.06rem) !important;
+}
+
+@media (max-width: 640px) {
+  .profesores-card-name-size-v5 {
+    font-size: clamp(1.08rem, 5.2vw, 1.24rem) !important;
+  }
+
+  .profesores-card-name-size-v5.is-long {
+    font-size: clamp(.98rem, 4.7vw, 1.12rem) !important;
+  }
+
+  .profesores-card-name-size-v5.is-very-long {
+    font-size: clamp(.90rem, 4.3vw, 1.02rem) !important;
+  }
+}
+
+/* MODAL DE PROFESOR */
+@media (min-width: 769px) {
+  .profesores-modal {
+    width: min(94vw, 940px) !important;
+  }
+
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 320px !important;
+    height: 320px !important;
+    flex-basis: 320px !important;
+  }
+
+  .profesores-modal-header .profesores-avatar-render {
+    transform: none !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  .profesores-modal-header .profesores-avatar-stage {
+    width: 268px !important;
+    height: 268px !important;
+  }
+
+  .profesores-modal-header .profesores-avatar-render {
+    transform: scale(.84) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .profesores-modal-header .profesores-avatar-stage {
+    width: min(230px, 66vw) !important;
+    height: min(230px, 66vw) !important;
+  }
+
+  .profesores-modal-header .profesores-avatar-render {
+    transform: scale(.72) !important;
+  }
+}
+
+/* RANKING GLOBAL: SOLO TEXTO, NO AVATAR */
+@media (min-width: 768px) {
+  .ranking-row.is-first .ranking-name,
+  .ranking-user-card .ranking-user-name {
+    font-size: clamp(1.54rem, 1.9vw, 1.76rem) !important;
+    line-height: 1.04 !important;
+  }
+
+  .ranking-row.is-first .ranking-points,
+  .ranking-user-card .ranking-points {
+    font-size: clamp(1.30rem, 1.55vw, 1.44rem) !important;
+    font-weight: 950 !important;
+  }
+
+  .ranking-row.is-second .ranking-name {
+    font-size: clamp(1.44rem, 1.72vw, 1.62rem) !important;
+  }
+
+  .ranking-row.is-second .ranking-points {
+    font-size: clamp(1.22rem, 1.42vw, 1.34rem) !important;
+    font-weight: 940 !important;
+  }
+
+  .ranking-row.is-third .ranking-name {
+    font-size: clamp(1.36rem, 1.58vw, 1.52rem) !important;
+  }
+
+  .ranking-row.is-third .ranking-points {
+    font-size: clamp(1.16rem, 1.34vw, 1.28rem) !important;
+    font-weight: 930 !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-name {
+    font-size: clamp(1.22rem, 1.36vw, 1.38rem) !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-points {
+    font-size: clamp(1.06rem, 1.18vw, 1.18rem) !important;
+    font-weight: 910 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ranking-row.is-first .ranking-name,
+  .ranking-user-card .ranking-user-name {
+    font-size: clamp(1.16rem, 5.5vw, 1.34rem) !important;
+  }
+
+  .ranking-row.is-first .ranking-points,
+  .ranking-user-card .ranking-points {
+    font-size: clamp(1rem, 4.7vw, 1.14rem) !important;
+  }
+
+  .ranking-row.is-second .ranking-name {
+    font-size: clamp(1.10rem, 5.1vw, 1.26rem) !important;
+  }
+
+  .ranking-row.is-third .ranking-name {
+    font-size: clamp(1.06rem, 4.9vw, 1.22rem) !important;
+  }
+}
+
+/* FCC_TARGETED_UI_FIXES_V5_END */
+
+/* FCC_PROFILE_TEACHERS_COURSE_V6_START */
+
+/*
+  V6 focalizada.
+  No toca RenderizadorAvatar internamente.
+
+  - Perfil vuelve a la geometria original probada:
+    render 350 / wrapper 350 / stage 390.
+  - Profesores y modal de curso comparten avatar base de 240px.
+  - En tablet y movil solo se reduce, nunca se amplia.
+*/
+
+/* =========================================================
+   1. VER PERFIL - ESTUDIANTE Y PROFESOR
+   ========================================================= */
+
+@media (min-width: 1025px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size: 390px !important;
+    --perfil-avatar-render-scale: 1 !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size: 390px !important;
+    --perfil-profesor-avatar-render-scale: 1 !important;
+  }
+}
+
+@container perfil-user (max-width: 430px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(320px, calc(100cqw - 32px)) !important;
+    --perfil-avatar-render-scale: .82 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 430px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(320px, calc(100cqw - 32px)) !important;
+    --perfil-profesor-avatar-render-scale: .82 !important;
+  }
+}
+
+@container perfil-user (max-width: 360px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(304px, calc(100cqw - 28px)) !important;
+    --perfil-avatar-render-scale: .78 !important;
+  }
+}
+
+@container perfil-profesor-user (max-width: 360px) {
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(304px, calc(100cqw - 28px)) !important;
+    --perfil-profesor-avatar-render-scale: .78 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(320px, calc(100vw - 64px)) !important;
+    --perfil-avatar-render-scale: .82 !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(320px, calc(100vw - 64px)) !important;
+    --perfil-profesor-avatar-render-scale: .82 !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .perfil-avatar-stage {
+    --perfil-avatar-stage-size:
+      min(304px, calc(100vw - 56px)) !important;
+    --perfil-avatar-render-scale: .78 !important;
+  }
+
+  .perfil-profesor-avatar-stage {
+    --perfil-profesor-avatar-stage-size:
+      min(304px, calc(100vw - 56px)) !important;
+    --perfil-profesor-avatar-render-scale: .78 !important;
+  }
+}
+
+/* =========================================================
+   2. PROFESORES - AVATAR MUCHO MAS PROTAGONISTA
+   ========================================================= */
+
+@media (min-width: 768px) {
+  .profesores-card {
+    min-height: 270px !important;
+    padding: 18px 20px !important;
+    gap: 22px !important;
+  }
+
+  .profesores-card .profesores-avatar-stage {
+    width: 240px !important;
+    height: 240px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: none !important;
+    transform-origin: center !important;
+  }
+}
+
+/*
+  En anchos donde tres columnas serian demasiado estrechas,
+  se mantiene un avatar grande pero se reduce antes de invadir el texto.
+*/
+@media (min-width: 768px) and (max-width: 1399px) {
+  .profesores-card .profesores-avatar-stage {
+    width: 210px !important;
+    height: 210px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: scale(.875) !important;
+  }
+
+  .profesores-card {
+    min-height: 240px !important;
+    gap: 18px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .profesores-card .profesores-avatar-stage {
+    width: 180px !important;
+    height: 180px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: scale(.75) !important;
+    transform-origin: center !important;
+  }
+
+  .profesores-card {
+    min-height: 210px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .profesores-card .profesores-avatar-stage {
+    width: 150px !important;
+    height: 150px !important;
+  }
+
+  .profesores-card .profesores-avatar-render {
+    transform: scale(.625) !important;
+  }
+
+  .profesores-card {
+    min-height: 178px !important;
+    gap: 12px !important;
+    padding: 14px !important;
+  }
+}
+
+/* =========================================================
+   3. MODAL DE CURSO - MISMO AVATAR BASE DE 240PX
+   ========================================================= */
+
+.fcc-course-modal-profesor-avatar {
+  width: 240px !important;
+  height: 240px !important;
+  margin-top: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+  transform: none !important;
+  transform-origin: center !important;
+}
+
+.fcc-course-modal-profesor-avatar-placeholder {
+  width: 96px !important;
+  height: 96px !important;
+}
+
+@media (max-width: 640px) {
+  .fcc-course-modal-profesor-avatar {
+    width: 180px !important;
+    height: 180px !important;
+  }
+
+  .fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+    transform: scale(.75) !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .fcc-course-modal-profesor-avatar {
+    width: 150px !important;
+    height: 150px !important;
+  }
+
+  .fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+    transform: scale(.625) !important;
+  }
+}
+
+/* FCC_PROFILE_TEACHERS_COURSE_V6_END */

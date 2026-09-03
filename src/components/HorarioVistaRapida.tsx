@@ -1185,7 +1185,7 @@ export default function HorarioVistaRapida({
       </div>
 
       {confirmarDescarga && (
-        <div className="fcc-schedule-confirm" role="dialog" aria-modal="true">
+        <div className="fcc-schedule-confirm fcc-modal-enter-standard" role="dialog" aria-modal="true">
           <div className="fcc-schedule-confirm-card">
             <strong>¿Descargar horario?</strong>
             <span>Se guardará una imagen PNG de tu horario actual.</span>

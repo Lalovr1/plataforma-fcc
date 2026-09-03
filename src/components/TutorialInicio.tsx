@@ -1,8 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ModalEditorAvatar from "./ModalEditorAvatar";
-import { AvatarConfig } from "./RenderizadorAvatar";
+import {
+  AvatarConfig,
+  prepararRecursosAvatarFCC,
+} from "./RenderizadorAvatar";
 import { supabase } from "@/utils/supabaseClient";
 import ModalLogroDesbloqueado from "./ModalLogroDesbloqueado";
 import AnimacionCofre from "@/components/AnimacionCofre";
@@ -10,6 +13,11 @@ import CargadorFCC from "@/components/CargadorFCC";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import { precargarImagenes } from "@/lib/imagenes";
 import { prepararRecursosCofreFCC } from "@/lib/recursosCofre";
+import {
+  completarAvatarConfigBaseEstudiante,
+  crearAvatarConfigInicialEstudiante,
+  esAvatarConfigV2,
+} from "@/lib/avatarConfig";
 import toast from "react-hot-toast";
 
 const RECURSOS_TUTORIAL = [
@@ -28,6 +36,7 @@ const RECURSOS_TUTORIAL = [
 export default function TutorialInicio() {
   const [cargando, setCargando] = useState(true);
   const [visible, setVisible] = useState(false);
+  const [entradaTutorialVisible, setEntradaTutorialVisible] = useState(false);
   const [errorRecursos, setErrorRecursos] = useState(false);
   const [reintentoRecursos, setReintentoRecursos] = useState(0);
 
@@ -76,7 +85,7 @@ export default function TutorialInicio() {
   const [ready, setReady] = useState(false);
   const [esMobile, setEsMobile] = useState(false);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
-  const [highlightContent, setHighlightContent] = useState<HTMLElement | null>(null);
+  const [highlightRadius, setHighlightRadius] = useState("16px");
 
   useEffect(() => {
     setReady(true);
@@ -95,19 +104,27 @@ export default function TutorialInicio() {
 
   const [mostrarEditor, setMostrarEditor] = useState(false);
   const [montarEditor, setMontarEditor] = useState(false);
-  const [animandoEditor, setAnimandoEditor] = useState(false);
   const [transicionSuave, setTransicionSuave] = useState(false);
-  const [ocultandoEditor, setOcultandoEditor] = useState(false); 
+  const [ocultandoEditor, setOcultandoEditor] = useState(false);
+  const ocultandoEditorRef = useRef(false);
   const [mostrarTooltip, setMostrarTooltip] = useState(true);
   const [tooltipVisibleMovil, setTooltipVisibleMovil] = useState(true);
-  const [resaltadoVisibleMovil, setResaltadoVisibleMovil] = useState(true);
+  const [tooltipForzadoOculto, setTooltipForzadoOculto] = useState(false);
+  const [tarjetaCrearAvatarFinalizada, setTarjetaCrearAvatarFinalizada] =
+    useState(false);
+  const [resaltadoVisible, setResaltadoVisible] = useState(true);
+  const [suspenderOverlayTutorialEditor, setSuspenderOverlayTutorialEditor] =
+    useState(false);
+  const [overlayTutorialSaliendoEditor, setOverlayTutorialSaliendoEditor] =
+    useState(false);
+  const transicionPasoRef = useRef(false);
   const [mostrarCofre, setMostrarCofre] = useState(false);
   const [recompensasCofre, setRecompensasCofre] = useState<any[]>([]);
 
   useEffect(() => {
     if (!visible) return;
 
-    if (mostrarEditor) return;
+    if (mostrarEditor || montarEditor) return;
 
     const bloquearScroll = (e: Event) => {
       e.preventDefault();
@@ -120,23 +137,121 @@ export default function TutorialInicio() {
       window.removeEventListener("wheel", bloquearScroll);
       window.removeEventListener("touchmove", bloquearScroll);
     };
-  }, [visible, mostrarEditor]);
+  }, [visible, mostrarEditor, montarEditor]);
 
-  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>({
-    gender: "masculino",
-    skin: "base/masculino/piel.png",
-    skinColor: "#f1c27d",
-    eyes: "Ojos1.png",
-    mouth: "Boca1.png",
-    nose: "Nariz1.png",
-    glasses: "none",
-    hair: "Cabello1.png",
-    playera: "Playera1",
-    sueter: "none",
-    collar: "none",
-    pulsera: "none",
-    accessory: "none",
-  });
+  const configAvatarFallback = crearAvatarConfigInicialEstudiante("masculino");
+  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(
+    configAvatarFallback
+  );
+  const [editorInitialConfig, setEditorInitialConfig] =
+    useState<AvatarConfig>(configAvatarFallback);
+  const [avatarInicialListo, setAvatarInicialListo] = useState(false);
+  const avatarConfigRef = useRef<AvatarConfig>(configAvatarFallback);
+
+  useEffect(() => {
+    avatarConfigRef.current = avatarConfig;
+  }, [avatarConfig]);
+
+  const tutorialListoParaEntrar =
+    visible &&
+    ready &&
+    avatarInicialListo &&
+    !cargando &&
+    !errorRecursos;
+
+  useEffect(() => {
+    if (!tutorialListoParaEntrar) {
+      setEntradaTutorialVisible(false);
+      return;
+    }
+
+    // Importante: este efecto arranca únicamente cuando ya dejó de renderizarse
+    // el cargador. Así existe al menos un frame real con opacity 0 antes de
+    // iniciar el fade del overlay y de la tarjeta de bienvenida.
+    setEntradaTutorialVisible(false);
+
+    let raf1 = 0;
+    let raf2 = 0;
+    const entrada = window.setTimeout(() => {
+      raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setEntradaTutorialVisible(true);
+        });
+      });
+    }, 120);
+
+    return () => {
+      window.clearTimeout(entrada);
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [tutorialListoParaEntrar]);
+
+  useEffect(() => {
+    let activo = true;
+
+    async function resolverAvatarInicial() {
+      try {
+        const {
+          data: { user },
+          error: errorSesion,
+        } = await supabase.auth.getUser();
+
+        if (errorSesion) throw errorSesion;
+        if (!user) return;
+
+        const { data: perfil, error: errorPerfil } = await supabase
+          .from("usuarios")
+          .select("avatar_config")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (errorPerfil) {
+          console.warn(
+            "[FCC Academy] No se pudo leer avatar_config antes del tutorial:",
+            errorPerfil
+          );
+        }
+
+        const configGuardada = perfil?.avatar_config as unknown;
+        const avatarRegistro = (
+          user.user_metadata as Record<string, unknown> | null
+        )?.avatar_inicial;
+
+        const generoRegistro =
+          avatarRegistro === "femenino" ? "femenino" : "masculino";
+
+        const configResuelta = esAvatarConfigV2(configGuardada)
+          ? completarAvatarConfigBaseEstudiante(configGuardada)
+          : crearAvatarConfigInicialEstudiante(generoRegistro);
+
+        if (!activo) return;
+
+        avatarConfigRef.current = configResuelta;
+        setAvatarConfig(configResuelta);
+        setEditorInitialConfig(configResuelta);
+      } catch (error) {
+        console.warn(
+          "[FCC Academy] Se usara el avatar inicial de respaldo:",
+          error
+        );
+      } finally {
+        if (activo) setAvatarInicialListo(true);
+      }
+    }
+
+    void resolverAvatarInicial();
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible || !avatarInicialListo) return;
+
+    void prepararRecursosAvatarFCC(avatarConfigRef.current, 380);
+  }, [visible, avatarInicialListo]);
 
   const [finalizado, setFinalizado] = useState(false);
 
@@ -209,6 +324,9 @@ export default function TutorialInicio() {
   ];
 
   const [stepTooltip, setStepTooltip] = useState(0);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const [tooltipCongelado, setTooltipCongelado] =
+    useState<React.CSSProperties | null>(null);
 
   const paso = pasos[step];
   const pasoTooltip = pasos[stepTooltip] ?? paso;
@@ -238,139 +356,250 @@ export default function TutorialInicio() {
     );
   };
 
+  const obtenerRadioResaltadoPaso = (
+    idPaso: string,
+    elemento: HTMLElement
+  ) => {
+    if (idPaso === "menu-lateral" && !esMobile) return "0px";
+
+    const estilo = window.getComputedStyle(elemento);
+    const radio = Number.parseFloat(estilo.borderRadius || "0");
+
+    if (Number.isFinite(radio) && radio >= 12) {
+      return estilo.borderRadius;
+    }
+
+    return "28px";
+  };
+
+  const secuenciaResaltadoRef = useRef(0);
+
   useEffect(() => {
     if (!visible) return;
 
-    let timeoutOcultar: NodeJS.Timeout;
-    let timeoutScroll: NodeJS.Timeout;
-    let timeoutResaltar: NodeJS.Timeout;
-    let timeoutTooltip: NodeJS.Timeout;
+    const secuencia = ++secuenciaResaltadoRef.current;
+    let timeoutOcultar: ReturnType<typeof setTimeout> | undefined;
+    let timeoutScroll: ReturnType<typeof setTimeout> | undefined;
+    let timeoutMostrar: ReturnType<typeof setTimeout> | undefined;
+    let timeoutTooltip: ReturnType<typeof setTimeout> | undefined;
+    let timeoutDescongelar: ReturnType<typeof setTimeout> | undefined;
+    let timeoutOverlay: ReturnType<typeof setTimeout> | undefined;
+    let rafId = 0;
 
-    const calcularResaltado = (elemento: HTMLElement) => {
+    const sigueVigente = () =>
+      secuencia === secuenciaResaltadoRef.current;
+
+    const medir = (elemento: HTMLElement) => {
       const rect = elemento.getBoundingClientRect();
+
       setHighlightRect(rect);
-      setHighlightContent(elemento.cloneNode(true) as HTMLElement);
+      setHighlightRadius(obtenerRadioResaltadoPaso(paso.id, elemento));
       setStepTooltip(step);
     };
 
-    const actualizarResaltado = () => {
-      if (!paso.selector) {
-        setHighlightRect(null);
-        setHighlightContent(null);
-        setStepTooltip(step);
-        setMostrarTooltip(true);
-        setTooltipVisibleMovil(true);
-        setResaltadoVisibleMovil(true);
-        return;
+    const mostrarDestino = (elemento: HTMLElement) => {
+      if (!sigueVigente()) return;
+
+      if (paso.id === "avatar-explicacion") {
+        // La tarjeta anterior ya no existe. Eliminamos su posición congelada
+        // ANTES de montar la nueva para que jamás pueda verse ni un frame en
+        // la ubicación vieja.
+        setTooltipCongelado(null);
       }
 
-      const elemento = obtenerElementoTutorial(paso.selector);
-
-      if (!elemento) {
-        setHighlightRect(null);
-        setHighlightContent(null);
-        setStepTooltip(step);
-        setMostrarTooltip(true);
-        setTooltipVisibleMovil(true);
-        setResaltadoVisibleMovil(true);
-        return;
-      }
-
-      if (esMobile && paso.id !== "menu-lateral") {
-        setTooltipVisibleMovil(false);
-        setResaltadoVisibleMovil(false);
-
-        timeoutOcultar = setTimeout(() => {
-          setMostrarTooltip(false);
-          setHighlightRect(null);
-          setHighlightContent(null);
-
-          elemento.scrollIntoView({
-            behavior: "smooth",
-            block: paso.id === "ranking" || paso.id === "xp" ? "end" : "start",
-            inline: "nearest",
-          });
-
-          timeoutScroll = setTimeout(() => {
-            calcularResaltado(elemento);
-
-            timeoutResaltar = setTimeout(() => {
-              setResaltadoVisibleMovil(true);
-            }, 500);
-
-            timeoutTooltip = setTimeout(() => {
-              setMostrarTooltip(true);
-              setTooltipVisibleMovil(true);
-            }, 2000);
-          }, 1000);
-        }, 650);
-
-        return;
-      }
-
-      calcularResaltado(elemento);
+      medir(elemento);
       setMostrarTooltip(true);
       setTooltipVisibleMovil(true);
-      setResaltadoVisibleMovil(true);
+
+      if (tooltipCongelado && paso.id !== "avatar-explicacion") {
+        timeoutDescongelar = setTimeout(() => {
+          if (!sigueVigente()) return;
+          setTooltipCongelado(null);
+        }, 70);
+      }
+
+      // La geometría cambia mientras el resaltado está oculto. Después se
+      // desvanece hacia dentro en su NUEVA posición, sin recorrer la pantalla.
+      if (paso.id === "avatar-explicacion") {
+        // Primero montamos el nuevo oscurecimiento todavía invisible. Unos
+        // milisegundos después aparecen juntos el hueco y el narrador.
+        timeoutOverlay = setTimeout(() => {
+          if (!sigueVigente()) return;
+          setOverlayTutorialSaliendoEditor(false);
+          setSuspenderOverlayTutorialEditor(false);
+        }, 40);
+      }
+
+      timeoutMostrar = setTimeout(() => {
+        if (!sigueVigente()) return;
+
+        if (paso.id === "avatar-explicacion") {
+          setOcultandoEditor(false);
+          ocultandoEditorRef.current = false;
+          setTooltipForzadoOculto(false);
+        }
+
+        setResaltadoVisible(true);
+      }, paso.id === "avatar-explicacion" ? 90 : 34);
     };
 
-    actualizarResaltado();
+    if (!paso.selector) {
+      setResaltadoVisible(false);
+      setHighlightRect(null);
+      setHighlightRadius("16px");
+      setStepTooltip(step);
+      setMostrarTooltip(true);
+      setTooltipVisibleMovil(true);
+      return;
+    }
 
-    let rafId = 0;
+    const elemento = obtenerElementoTutorial(paso.selector);
+
+    if (!elemento) {
+      setResaltadoVisible(false);
+      setHighlightRect(null);
+      setHighlightRadius("16px");
+      setStepTooltip(step);
+      setMostrarTooltip(true);
+      setTooltipVisibleMovil(true);
+      return;
+    }
+
+    // En móvil primero ocultamos el resaltado, desplazamos la página y sólo
+    // después medimos el destino definitivo. Nunca se muestra un rectángulo
+    // viajando mientras scrollIntoView sigue trabajando.
+    if (esMobile && paso.id !== "menu-lateral") {
+      setTooltipVisibleMovil(false);
+      setResaltadoVisible(false);
+
+      timeoutOcultar = setTimeout(() => {
+        if (!sigueVigente()) return;
+
+        setMostrarTooltip(false);
+        setHighlightRect(null);
+        setHighlightRadius("16px");
+
+        elemento.scrollIntoView({
+          behavior: "smooth",
+          block: paso.id === "ranking" || paso.id === "xp" ? "end" : "start",
+          inline: "nearest",
+        });
+
+        timeoutScroll = setTimeout(() => {
+          if (!sigueVigente()) return;
+
+          const actualizado = obtenerElementoTutorial(paso.selector!);
+          if (!actualizado) return;
+
+          mostrarDestino(actualizado);
+
+          timeoutTooltip = setTimeout(() => {
+            if (!sigueVigente()) return;
+            setMostrarTooltip(true);
+            setTooltipVisibleMovil(true);
+          }, 720);
+        }, 900);
+      }, 260);
+
+      return () => {
+        if (timeoutOcultar) clearTimeout(timeoutOcultar);
+        if (timeoutScroll) clearTimeout(timeoutScroll);
+        if (timeoutMostrar) clearTimeout(timeoutMostrar);
+        if (timeoutTooltip) clearTimeout(timeoutTooltip);
+        if (timeoutDescongelar) clearTimeout(timeoutDescongelar);
+        if (timeoutOverlay) clearTimeout(timeoutOverlay);
+      };
+    }
+
+    // En escritorio el hueco anterior se desvanece por completo; se cambia la
+    // geometría cuando ya no es visible y el nuevo hueco aparece suavemente.
+    // Sólo la tarjeta de la mascota recorre físicamente A -> B.
+    setResaltadoVisible(false);
+
+    timeoutOcultar = setTimeout(() => {
+      if (!sigueVigente()) return;
+
+      const actualizado = obtenerElementoTutorial(paso.selector!);
+      if (!actualizado) return;
+
+      mostrarDestino(actualizado);
+    }, paso.id === "avatar-explicacion" ? 0 : 220);
 
     const recalcularLigero = () => {
       if (!paso.selector) return;
 
       cancelAnimationFrame(rafId);
-
       rafId = requestAnimationFrame(() => {
-        const elemento = obtenerElementoTutorial(paso.selector);
+        if (!sigueVigente()) return;
 
-        if (!elemento) return;
+        const actualizado = obtenerElementoTutorial(paso.selector!);
+        if (!actualizado) return;
 
-        calcularResaltado(elemento);
+        const rect = actualizado.getBoundingClientRect();
+        setHighlightRect(rect);
+        setHighlightRadius(
+          obtenerRadioResaltadoPaso(paso.id, actualizado)
+        );
       });
     };
 
     window.addEventListener("resize", recalcularLigero);
-    window.addEventListener("scroll", recalcularLigero, true);
 
     return () => {
-      clearTimeout(timeoutOcultar);
-      clearTimeout(timeoutScroll);
-      clearTimeout(timeoutResaltar);
-      clearTimeout(timeoutTooltip);
+      if (timeoutOcultar) clearTimeout(timeoutOcultar);
+      if (timeoutScroll) clearTimeout(timeoutScroll);
+      if (timeoutMostrar) clearTimeout(timeoutMostrar);
+      if (timeoutTooltip) clearTimeout(timeoutTooltip);
+      if (timeoutDescongelar) clearTimeout(timeoutDescongelar);
+      if (timeoutOverlay) clearTimeout(timeoutOverlay);
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", recalcularLigero);
-      window.removeEventListener("scroll", recalcularLigero, true);
     };
-  }, [visible, step, esMobile, paso.selector]);
+  }, [visible, step, esMobile, paso.selector, paso.id]);
 
   useEffect(() => {
     if (paso.id === "crear-avatar") {
+      ocultandoEditorRef.current = false;
+      setOcultandoEditor(false);
+      setTarjetaCrearAvatarFinalizada(false);
       setTransicionSuave(true);
-      setAnimandoEditor(true);
+      setOverlayTutorialSaliendoEditor(false);
+      setSuspenderOverlayTutorialEditor(false);
       setMostrarTooltip(false);
+      setTooltipForzadoOculto(true);
 
       const abrir = setTimeout(() => {
+        setEditorInitialConfig(avatarConfigRef.current);
         setMontarEditor(true);
-      }, 400);
+      }, 180);
 
       return () => clearTimeout(abrir);
-    } else {
-      setTransicionSuave(false);
-
-      if (esMobile && paso.selector && paso.id !== "menu-lateral") {
-        setMostrarTooltip(false);
-        return;
-      }
-
-      setMostrarTooltip(true);
     }
-  }, [step]);
+
+    setTransicionSuave(false);
+
+    // Tras Crear avatar, la tarjeta anterior ya fue desmontada. No permitimos
+    // que este efecto genérico vuelva a montar el mismo contenedor durante el
+    // cambio de step. avatar-explicacion se monta únicamente desde
+    // mostrarDestino(), cuando su posición final ya está calculada.
+    if (paso.id === "avatar-explicacion" && ocultandoEditorRef.current) {
+      return;
+    }
+
+    if (paso.id === "preparar-avatar") {
+      setTooltipForzadoOculto(false);
+    }
+
+    if (esMobile && paso.selector && paso.id !== "menu-lateral") {
+      setMostrarTooltip(false);
+      return;
+    }
+
+    setMostrarTooltip(true);
+  }, [step, esMobile, paso.id, paso.selector]);
   
 
-  if (cargando || !ready) {
+  if (cargando || !ready || !avatarInicialListo) {
     return (
       <CargadorFCC
         flotante
@@ -420,34 +649,55 @@ export default function TutorialInicio() {
 
       if (errorActualizacion) throw errorActualizacion;
 
+      // Congelamos la tarjeta EXACTAMENTE en el punto donde está antes de
+      // empezar el cierre. El modal puede cambiar su geometría al desvanecerse,
+      // pero el lobito ya no vuelve a consultar esa posición ni puede "subir".
+      const rectTooltipActual = tooltipRef.current?.getBoundingClientRect();
+
+      if (rectTooltipActual) {
+        setTooltipCongelado({
+          top: rectTooltipActual.top,
+          left: rectTooltipActual.left,
+          right: "auto",
+          bottom: "auto",
+          width: rectTooltipActual.width,
+          maxWidth: rectTooltipActual.width,
+          transform: "none",
+          transition: "opacity 0.68s ease",
+        });
+      }
+
+      // Al terminar el editor NO desplazamos la tarjeta hacia el primer
+      // objetivo. El narrador y el editor se desvanecen juntos; después el
+      // siguiente paso aparece ya colocado sobre su destino.
+      setTooltipForzadoOculto(true);
+      setResaltadoVisible(false);
+
+      ocultandoEditorRef.current = true;
+      setOcultandoEditor(true);
+
       localStorage.setItem("avatar_config", JSON.stringify(newConfig));
-      window.dispatchEvent(new Event("avatarActualizado"));
 
-      setAvatarConfig(newConfig);
+      // El fade dura 680 ms. Damos 20 ms de margen para que el navegador
+      // pinte realmente opacity 0 y ENTONCES desmontamos definitivamente la
+      // tarjeta vieja. Desde ese punto ya no existe en el DOM y por lo tanto
+      // no puede reaparecer ni un solo frame.
+      window.setTimeout(() => {
+        setTarjetaCrearAvatarFinalizada(true);
+        setMostrarTooltip(false);
+        setMontarEditor(false);
+        setMostrarEditor(false);
 
-      setTimeout(() => {
-        if (esMobile) {
-          setMostrarTooltip(false);
+        avatarConfigRef.current = newConfig;
+        setAvatarConfig(newConfig);
+        window.dispatchEvent(new Event("avatarActualizado"));
 
-          setTimeout(() => {
-            setMostrarEditor(false);
-            setMontarEditor(false);
-
-            setTimeout(() => {
-              setStep((s) => s + 1);
-            }, 500);
-          }, 250);
-
-          return;
-        }
-
-        setStep((s) => s + 1);
-
-        setTimeout(() => {
-          setMostrarEditor(false);
-          setMontarEditor(false);
-        }, 250);
-      }, 500);
+        // Dejamos un intervalo mínimo completamente limpio antes de crear el
+        // siguiente paso. El nuevo mensaje nacerá ya en su destino.
+        window.setTimeout(() => {
+          setStep((s) => s + 1);
+        }, 60);
+      }, 700);
 
       return true;
     } catch (error) {
@@ -458,6 +708,20 @@ export default function TutorialInicio() {
 
   function siguiente() {
     if (paso.id === "crear-avatar") return;
+
+    if (paso.id === "bienvenida") {
+      if (transicionPasoRef.current) return;
+
+      transicionPasoRef.current = true;
+      setTooltipForzadoOculto(true);
+
+      window.setTimeout(() => {
+        setStep((actual) => actual + 1);
+        transicionPasoRef.current = false;
+      }, 240);
+
+      return;
+    }
 
     if (paso.id === "preparar-avatar") {
       setStep(step + 1);
@@ -483,11 +747,24 @@ export default function TutorialInicio() {
         throw new Error("No se pudo confirmar la sesión activa.");
       }
 
-      const { verificarLogros } = await import("@/utils/verificarLogros");
-      const nuevos = await verificarLogros(
-        sesion.user.id,
-        "tutorial",
-        1
+      const { prepararLogroTutorial } = await import(
+        "@/lib/finalizarTutorial"
+      );
+      const preparacion = await prepararLogroTutorial();
+
+      if (!preparacion.ok) {
+        throw new Error(
+          preparacion.error ||
+            "No se pudo preparar el logro del tutorial."
+        );
+      }
+
+      const { procesarResultadoLogros } = await import(
+        "@/utils/verificarLogros"
+      );
+      const nuevos = procesarResultadoLogros(
+        preparacion.resultado ?? {},
+        "tutorial"
       );
 
       if (nuevos.length > 0) {
@@ -582,10 +859,20 @@ export default function TutorialInicio() {
     return true;
   }
 
-  const tooltipStyle: React.CSSProperties = (() => {
-    const anchoTooltip = esMobile ? window.innerWidth - 32 : pasoTooltip.selector ? 430 : 340;
+  const tooltipStyleCalculado: React.CSSProperties = (() => {
+    const anchoTooltip = esMobile
+      ? window.innerWidth - 32
+      : pasoTooltip.selector
+        ? 430
+        : 340;
     const margenPantalla = 16;
     const margin = 20;
+    const altoTooltipActual =
+      tooltipRef.current?.getBoundingClientRect().height ??
+      (esMobile ? 300 : 300);
+
+    const duracionMovimiento =
+      pasoTooltip.id === "avatar-explicacion" ? "1.15s" : "0.72s";
 
     const base = {
       position: "fixed",
@@ -594,96 +881,192 @@ export default function TutorialInicio() {
       padding: esMobile ? "14px 16px" : "18px 22px",
       borderRadius: "12px",
       width: esMobile ? "auto" : `${anchoTooltip}px`,
-      maxWidth: esMobile ? "none" : pasoTooltip.selector ? "430px" : "340px",
-      boxShadow: "0 0 40px rgba(255,255,255,0.9), 0 0 30px var(--color-accent)",
+      maxWidth: esMobile
+        ? "none"
+        : pasoTooltip.selector
+          ? "430px"
+          : "340px",
+      boxShadow:
+        "0 18px 48px rgba(2,8,23,0.32), 0 0 0 1px rgba(47,128,255,0.9)",
+      border: "2px solid #2f80ff",
       zIndex: 10021,
-      transition: esMobile ? "all 0.9s ease-in-out" : "all 0.6s ease-in-out",
+      transition:
+        pasoTooltip.id === "crear-avatar"
+          ? "opacity 0.68s ease"
+          : pasoTooltip.id === "avatar-explicacion"
+            ? "opacity 0.55s ease, filter 0.55s ease"
+            : esMobile
+              ? "top 0.68s linear, left 0.68s linear, opacity 0.48s ease"
+              : `top ${duracionMovimiento} linear, left ${duracionMovimiento} linear, opacity 0.55s ease`,
       opacity: 1,
+      transform: "none",
     } as React.CSSProperties;
 
-    if (esMobile && pasoTooltip.pos !== "center" && pasoTooltip.id !== "crear-avatar" && highlightRect) {
+    if (
+      esMobile &&
+      pasoTooltip.pos !== "center" &&
+      pasoTooltip.id !== "crear-avatar" &&
+      highlightRect
+    ) {
       const r = highlightRect;
-      const tooltipAlto = 310;
       const margen = 12;
+      const alto = altoTooltipActual;
 
-      const hayEspacioAbajo = window.innerHeight - r.bottom > tooltipAlto + margen;
-      const hayEspacioArriba = r.top > tooltipAlto + margen;
+      const hayEspacioAbajo =
+        window.innerHeight - r.bottom > alto + margen;
+      const hayEspacioArriba = r.top > alto + margen;
 
       if (r.top < window.innerHeight * 0.45 && hayEspacioAbajo) {
         return {
           ...base,
-          left: "16px",
-          right: "16px",
+          left: 16,
+          right: 16,
           top: r.bottom + margen,
           bottom: "auto",
           width: "auto",
           maxWidth: "none",
-          transform: "none",
         };
       }
 
       if (hayEspacioArriba) {
         return {
           ...base,
-          left: "16px",
-          right: "16px",
-          top: r.top - margen,
+          left: 16,
+          right: 16,
+          top: Math.max(margenPantalla, r.top - margen - alto),
           bottom: "auto",
           width: "auto",
           maxWidth: "none",
-          transform: "translateY(-100%)",
         };
       }
 
       return {
         ...base,
-        left: "16px",
-        right: "16px",
-        bottom: "20px",
-        top: "auto",
+        left: 16,
+        right: 16,
+        top: Math.max(
+          margenPantalla,
+          window.innerHeight - alto - 20
+        ),
+        bottom: "auto",
         width: "auto",
         maxWidth: "none",
-        transform: "none",
       };
     }
 
     if (pasoTooltip.pos === "left-modal") {
+      const modal = document.querySelector(
+        ".avatar-editor-modal"
+      ) as HTMLElement | null;
+      const rectModal = modal?.getBoundingClientRect();
+      const separacionModal = 10;
+      const anchoMinimoUtil = 220;
+
+      if (rectModal) {
+        const espacioIzquierda =
+          rectModal.left - separacionModal - margenPantalla;
+        const espacioDerecha =
+          window.innerWidth -
+          rectModal.right -
+          separacionModal -
+          margenPantalla;
+
+        if (espacioIzquierda >= anchoMinimoUtil) {
+          const anchoSeguro = Math.min(340, espacioIzquierda);
+          const izquierda = Math.max(
+            margenPantalla,
+            rectModal.left - separacionModal - anchoSeguro
+          );
+
+          return {
+            ...base,
+            width: `${anchoSeguro}px`,
+            maxWidth: `${anchoSeguro}px`,
+            top: rectModal.top + rectModal.height / 2,
+            left: izquierda,
+            transform: "translateY(-50%)",
+          };
+        }
+
+        if (espacioDerecha >= anchoMinimoUtil) {
+          const anchoSeguro = Math.min(340, espacioDerecha);
+
+          return {
+            ...base,
+            width: `${anchoSeguro}px`,
+            maxWidth: `${anchoSeguro}px`,
+            top: rectModal.top + rectModal.height / 2,
+            left: rectModal.right + separacionModal,
+            transform: "translateY(-50%)",
+          };
+        }
+      }
+
+      const anchoSeguro = Math.min(
+        300,
+        Math.max(210, window.innerWidth - margenPantalla * 2)
+      );
+
+      return {
+        ...base,
+        width: `${anchoSeguro}px`,
+        maxWidth: `${anchoSeguro}px`,
+        top: margenPantalla,
+        left: margenPantalla,
+      };
+    }
+
+    if (pasoTooltip.id === "bienvenida") {
       return {
         ...base,
         top: "50%",
-        left: "3%",
-        transform: "translateY(-50%)",
+        left: esMobile ? 16 : "50%",
+        right: esMobile ? 16 : "auto",
+        width: esMobile ? "auto" : `${anchoTooltip}px`,
+        transform: esMobile
+          ? "translateY(-50%)"
+          : "translate(-50%, -50%)",
+        transition: "opacity 0.68s ease",
       };
     }
 
     if (!highlightRect || pasoTooltip.pos === "center") {
       return {
         ...base,
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
+        top: Math.max(
+          margenPantalla,
+          (window.innerHeight - altoTooltipActual) / 2
+        ),
+        left: Math.max(
+          margenPantalla,
+          (window.innerWidth - anchoTooltip) / 2
+        ),
       };
     }
 
     const r = highlightRect;
-
+    const alto = altoTooltipActual;
     const leftCentrado = limitar(
       r.left + r.width / 2 - anchoTooltip / 2,
       margenPantalla,
       window.innerWidth - anchoTooltip - margenPantalla
     );
 
-    const hayEspacioArriba = r.top > 260;
-    const hayEspacioAbajo = window.innerHeight - r.bottom > 260;
-    const hayEspacioDerecha = window.innerWidth - r.right > anchoTooltip + margin;
-    const hayEspacioIzquierda = r.left > anchoTooltip + margin;
+    const hayEspacioArriba =
+      r.top > alto + margin + margenPantalla;
+    const hayEspacioAbajo =
+      window.innerHeight - r.bottom >
+      alto + margin + margenPantalla;
+    const hayEspacioDerecha =
+      window.innerWidth - r.right > anchoTooltip + margin;
+    const hayEspacioIzquierda =
+      r.left > anchoTooltip + margin;
 
     if (pasoTooltip.pos === "top" && hayEspacioArriba) {
       return {
         ...base,
-        top: r.top - margin,
+        top: r.top - margin - alto,
         left: leftCentrado,
-        transform: "translateY(-100%)",
       };
     }
 
@@ -692,34 +1075,44 @@ export default function TutorialInicio() {
         ...base,
         top: r.bottom + margin,
         left: leftCentrado,
-        transform: "none",
       };
     }
 
     if (pasoTooltip.pos === "right" && hayEspacioDerecha) {
       return {
         ...base,
-        top: limitar(r.top, margenPantalla, window.innerHeight - 260),
+        top: limitar(
+          r.top,
+          margenPantalla,
+          Math.max(
+            margenPantalla,
+            window.innerHeight - alto - margenPantalla
+          )
+        ),
         left: r.right + margin,
-        transform: "none",
       };
     }
 
     if (pasoTooltip.pos === "left" && hayEspacioIzquierda) {
       return {
         ...base,
-        top: limitar(r.top, margenPantalla, window.innerHeight - 260),
+        top: limitar(
+          r.top,
+          margenPantalla,
+          Math.max(
+            margenPantalla,
+            window.innerHeight - alto - margenPantalla
+          )
+        ),
         left: r.left - anchoTooltip - margin,
-        transform: "none",
       };
     }
 
     if (hayEspacioArriba) {
       return {
         ...base,
-        top: r.top - margin,
+        top: r.top - margin - alto,
         left: leftCentrado,
-        transform: "translateY(-100%)",
       };
     }
 
@@ -728,35 +1121,58 @@ export default function TutorialInicio() {
         ...base,
         top: r.bottom + margin,
         left: leftCentrado,
-        transform: "none",
       };
     }
 
     if (hayEspacioDerecha) {
       return {
         ...base,
-        top: margenPantalla,
+        top: limitar(
+          r.top,
+          margenPantalla,
+          Math.max(
+            margenPantalla,
+            window.innerHeight - alto - margenPantalla
+          )
+        ),
         left: r.right + margin,
-        transform: "none",
       };
     }
 
     if (hayEspacioIzquierda) {
       return {
         ...base,
-        top: margenPantalla,
+        top: limitar(
+          r.top,
+          margenPantalla,
+          Math.max(
+            margenPantalla,
+            window.innerHeight - alto - margenPantalla
+          )
+        ),
         left: r.left - anchoTooltip - margin,
-        transform: "none",
       };
     }
 
     return {
       ...base,
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
+      top: Math.max(
+        margenPantalla,
+        (window.innerHeight - alto) / 2
+      ),
+      left: Math.max(
+        margenPantalla,
+        (window.innerWidth - anchoTooltip) / 2
+      ),
     };
   })();
+
+  const tooltipStyle: React.CSSProperties = tooltipCongelado
+    ? {
+        ...tooltipStyleCalculado,
+        ...tooltipCongelado,
+      }
+    : tooltipStyleCalculado;
 
   function obtenerImagenMascota(idPaso: string): string {
     switch (idPaso) {
@@ -830,9 +1246,8 @@ export default function TutorialInicio() {
 
       setMostrarTooltip(false);
       setTooltipVisibleMovil(false);
-      setResaltadoVisibleMovil(false);
+      setResaltadoVisible(false);
       setHighlightRect(null);
-      setHighlightContent(null);
 
       setVisible(false);
       (window as any).__tutorialActivo = false;
@@ -846,67 +1261,217 @@ export default function TutorialInicio() {
       window.dispatchEvent(new Event("tutorial:completado"));
     }
 
+
+    const radioResaltado = highlightRect
+      ? Math.max(
+          0,
+          Math.min(
+            Number.parseFloat(highlightRadius) || 0,
+            highlightRect.width / 2,
+            highlightRect.height / 2
+          )
+        )
+      : 0;
+
   return (
   <>
-    {/* 🔹 Fondo uniforme con animación */}
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9997,
-        backgroundColor:
-          paso.id === "bienvenida"
-            ? "rgba(0,0,0,0.65)"
-            : "rgba(0,0,0,0.45)",
-        backdropFilter: "blur(2px)",
-        transition: "all 0.8s ease-in-out",
-        opacity: transicionSuave ? 0.6 : 1,
-        animation: "fadeIn 0.6s ease-in-out",
-      }}
-    />
+    {/* Fondo completo únicamente cuando no hay un objetivo. Cuando existe
+        un objetivo usamos cuatro paneles alrededor: el elemento real queda
+        visible en el hueco, pero nunca se clona ni se vuelve interactivo. */}
+    {!suspenderOverlayTutorialEditor && !highlightRect && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9997,
+          backgroundColor:
+            paso.id === "bienvenida"
+              ? "rgba(0,0,0,0.65)"
+              : "rgba(0,0,0,0.45)",
+          backdropFilter: "blur(2px)",
+          transition: overlayTutorialSaliendoEditor
+            ? "opacity 0.68s ease"
+            : "opacity 0.8s ease",
+          opacity: overlayTutorialSaliendoEditor
+            ? 0
+            : entradaTutorialVisible
+              ? transicionSuave
+                ? 0.6
+                : 1
+              : 0,
+        }}
+      />
+    )}
 
-      {/* 🔹 Resaltado */}
-      {highlightRect &&
-        highlightContent &&
+      {!suspenderOverlayTutorialEditor &&
+        highlightRect &&
         createPortal(
-          <div
-            style={{
-              position: "fixed",
-              top: highlightRect.top,
-              left: highlightRect.left,
-              width: highlightRect.width,
-              height: highlightRect.height,
-              zIndex: 10002,
-              borderRadius: "14px",
-              boxShadow:
-                "0 0 45px 15px rgba(255,255,255,0.9), 0 0 25px 10px var(--color-accent)",
-              background: "rgba(255,255,255,0.02)",
-              overflow: "hidden",
-              transition: "box-shadow 1s ease-in-out, opacity 0.8s ease",
-              animation: "brilloFlotante 3s ease-in-out infinite",
-              opacity: ocultandoEditor || (esMobile && !resaltadoVisibleMovil) ? 0 : 1,
-              transitionDuration: "0.8s",
-            }}
-            dangerouslySetInnerHTML={{ __html: highlightContent.outerHTML }}
-          />,
+          <>
+            {[
+              {
+                key: "top",
+                top: 0,
+                left: 0,
+                width: window.innerWidth,
+                height: Math.max(0, highlightRect.top),
+              },
+              {
+                key: "left",
+                top: Math.max(0, highlightRect.top),
+                left: 0,
+                width: Math.max(0, highlightRect.left),
+                height: Math.max(0, highlightRect.height),
+              },
+              {
+                key: "right",
+                top: Math.max(0, highlightRect.top),
+                left: Math.min(window.innerWidth, highlightRect.right),
+                width: Math.max(0, window.innerWidth - highlightRect.right),
+                height: Math.max(0, highlightRect.height),
+              },
+              {
+                key: "bottom",
+                top: Math.min(window.innerHeight, highlightRect.bottom),
+                left: 0,
+                width: window.innerWidth,
+                height: Math.max(0, window.innerHeight - highlightRect.bottom),
+              },
+            ].map((panel) => (
+              <div
+                key={panel.key}
+                aria-hidden="true"
+                style={{
+                  position: "fixed",
+                  top: panel.top,
+                  left: panel.left,
+                  width: panel.width,
+                  height: panel.height,
+                  zIndex: 9998,
+                  backgroundColor: "rgba(0,0,0,0.48)",
+                  backdropFilter: "blur(2px)",
+                  pointerEvents: "auto",
+                  transition: "opacity 0.38s ease",
+                  opacity:
+                    resaltadoVisible && !ocultandoEditor ? 1 : 0,
+                }}
+              />
+            ))}
+
+            {/* Las cuatro esquinas completan el oscurecimiento del hueco.
+                Así el recorte respeta exactamente el border-radius real de
+                la tarjeta señalada y no queda un rectángulo cuadrado. */}
+            {radioResaltado > 0 &&
+              [
+                {
+                  key: "corner-tl",
+                  top: highlightRect.top,
+                  left: highlightRect.left,
+                  center: "100% 100%",
+                },
+                {
+                  key: "corner-tr",
+                  top: highlightRect.top,
+                  left: highlightRect.right - radioResaltado,
+                  center: "0% 100%",
+                },
+                {
+                  key: "corner-bl",
+                  top: highlightRect.bottom - radioResaltado,
+                  left: highlightRect.left,
+                  center: "100% 0%",
+                },
+                {
+                  key: "corner-br",
+                  top: highlightRect.bottom - radioResaltado,
+                  left: highlightRect.right - radioResaltado,
+                  center: "0% 0%",
+                },
+              ].map((corner) => (
+                <div
+                  key={corner.key}
+                  aria-hidden="true"
+                  style={{
+                    position: "fixed",
+                    top: corner.top,
+                    left: corner.left,
+                    width: radioResaltado,
+                    height: radioResaltado,
+                    zIndex: 9999,
+                    pointerEvents: "auto",
+                    background: `radial-gradient(circle at ${corner.center}, transparent 0 ${Math.max(
+                      0,
+                      radioResaltado - 1
+                    )}px, rgba(0,0,0,0.48) ${radioResaltado}px)`,
+                    transition: "opacity 0.38s ease",
+                    opacity:
+                      resaltadoVisible && !ocultandoEditor ? 1 : 0,
+                  }}
+                />
+              ))}
+
+            {/* Bloqueador transparente exactamente sobre el elemento señalado:
+                conserva su apariencia real, pero impide navegar o pulsarlo. */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: "fixed",
+                top: highlightRect.top,
+                left: highlightRect.left,
+                width: highlightRect.width,
+                height: highlightRect.height,
+                zIndex: 10002,
+                borderRadius: highlightRadius,
+                border: "2px solid #2f80ff",
+                boxShadow:
+                  "0 0 38px 10px rgba(255,255,255,0.62), 0 0 24px 6px rgba(47,128,255,0.62)",
+                background: "transparent",
+                pointerEvents: "auto",
+                transition: "opacity 0.38s ease",
+                opacity:
+                  resaltadoVisible && !ocultandoEditor ? 1 : 0,
+              }}
+            />
+          </>,
           document.body
         )}
 
       {/* 🔹 Tooltip con mascota */}
-      {mostrarTooltip && (
+      {mostrarTooltip &&
+        !(pasoTooltip.id === "crear-avatar" && tarjetaCrearAvatarFinalizada) && (
         <div
+          ref={tooltipRef}
           className="fcc-reward-overlay"
           style={{
             ...tooltipStyle,
-            opacity: esMobile ? (tooltipVisibleMovil ? 1 : 0) : 1,
+            opacity:
+              entradaTutorialVisible &&
+              !tooltipForzadoOculto &&
+              !ocultandoEditor &&
+              (esMobile ? tooltipVisibleMovil : true)
+                ? 1
+                : 0,
+            filter: "none",
+            // Durante la salida del editor la tarjeta depende UNICAMENTE
+            // de opacity. Desactivamos cualquier animation CSS que pudiera
+            // competir con ese valor (las animaciones CSS tienen prioridad
+            // sobre una declaración normal de opacity).
             transition:
-              esMobile && pasoTooltip.id !== "menu-lateral"
-                ? "opacity 1.1s ease, filter 1.1s ease"
-                : tooltipStyle.transition,
+              ocultandoEditor && pasoTooltip.id === "crear-avatar"
+                ? "opacity 0.68s ease"
+                : tooltipForzadoOculto
+                  ? pasoTooltip.id === "crear-avatar"
+                    ? "opacity 0.68s ease"
+                    : "opacity 0.22s ease"
+                  : tooltipStyle.transition,
             animation:
-              pasoTooltip.id === "crear-avatar" || esMobile
-                ? "aparecerTooltipSuave 1.1s ease-out"
-                : undefined,
+              ocultandoEditor && pasoTooltip.id === "crear-avatar"
+                ? "none"
+                : esMobile && pasoTooltip.id !== "crear-avatar"
+                  ? "aparecerTooltipSuave 1.1s ease-out"
+                  : undefined,
+            willChange:
+              pasoTooltip.id === "crear-avatar" ? "opacity" : undefined,
+            pointerEvents: ocultandoEditor ? "none" : "auto",
           }}
         >
           {/* 🐺 Imagen de mascota (centrada y más grande) */}
@@ -970,7 +1535,9 @@ export default function TutorialInicio() {
                   opacity: finalizado ? 0.72 : 1,
                 }}
               >
-                {step < pasos.length - 1
+                {pasoTooltip.id === "bienvenida"
+                  ? "Comenzar"
+                  : step < pasos.length - 1
                   ? "Siguiente"
                   : finalizado
                   ? "Preparando bienvenida..."
@@ -986,14 +1553,14 @@ export default function TutorialInicio() {
         className="tutorial-editor-avatar"
         style={{
           opacity: mostrarEditor ? (ocultandoEditor ? 0 : 1) : 0,
-          transform: mostrarEditor ? (ocultandoEditor ? "scale(0.97)" : "scale(1)") : "scale(0.97)",
-          transition: "opacity 0.8s ease, transform 0.8s ease",
+          transform: "none",
+          transition: "opacity 0.68s ease",
           zIndex: 10020,
           position: mostrarEditor ? "fixed" : "absolute",
           inset: 0,
           pointerEvents: mostrarEditor ? "auto" : "none",
-          backgroundColor: mostrarEditor ? "rgba(0,0,0,0.4)" : "transparent",
-          overflowY: mostrarEditor ? "auto" : "hidden",
+          backgroundColor: "transparent",
+          overflow: "hidden",
           touchAction: mostrarEditor ? "auto" : "none",
           WebkitOverflowScrolling: "touch",
         }}
@@ -1002,17 +1569,30 @@ export default function TutorialInicio() {
           <ModalEditorAvatar
             open={montarEditor}
             onClose={() => {}}
-            initialConfig={avatarConfig}
+            initialConfig={editorInitialConfig}
             onSave={guardarAvatar}
             forzado={true}
+            desvanecerSalida={ocultandoEditor}
+            duracionTransicionMs={680}
+            desactivarAnimacionEntrada
             onReady={() => {
-              if (mostrarEditor) return;
+              if (mostrarEditor || ocultandoEditorRef.current) return;
 
+              // Modal y tarjeta arrancan en el MISMO render y duran 680 ms.
+              // El overlay del tutorial no desaparece de golpe: hace un
+              // crossfade de 680 ms contra el overlay nativo del editor.
               setMostrarEditor(true);
+              setMostrarTooltip(true);
+              setTooltipVisibleMovil(true);
+              setTooltipForzadoOculto(false);
+              setOverlayTutorialSaliendoEditor(true);
 
-              if (!esMobile) {
-                window.setTimeout(() => setMostrarTooltip(true), 800);
-              }
+              window.setTimeout(() => {
+                if (!ocultandoEditorRef.current) {
+                  setSuspenderOverlayTutorialEditor(true);
+                  setOverlayTutorialSaliendoEditor(false);
+                }
+              }, 680);
             }}
           />
         )}

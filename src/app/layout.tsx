@@ -90,10 +90,9 @@ const themeScript = `
 
   function prepararTransicionInicial() {
     var pathname = window.location.pathname;
-    var esRutaInterna =
-      pathname.indexOf("/dashboard") === 0 ||
-      pathname.indexOf("/curso/") === 0;
-    var modo = esRutaInterna ? "pagina" : "";
+    var esRutaDashboard = pathname.indexOf("/dashboard") === 0;
+    var esRutaCurso = pathname.indexOf("/curso/") === 0;
+    var modo = esRutaCurso ? "pantalla" : esRutaDashboard ? "pagina" : "";
 
     try {
       var rawPendiente = sessionStorage.getItem("fcc:navegacion-pendiente");
@@ -128,7 +127,7 @@ const themeScript = `
   try {
     var tema = temaDefault;
 
-    var rutasPublicas = ["/login", "/register", "/reset-password"];
+    var rutasPublicas = ["/login", "/register", "/reset-password", "/auth"];
     var esRutaPublica = rutasPublicas.some(function (ruta) {
       return window.location.pathname === ruta || window.location.pathname.startsWith(ruta + "/");
     });

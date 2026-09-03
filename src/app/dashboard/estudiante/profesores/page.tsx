@@ -11,6 +11,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -24,6 +25,9 @@ import toast from "react-hot-toast";
 import { CheckCircle2, RotateCcw, Search, UserPlus, X } from "lucide-react";
 import CargadorFCC from "@/components/CargadorFCC";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+
+const LIMITE_PREPARACION_VISUAL_PERFIL_MS = 30_000;
+const DURACION_MINIMA_APERTURA_PERFIL_MS = 950;
 
 type Usuario = {
   id: string;
@@ -101,9 +105,11 @@ function normalizarUsuario(value: any): Usuario | null {
 function AvatarProfesores({
   config,
   size,
+  onReady,
 }: {
   config: AvatarConfig | null;
   size: number;
+  onReady?: () => void;
 }) {
   return (
     <div
@@ -113,7 +119,11 @@ function AvatarProfesores({
       <span className="profesores-avatar-orbit" />
 
       <div className="profesores-avatar-render">
-        <RenderizadorAvatar config={config ?? defaultAvatar} size={size} />
+        <RenderizadorAvatar
+          config={config ?? defaultAvatar}
+          size={size}
+          onReady={onReady}
+        />
       </div>
     </div>
   );
@@ -130,6 +140,9 @@ export default function ProfesoresPage() {
   const [selectedProfesor, setSelectedProfesor] = useState<Usuario | null>(
     null
   );
+  const [preparandoProfesorId, setPreparandoProfesorId] = useState<
+    string | null
+  >(null);
   const [cursos, setCursos] = useState<Materia[]>([]);
   const [loadingCursos, setLoadingCursos] = useState(false);
   const [errorCursos, setErrorCursos] = useState(false);
@@ -144,6 +157,87 @@ export default function ProfesoresPage() {
   const [selectedSeccion, setSelectedSeccion] = useState<string | null>(null);
   const [visitante, setVisitante] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [perfilVisualListo, setPerfilVisualListo] = useState(false);
+  const [avatarPerfilListo, setAvatarPerfilListo] = useState(false);
+  const inicioPreparacionPerfilRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      !selectedProfesor ||
+      !preparandoProfesorId ||
+      selectedProfesor.id !== preparandoProfesorId ||
+      perfilVisualListo ||
+      !avatarPerfilListo ||
+      loadingCursos
+    ) {
+      return;
+    }
+
+    let cancelado = false;
+    let frame1: number | null = null;
+    let frame2: number | null = null;
+    const idPreparado = preparandoProfesorId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const espera = Math.max(
+      0,
+      DURACION_MINIMA_APERTURA_PERFIL_MS - transcurrido
+    );
+
+    const timer = window.setTimeout(() => {
+      frame1 = window.requestAnimationFrame(() => {
+        frame2 = window.requestAnimationFrame(() => {
+          if (cancelado) return;
+
+          setPerfilVisualListo(true);
+          setPreparandoProfesorId((actual) =>
+            actual === idPreparado ? null : actual
+          );
+        });
+      });
+    }, espera);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+      if (frame1 !== null) window.cancelAnimationFrame(frame1);
+      if (frame2 !== null) window.cancelAnimationFrame(frame2);
+    };
+  }, [
+    selectedProfesor,
+    preparandoProfesorId,
+    perfilVisualListo,
+    avatarPerfilListo,
+    loadingCursos,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedProfesor ||
+      !preparandoProfesorId ||
+      selectedProfesor.id !== preparandoProfesorId ||
+      perfilVisualListo
+    ) {
+      return;
+    }
+
+    const idPreparado = preparandoProfesorId;
+    const transcurrido =
+      performance.now() - inicioPreparacionPerfilRef.current;
+    const restante = Math.max(
+      0,
+      LIMITE_PREPARACION_VISUAL_PERFIL_MS - transcurrido
+    );
+
+    const limite = window.setTimeout(() => {
+      setPerfilVisualListo(true);
+      setPreparandoProfesorId((actual) =>
+        actual === idPreparado ? null : actual
+      );
+    }, restante);
+
+    return () => window.clearTimeout(limite);
+  }, [selectedProfesor, preparandoProfesorId, perfilVisualListo]);
 
   useEffect(() => {
     const init = async () => {
@@ -212,6 +306,8 @@ export default function ProfesoresPage() {
 
   const cerrarModalProfesor = () => {
     setSelectedProfesor(null);
+    setPerfilVisualListo(false);
+    setAvatarPerfilListo(false);
     setCursos([]);
     setSelectedCurso(null);
     setSelectedCarrera(null);
@@ -230,7 +326,14 @@ export default function ProfesoresPage() {
   };
 
   const openProfesor = async (p: Usuario) => {
-    setSelectedProfesor(p);
+    if (preparandoProfesorId) return;
+
+    const inicio = performance.now();
+    inicioPreparacionPerfilRef.current = inicio;
+
+    setPreparandoProfesorId(p.id);
+    setPerfilVisualListo(false);
+    setAvatarPerfilListo(false);
     setSelectedCurso(null);
     setSelectedCarrera(null);
     setSelectedPeriodo(null);
@@ -242,10 +345,16 @@ export default function ProfesoresPage() {
     setLoadingCursos(true);
     setErrorCursos(false);
 
-    const cursosPromise = supabase
-      .from("materias")
-      .select(
-        `
+    // El portal se monta oculto inmediatamente: avatar y consulta de cursos
+    // avanzan en paralelo. El efecto de readiness no lo revela hasta que ambos
+    // caminos hayan terminado.
+    setSelectedProfesor(p);
+
+    try {
+      const cursosPromise = supabase
+        .from("materias")
+        .select(
+          `
         id,nombre,
         curso_carreras(
           id, semestre, area,
@@ -253,52 +362,52 @@ export default function ProfesoresPage() {
           curso_periodos (id, nombre, anio)
         )
       `
-      )
-      .eq("profesor_id", p.id)
-      .eq("visible", true)
-      .order("nombre", { ascending: true });
+        )
+        .eq("profesor_id", p.id)
+        .eq("visible", true)
+        .order("nombre", { ascending: true });
 
-    const progresoPromise = meId
-      ? supabase
-          .from("progreso")
-          .select("materia_id, visible")
-          .eq("usuario_id", meId)
-      : Promise.resolve({ data: [] as any[], error: null });
+      const progresoPromise = meId
+        ? supabase
+            .from("progreso")
+            .select("materia_id, visible")
+            .eq("usuario_id", meId)
+        : Promise.resolve({ data: [] as any[], error: null });
 
-    const [
-      { data: materiasData, error: materiasError },
-      { data: progresoRows, error: progresoError },
-    ] = await Promise.all([cursosPromise, progresoPromise]);
+      const [
+        { data: materiasData, error: materiasError },
+        { data: progresoRows, error: progresoError },
+      ] = await Promise.all([
+        cursosPromise,
+        progresoPromise,
+      ]);
 
-    if (materiasError || progresoError) {
-      console.error(
-        "Error cargando cursos del profesor:",
-        materiasError ?? progresoError
-      );
+      if (materiasError || progresoError) {
+        throw materiasError ?? progresoError;
+      }
+
+      const inscritos: Record<string, ProgresoEstado> = {};
+
+      progresoRows?.forEach((r: any) => {
+        inscritos[r.materia_id] = {
+          exists: true,
+          visible: Boolean(r.visible),
+        };
+      });
+
+      const cursosConEstado = ((materiasData as any[]) ?? []).map((m) => ({
+        ...m,
+        progresoEstado: inscritos[m.id] ?? { exists: false, visible: false },
+      }));
+
+      setCursos(cursosConEstado);
+    } catch (error) {
+      console.error("Error preparando perfil del profesor:", error);
       setErrorCursos(true);
-      setLoadingCursos(false);
-      return;
     }
-
-    const inscritos: Record<string, ProgresoEstado> = {};
-
-    progresoRows?.forEach((r: any) => {
-      inscritos[r.materia_id] = {
-        exists: true,
-        visible: Boolean(r.visible),
-      };
-    });
-
-    const cursosConEstado = ((materiasData as any[]) ?? []).map((m) => ({
-      ...m,
-      progresoEstado: inscritos[m.id] ?? { exists: false, visible: false },
-    }));
-
-    setCursos(cursosConEstado);
 
     setLoadingCursos(false);
   };
-
   const pickCurso = (m: Materia) => {
     setSelectedCurso(m);
 
@@ -925,6 +1034,22 @@ export default function ProfesoresPage() {
           backdrop-filter: blur(8px);
         }
 
+        .profesores-modal-overlay.is-visible {
+          animation: profesores-profile-ready 180ms ease-out both;
+        }
+
+        @keyframes profesores-profile-ready {
+          from {
+            opacity: 0;
+            transform: scale(0.992);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         .profesores-modal {
           position: relative;
           width: min(94vw, 820px);
@@ -1339,10 +1464,20 @@ export default function ProfesoresPage() {
                     className="profesores-card"
                     onClick={() => openProfesor(p)}
                   >
-                    <AvatarProfesores config={p.avatar_config} size={112} />
+                    <AvatarProfesores config={p.avatar_config} size={240} />
 
                     <span className="profesores-card-info">
-                      <span className="profesores-card-name">{p.nombre}</span>
+                      <span
+                      className={"profesores-card-name profesores-card-name-size-v5 " + (
+                        (p.nombre ?? "").length > 46
+                          ? "is-very-long"
+                          : (p.nombre ?? "").length > 30
+                            ? "is-long"
+                            : ""
+                      )}
+                    >
+                      {p.nombre}
+                    </span>
 
                       <span className="profesores-card-meta">Profesor</span>
                     </span>
@@ -1354,11 +1489,24 @@ export default function ProfesoresPage() {
         )}
       </div>
 
+      {preparandoProfesorId && (
+        <CargadorFCC flotante mensaje="Preparando perfil" detalle="" />
+      )}
+
       {selectedProfesor &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="profesores-modal-overlay"
+            className={`profesores-modal-overlay ${
+              perfilVisualListo ? "is-visible" : ""
+            }`}
+            aria-hidden={!perfilVisualListo}
+            style={{
+              // Ocultar con opacity evita que RenderizadorAvatar pueda escapar
+              // visualmente del modal durante su montaje de preparación.
+              opacity: perfilVisualListo ? 1 : 0,
+              pointerEvents: perfilVisualListo ? "auto" : "none",
+            }}
             onClick={cerrarModalProfesor}
           >
             <div
@@ -1377,7 +1525,8 @@ export default function ProfesoresPage() {
               <div className="profesores-modal-header">
                 <AvatarProfesores
                   config={selectedProfesor.avatar_config}
-                  size={230}
+                  size={320}
+                  onReady={() => setAvatarPerfilListo(true)}
                 />
 
                 <div>

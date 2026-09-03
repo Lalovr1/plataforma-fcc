@@ -1,0 +1,3 @@
+Blanca=#fdfdfd
+Gris=#9a9b9e
+Negra=#141414

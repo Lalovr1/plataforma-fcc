@@ -8,16 +8,15 @@
 import LayoutGeneral from "@/components/LayoutGeneral";
 import TarjetaUsuario from "@/components/TarjetaUsuario";
 import WidgetRanking from "@/components/WidgetRanking";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { crearSupabaseServidor } from "@/utils/supabaseServer";
 import Link from "next/link";
+import { resolverAvatarConfigProfesorParaCuenta } from "@/lib/avatarConfig";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function ProfesorDashboard() {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = await crearSupabaseServidor();
 
   const {
     data: { user },
@@ -69,6 +68,35 @@ export default async function ProfesorDashboard() {
     console.error("No se pudo construir el dashboard del profesor:", errorCarga);
     throw new Error("No se pudieron confirmar todos los datos del panel del profesor");
   }
+
+  const avatarProfesor =
+    resolverAvatarConfigProfesorParaCuenta(
+      user.email,
+      profesor?.avatar_config
+    );
+
+  if (
+    avatarProfesor &&
+    JSON.stringify(avatarProfesor) !==
+      JSON.stringify(profesor?.avatar_config)
+  ) {
+    const { error: avatarError } = await supabase
+      .from("usuarios")
+      .update({
+        avatar_config: avatarProfesor,
+      })
+      .eq("id", user.id);
+
+    if (avatarError) {
+      console.warn(
+        "[FCC Academy] No se pudo persistir automaticamente el avatar del profesor:",
+        avatarError
+      );
+    }
+  }
+
+  const avatarConfigProfesor =
+    avatarProfesor ?? profesor?.avatar_config;
 
   return (
     <LayoutGeneral rol="profesor">
@@ -312,7 +340,7 @@ export default async function ProfesorDashboard() {
             <TarjetaUsuario
               name={profesor?.nombre ?? "Profesor"}
               level={0}
-              avatarConfig={profesor?.avatar_config}
+              avatarConfig={avatarConfigProfesor}
               rol="profesor"
             />
           </div>
@@ -374,8 +402,8 @@ export default async function ProfesorDashboard() {
           </div>
         </div>
 
-        <div className="space-y-4 md:space-y-6 min-w-0">
-          <div className="widget-ranking">
+        <div className="fcc-dashboard-side-column min-w-0 flex flex-col gap-4 md:gap-6 xl:h-[calc(100dvh-3rem)] xl:min-h-0 xl:overflow-hidden">
+          <div className="widget-ranking flex-1 min-h-0 overflow-hidden">
             <WidgetRanking />
           </div>
         </div>

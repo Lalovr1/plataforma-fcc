@@ -16,6 +16,7 @@ import ModalEditorAvatar from "@/components/ModalEditorAvatar";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import toast from "react-hot-toast";
+import { resolverAvatarConfigProfesorParaCuenta } from "@/lib/avatarConfig";
 
 function parseAvatarConfig(value: any): AvatarConfig | null {
   if (!value) return null;
@@ -138,9 +139,9 @@ function ModalEditarNombre({
   };
 
   const modal = createPortal(
-    <div className="perfil-profesor-modal-overlay" onClick={solicitarSalida}>
+    <div className="perfil-profesor-modal-overlay fcc-modal-backdrop-enter-standard" onClick={solicitarSalida}>
       <div
-        className="perfil-profesor-modal-card"
+        className="perfil-profesor-modal-card fcc-modal-enter-standard"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -243,9 +244,39 @@ export default function PerfilProfesorPage() {
           throw error;
         }
 
+        const avatarGuardado =
+          parseAvatarConfig(data?.avatar_config);
+
+        const avatarProfesor =
+          resolverAvatarConfigProfesorParaCuenta(
+            user.email,
+            avatarGuardado
+          );
+
+        if (
+          avatarProfesor &&
+          JSON.stringify(avatarProfesor) !==
+            JSON.stringify(avatarGuardado)
+        ) {
+          const { error: avatarError } = await supabase
+            .from("usuarios")
+            .update({
+              avatar_config: avatarProfesor,
+            })
+            .eq("id", user.id);
+
+          if (avatarError) {
+            console.warn(
+              "[FCC Academy] No se pudo persistir automaticamente el avatar del profesor:",
+              avatarError
+            );
+          }
+        }
+
         const usuarioData = {
           ...data,
-          avatar_config: parseAvatarConfig(data?.avatar_config),
+          avatar_config:
+            avatarProfesor ?? avatarGuardado,
         };
 
         setUsuario(usuarioData);

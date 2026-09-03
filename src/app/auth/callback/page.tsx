@@ -7,11 +7,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { supabase } from "@/utils/supabaseClient";
 
 export default function AuthCallback() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -28,7 +27,7 @@ export default function AuthCallback() {
     };
 
     checkUser();
-  }, [router, supabase]);
+  }, [router]);
 
   return (
     <div className="auth-callback-screen">

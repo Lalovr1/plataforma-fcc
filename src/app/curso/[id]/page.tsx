@@ -2,8 +2,7 @@
  * Página de curso: valida sesión con Supabase y muestra el visualizador del curso.
  */
 
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { crearSupabaseServidor } from "@/utils/supabaseServer";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import VisualizadorCurso from "@/components/VisualizadorCurso";
 
@@ -21,8 +20,7 @@ export default async function CursoPage({
 }) {
   const { id } = await params;
 
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = await crearSupabaseServidor();
 
   const {
     data: { user },

@@ -33,8 +33,11 @@ import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar, {
   AvatarConfig,
 } from "@/components/RenderizadorAvatar";
-import CargadorFCC from "@/components/CargadorFCC";
+import CargadorFCC, {
+  DURACION_MINIMA_CARGADOR_FCC_MS,
+} from "@/components/CargadorFCC";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
+import toast from "react-hot-toast";
 
 type PeriodoOpt = {
   id: string;
@@ -332,6 +335,20 @@ function gradienteDistribucion(
   return `conic-gradient(${partes.join(", ")})`;
 }
 
+async function esperarMinimoCargadorFCC(inicio: number) {
+  const transcurrido = performance.now() - inicio;
+  const restante = Math.max(
+    0,
+    DURACION_MINIMA_CARGADOR_FCC_MS - transcurrido
+  );
+
+  if (restante <= 0) return;
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, restante);
+  });
+}
+
 export default function AnaliticasCurso({
   materiaId,
   filtroMatricula,
@@ -352,6 +369,7 @@ export default function AnaliticasCurso({
   const [inscritos, setInscritos] = useState<Inscrito[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizSel, setQuizSel] = useState<string>("");
+  const [quizPendiente, setQuizPendiente] = useState<string | null>(null);
 
   const [intentosMap, setIntentosMap] = useState<
     Record<string, Record<string, IntentoStats>>
@@ -600,23 +618,16 @@ export default function AnaliticasCurso({
   }, [materiaId, reintentoCarga]);
 
   useEffect(() => {
-    setGrupoAnaliticas(null);
-    setEstudianteAbiertoId(null);
-    setDetalleEstudiante(null);
-    setIntentoSeleccionadoId(null);
-    setComparacionAbierta(false);
-    setCeldaSeleccionada(null);
-    setErrorGrupo("");
-    setErrorDetalle("");
+    if (!quizPendiente) return;
 
-    if (!quizSel) {
-      setCargandoGrupo(false);
-      return;
-    }
-
+    const quizObjetivo = quizPendiente;
     let cancelado = false;
 
     const cargarAnaliticasGrupo = async () => {
+      const inicioCarga = performance.now();
+      let datosPreparados: GrupoAnaliticas | null = null;
+      let errorPreparacion = "";
+
       try {
         setCargandoGrupo(true);
 
@@ -629,7 +640,7 @@ export default function AnaliticasCurso({
         }
 
         const response = await fetch(
-          `/api/analiticas/quiz?quizId=${encodeURIComponent(quizSel)}`,
+          `/api/analiticas/quiz?quizId=${encodeURIComponent(quizObjetivo)}`,
           {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -646,22 +657,33 @@ export default function AnaliticasCurso({
           );
         }
 
-        if (!cancelado) {
-          setGrupoAnaliticas(data.datos as GrupoAnaliticas);
-        }
+        datosPreparados = data.datos as GrupoAnaliticas;
       } catch (error) {
-        if (!cancelado) {
-          setGrupoAnaliticas(null);
-          setErrorGrupo(
-            error instanceof Error
-              ? error.message
-              : "No se pudieron cargar las analíticas."
-          );
-        }
+        errorPreparacion =
+          error instanceof Error
+            ? error.message
+            : "No se pudieron cargar las analíticas.";
       } finally {
-        if (!cancelado) {
-          setCargandoGrupo(false);
+        await esperarMinimoCargadorFCC(inicioCarga);
+
+        if (cancelado) return;
+
+        if (datosPreparados) {
+          setQuizSel(quizObjetivo);
+          setGrupoAnaliticas(datosPreparados);
+          setEstudianteAbiertoId(null);
+          setDetalleEstudiante(null);
+          setIntentoSeleccionadoId(null);
+          setComparacionAbierta(false);
+          setCeldaSeleccionada(null);
+          setErrorGrupo("");
+          setErrorDetalle("");
+        } else if (errorPreparacion) {
+          toast.error(errorPreparacion);
         }
+
+        setQuizPendiente(null);
+        setCargandoGrupo(false);
       }
     };
 
@@ -670,7 +692,7 @@ export default function AnaliticasCurso({
     return () => {
       cancelado = true;
     };
-  }, [quizSel]);
+  }, [quizPendiente]);
 
   useEffect(() => {
     if (!quizSel) return;
@@ -2928,7 +2950,35 @@ export default function AnaliticasCurso({
             <label className="analytics-label">Quiz</label>
             <select
               value={quizSel}
-              onChange={(e) => setQuizSel(e.target.value)}
+              onChange={(e) => {
+                const siguienteQuiz = e.target.value;
+
+                if (!siguienteQuiz) {
+                  setQuizPendiente(null);
+                  setCargandoGrupo(false);
+                  setQuizSel("");
+                  setGrupoAnaliticas(null);
+                  setEstudianteAbiertoId(null);
+                  setDetalleEstudiante(null);
+                  setIntentoSeleccionadoId(null);
+                  setComparacionAbierta(false);
+                  setCeldaSeleccionada(null);
+                  setErrorGrupo("");
+                  setErrorDetalle("");
+                  return;
+                }
+
+                if (
+                  siguienteQuiz === quizSel ||
+                  siguienteQuiz === quizPendiente
+                ) {
+                  return;
+                }
+
+                setErrorGrupo("");
+                setCargandoGrupo(true);
+                setQuizPendiente(siguienteQuiz);
+              }}
               className="analytics-select"
             >
               <option value="">Todos</option>
@@ -2972,6 +3022,14 @@ export default function AnaliticasCurso({
         </div>
       )}
 
+      {cargandoGrupo && (
+        <CargadorFCC
+          flotante
+          mensaje="Preparando analíticas"
+          detalle=""
+        />
+      )}
+
       {quizSel && (
         <section className="analytics-card">
           <div className="analytics-card-content analytics-overview">
@@ -2996,11 +3054,6 @@ export default function AnaliticasCurso({
             {matriculaSinCoincidencia ? (
               <div className="analytics-empty analytics-error">
                 No se encontró ningún alumno con la matrícula {filtroMatricula}.
-              </div>
-            ) : cargandoGrupo ? (
-              <div className="analytics-quiz-loading">
-                <RefreshCw className="analytics-loader" size={24} />
-                <strong>Cargando analíticas del quiz</strong>
               </div>
             ) : errorGrupo ? (
               <div className="analytics-empty analytics-error">
@@ -3359,7 +3412,7 @@ export default function AnaliticasCurso({
 
       <section
         className={`analytics-card analytics-list-card ${
-          quizSel && (cargandoGrupo || !grupoAnaliticas || errorGrupo)
+          quizSel && (!grupoAnaliticas || errorGrupo)
             ? "hidden-during-quiz-load"
             : ""
         }`}
@@ -3443,7 +3496,7 @@ export default function AnaliticasCurso({
                         <div className="analytics-avatar-stage">
                           <RenderizadorAvatar
                             config={user.avatar_config}
-                            size={102}
+                            size={96}
                           />
                         </div>
 

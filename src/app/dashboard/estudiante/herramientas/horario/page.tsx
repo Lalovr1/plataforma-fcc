@@ -1771,7 +1771,7 @@ export default function MiHorarioPage() {
   }
 
   const modalMateria = (
-    <div className="schedule-modal-overlay">
+    <div className="schedule-modal-overlay fcc-modal-enter-standard">
       <button
         type="button"
         onClick={cerrarModalMateria}
@@ -1881,7 +1881,7 @@ export default function MiHorarioPage() {
     : null;
 
   const modalBloque = datosBloqueEditando ? (
-    <div className="schedule-modal-overlay">
+    <div className="schedule-modal-overlay fcc-modal-enter-standard">
       <button
         type="button"
         onClick={() => {
@@ -3067,7 +3067,13 @@ export default function MiHorarioPage() {
           }}
         >
           <div className="schedule-left-stack">
-            <Link href={hrefVolver} className="schedule-standalone-back">
+            <Link
+              href={hrefVolver}
+              className="schedule-standalone-back"
+              data-fcc-pantalla-completa={
+                volverAlModalHorario ? "true" : undefined
+              }
+            >
               <ArrowLeft size={16} />
               Volver
             </Link>

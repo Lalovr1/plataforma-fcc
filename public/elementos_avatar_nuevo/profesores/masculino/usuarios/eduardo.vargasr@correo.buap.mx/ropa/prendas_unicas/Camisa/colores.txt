@@ -1,0 +1,3 @@
+﻿Blanca=#ffffff
+Azul=#78a9e8
+Gris=#777777

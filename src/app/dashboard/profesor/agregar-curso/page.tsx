@@ -950,11 +950,11 @@ export default function AgregarCursoPage() {
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="agregar-curso-modal-overlay"
+            className="agregar-curso-modal-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setCarreraAEliminarIndex(null)}
           >
             <div
-              className="agregar-curso-modal agregar-confirm-modal"
+              className="agregar-curso-modal agregar-confirm-modal fcc-modal-enter-standard"
               onClick={(e) => e.stopPropagation()}
             >
               <button

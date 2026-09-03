@@ -8,6 +8,11 @@
 import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import {
+  reconciliarStorageCurso,
+  subirArchivoCursoDeduplicado,
+} from "@/lib/cursoStorageCliente";
+import { importarDocumentoWord } from "@/lib/importarWordCursoCliente";
 import TextareaAutosize from "react-textarea-autosize";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -16,10 +21,16 @@ import "katex/dist/katex.min.css";
 import rehypeRaw from "rehype-raw";
 import { useRef } from "react"; 
 import OcrFormula from "@/components/OcrFormula";
-import EditorBasico, { type EditorBasicoRef } from "@/components/EditorBasico";
+import EditorBasico, {
+  type DecisionFormatoEditor,
+  type EditorBasicoRef,
+} from "@/components/EditorBasico";
+import CargadorIAFCC, {
+  AvisoIAFCC,
+} from "@/components/CargadorIAFCC";
 import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Info, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, FileUp, Info, Pencil, Plus, Save, Trash2, WandSparkles, X } from "lucide-react";
 
 type BlockType = "texto" | "imagen" | "video" | "documento";
 
@@ -166,6 +177,15 @@ export default function EditorContenidoCurso({
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showWordModal, setShowWordModal] = useState(false);
+  const [wordFile, setWordFile] = useState<File | null>(null);
+  const [wordImporting, setWordImporting] = useState(false);
+  const [wordImportProgress, setWordImportProgress] = useState("");
+  const [wordImportError, setWordImportError] = useState("");
+  const [formateandoContenido, setFormateandoContenido] = useState(false);
+  const [avisoFormato, setAvisoFormato] = useState<"listo" | "tiempo" | null>(
+    null
+  );
 
   const [linkText, setLinkText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -199,6 +219,9 @@ export default function EditorContenidoCurso({
       showVideoModal ||
       showDocModal ||
       showLinkModal ||
+      showWordModal ||
+      formateandoContenido ||
+      Boolean(avisoFormato) ||
       showFormulaPanel ||
       Boolean(unidadAEliminarId);
 
@@ -327,6 +350,13 @@ export default function EditorContenidoCurso({
     fetchUnidades();
   }, [materiaId]);
 
+  /* FCC_STORAGE_RECONCILIACION_EDITOR */
+  useEffect(() => {
+    // Una sola pasada al entrar al curso.
+    // Crear, editar, borrar o descartar ya solicita
+    // su propia reconciliacion.
+    void reconciliarStorageCurso(materiaId);
+  }, [materiaId]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.MathJax || document.getElementById("mathjax-script")) return;
@@ -390,39 +420,216 @@ export default function EditorContenidoCurso({
   };
 
   const uploadToStorage = async (f: File, carpeta: string) => {
-  if (carpeta === "videos" && f.size > 50 * 1024 * 1024) {
-    alert("El video es demasiado pesado. Máximo permitido: 50 MB.");
-    throw new Error("Video demasiado pesado");
-  }
+    return subirArchivoCursoDeduplicado(
+      materiaId,
+      f,
+      carpeta
+    );
+  };
 
-  const ext = f.name.split(".").pop();
-  const originalName = f.name;
-    const key = `${materiaId}/${carpeta}/${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2)}.${ext}`;
+  const abrirImportacionWord = () => {
+    setWordFile(null);
+    setWordImportProgress("");
+    setWordImportError("");
+    setShowWordModal(true);
+  };
 
-    const { error: upErr } = await supabase.storage
-      .from("curso-contenido")
-      .upload(key, f, { upsert: false });
+  const cerrarImportacionWord = () => {
+    if (wordImporting) return;
 
-    if (upErr) throw upErr;
+    setShowWordModal(false);
+    setWordFile(null);
+    setWordImportProgress("");
+    setWordImportError("");
+  };
 
-    const { data } = supabase.storage
-      .from("curso-contenido")
-      .getPublicUrl(key);
+  const ejecutarImportacionWord = async () => {
+    if (!wordFile || wordImporting) return;
 
-    return { url: data.publicUrl, originalName, key };
+    setWordImporting(true);
+    setWordImportError("");
+
+    try {
+      const resultado = await importarDocumentoWord({
+        file: wordFile,
+        onProgress: setWordImportProgress,
+        subirImagen: async (imagen) => {
+          const { url, originalName } = await uploadToStorage(
+            imagen,
+            "imagenes"
+          );
+
+          setFileMap((prev) => ({
+            ...prev,
+            [originalName]: JSON.stringify({
+              name: originalName,
+              url,
+            }),
+          }));
+
+          return { url, name: originalName };
+        },
+      });
+
+      const editorDestino = contenidoPrincipalEditorRef.current;
+
+      if (!editorDestino) {
+        throw new Error("El editor no está disponible. Cierra y vuelve a abrir esta sección.");
+      }
+
+      editorDestino.insertSanitizedHtml(resultado.html);
+      const htmlActual = editorDestino.getHTML();
+      setContenidoPrincipal(htmlActual);
+
+      const partes = [
+        "Documento importado al borrador",
+        resultado.imagenesSubidas > 0
+          ? `${resultado.imagenesSubidas} imagen${
+              resultado.imagenesSubidas === 1 ? "" : "es"
+            } guardada${resultado.imagenesSubidas === 1 ? "" : "s"}`
+          : "sin imágenes compatibles",
+        resultado.imagenesOptimizadas > 0
+          ? `${resultado.imagenesOptimizadas} optimizada${
+              resultado.imagenesOptimizadas === 1 ? "" : "s"
+            }`
+          : "",
+        resultado.imagenesOmitidas > 0
+          ? `${resultado.imagenesOmitidas} omitida${
+              resultado.imagenesOmitidas === 1 ? "" : "s"
+            }`
+          : "",
+      ].filter(Boolean);
+
+      setToast({
+        message: `${partes.join(" · ")}. Revisa el contenido antes de guardar.`,
+        type: resultado.imagenesOmitidas > 0 ? "error" : "success",
+      });
+
+      setShowWordModal(false);
+      setWordFile(null);
+      setWordImportProgress("");
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudo importar el documento de Word.";
+
+      console.error("No se pudo importar el documento de Word:", error);
+      setWordImportError(mensaje);
+      setWordImportProgress("");
+    } finally {
+      setWordImporting(false);
+    }
+  };
+
+  const mejorarFormatoContenido = async () => {
+    if (formateandoContenido) return;
+
+    const editor = contenidoPrincipalEditorRef.current;
+    const segmentos = editor?.getFormatSegments() || [];
+
+    if (!editor || segmentos.length === 0) {
+      setToast({
+        message: "Agrega texto al contenido antes de mejorar su formato.",
+        type: "error",
+      });
+      return;
+    }
+
+    const controlador = new AbortController();
+    const temporizador = window.setTimeout(() => controlador.abort(), 105_000);
+
+    setFormateandoContenido(true);
+    setAvisoFormato(null);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Tu sesión no está disponible. Vuelve a iniciar sesión.");
+      }
+
+      const response = await fetch("/api/ia/formatear-contenido", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ materiaId, segmentos }),
+        signal: controlador.signal,
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (data?.code === "IA_TIMEOUT") {
+        setAvisoFormato("tiempo");
+        return;
+      }
+
+      if (!response.ok || !data?.ok || !Array.isArray(data?.decisiones)) {
+        throw new Error(
+          typeof data?.error === "string" && data.error.trim()
+            ? data.error.trim()
+            : "No se pudo aplicar el formato automático en este momento."
+        );
+      }
+
+      const aplicado = editor.applyFormatDecisions(
+        data.decisiones as DecisionFormatoEditor[]
+      );
+
+      if (!aplicado) {
+        throw new Error(
+          "El contenido cambió mientras se preparaba el formato. Vuelve a intentarlo."
+        );
+      }
+
+      setContenidoPrincipal(editor.getHTML());
+      setAvisoFormato("listo");
+    } catch (error) {
+      const tiempoAgotado =
+        controlador.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError");
+
+      if (tiempoAgotado) {
+        setAvisoFormato("tiempo");
+        return;
+      }
+
+      console.warn("No se pudo mejorar el formato del contenido:", error);
+      setToast({
+        message:
+          error instanceof Error
+            ? error.message
+            : "No se pudo aplicar el formato automático en este momento.",
+        type: "error",
+      });
+    } finally {
+      window.clearTimeout(temporizador);
+      setFormateandoContenido(false);
+    }
   };
 
   const handleAddBlock = async (e?: React.FormEvent) => {
     e?.preventDefault();
+
+    if (!titulo.trim()) {
+      setToast({
+        message: "El título es obligatorio para guardar el contenido.",
+        type: "error",
+      });
+      return false;
+    }
 
     if (!unidad) {
       setToast({
         message: "Antes de continuar tienes que seleccionar una unidad.",
         type: "error",
       });
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -465,7 +672,7 @@ export default function EditorContenidoCurso({
         .insert({
           materia_id: materiaId,
           tipo,
-          titulo: titulo.trim() || null,
+          titulo: titulo.trim(),
           introduccion: intro.trim() || null,
           contenido,
           unidad_id: unidad || null,
@@ -583,11 +790,13 @@ export default function EditorContenidoCurso({
 
       setToast({ message: "Bloque agregado correctamente", type: "success" });
 
+      await reconciliarStorageCurso(materiaId);
       await fetchBlocks();
       if (onBloquesChange) onBloquesChange();
       return true;
     } catch (err: any) {
       console.error(err);
+      void reconciliarStorageCurso(materiaId);
       setToast({ message: "Error al agregar bloque", type: "error" });
       return false;
     } finally {
@@ -606,6 +815,7 @@ export default function EditorContenidoCurso({
       alert("No se pudo eliminar.");
       return;
     }
+    await reconciliarStorageCurso(materiaId);
     fetchBlocks();
   };
 
@@ -680,6 +890,7 @@ export default function EditorContenidoCurso({
       }
 
       setUnidadAEliminarId(null);
+      await reconciliarStorageCurso(materiaId);
       await fetchBlocks();
 
       setToast({
@@ -767,6 +978,10 @@ export default function EditorContenidoCurso({
     setDeletedFormulas([]);
     setFirmaEdicionInicial("");
     setShowFormulaPanel(false);
+
+    // Si durante la edición se subió algo y luego se descartó,
+    // ya no existe ninguna referencia guardada que justifique conservarlo.
+    void reconciliarStorageCurso(materiaId);
   };
 
   const solicitarSalidaEdicion = () => {
@@ -840,6 +1055,15 @@ export default function EditorContenidoCurso({
 
   const handleSaveEdit = async () => {
     if (!editBlock) return false;
+
+    if (!editTitulo.trim()) {
+      setToast({
+        message: "El título es obligatorio para guardar el contenido.",
+        type: "error",
+      });
+      return false;
+    }
+
     const convertToCustomfile = (md: string) => {
       return md.replace(/\[\s*(?:📷|🖼)\s+([^\]]+)\]/g, (_, filename) => {
         if (fileMap[filename]) {
@@ -854,7 +1078,7 @@ export default function EditorContenidoCurso({
     const { error } = await supabase
       .from("curso_contenido_bloques")
       .update({
-        titulo: editTitulo.trim() || null,
+        titulo: editTitulo.trim(),
         introduccion: editIntro.trim() || null,
         contenido: contenidoFinal,
         unidad_id: editUnidad || null,
@@ -926,6 +1150,7 @@ export default function EditorContenidoCurso({
     setFirmaEdicionInicial("");
     setDeletedFormulas([]);
     setShowFormulaPanel(false);
+    await reconciliarStorageCurso(materiaId);
     fetchBlocks();
     return true;
   };
@@ -1801,6 +2026,46 @@ export default function EditorContenidoCurso({
         pointer-events: none;
       }
 
+      .contenido-word-modal .contenido-editor-modal-title {
+        margin-bottom: 0;
+      }
+
+      .contenido-word-note {
+        margin: 12px 0 0;
+        border-radius: 16px;
+        padding: 12px 14px;
+        color: var(--contenido-muted);
+        background: color-mix(in srgb, var(--contenido-accent) 6%, var(--contenido-surface-strong));
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 18%, var(--contenido-border));
+        text-align: center;
+        font-size: 0.8rem;
+        font-weight: 750;
+        line-height: 1.42;
+      }
+
+      .contenido-word-status,
+      .contenido-word-error {
+        margin-top: 12px;
+        border-radius: 14px;
+        padding: 10px 12px;
+        text-align: center;
+        font-size: 0.82rem;
+        font-weight: 850;
+        line-height: 1.38;
+      }
+
+      .contenido-word-status {
+        color: var(--contenido-accent);
+        background: color-mix(in srgb, var(--contenido-accent) 8%, var(--contenido-surface));
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 24%, var(--contenido-border));
+      }
+
+      .contenido-word-error {
+        color: var(--color-danger);
+        background: color-mix(in srgb, var(--color-danger) 7%, var(--contenido-surface));
+        border: 1px solid color-mix(in srgb, var(--color-danger) 24%, var(--contenido-border));
+      }
+
       .contenido-resource-tabs {
         display: flex;
         justify-content: center;
@@ -2018,6 +2283,39 @@ export default function EditorContenidoCurso({
         background: color-mix(in srgb, var(--contenido-surface-strong) 62%, transparent);
       }
 
+      .contenido-word-import-button {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 14px;
+        padding: 0 14px;
+        color: var(--contenido-text-soft);
+        background: color-mix(in srgb, var(--contenido-surface-strong) 78%, transparent);
+        border: 1px solid color-mix(in srgb, var(--contenido-accent) 22%, var(--contenido-border));
+        font-size: 0.84rem;
+        font-weight: 900;
+        transition:
+          transform 170ms ease,
+          color 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-word-import-button:hover {
+        transform: translateY(-1px);
+        color: var(--contenido-accent);
+        border-color: color-mix(in srgb, var(--contenido-accent) 42%, var(--contenido-border));
+        background: color-mix(in srgb, var(--contenido-accent) 7%, var(--contenido-surface-strong));
+      }
+
+      .contenido-word-import-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
+      }
+
       .contenido-actions {
         display: flex;
         align-items: center;
@@ -2025,6 +2323,52 @@ export default function EditorContenidoCurso({
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 4px;
+      }
+
+      .contenido-create-actions {
+        justify-content: space-between;
+      }
+
+      .contenido-primary-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .contenido-format-button {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 14px;
+        padding: 0 15px;
+        color: color-mix(in srgb, #7c3aed 78%, var(--contenido-text));
+        background: color-mix(in srgb, #8b5cf6 9%, var(--contenido-surface-strong));
+        border: 1px solid color-mix(in srgb, #8b5cf6 34%, var(--contenido-border));
+        font-size: 0.88rem;
+        font-weight: 950;
+        transition:
+          transform 170ms ease,
+          opacity 170ms ease,
+          color 170ms ease,
+          border-color 170ms ease,
+          background 170ms ease;
+      }
+
+      .contenido-format-button:hover {
+        transform: translateY(-1px);
+        color: color-mix(in srgb, #7c3aed 88%, var(--contenido-text));
+        border-color: color-mix(in srgb, #8b5cf6 52%, var(--contenido-border));
+        background: color-mix(in srgb, #8b5cf6 14%, var(--contenido-surface-strong));
+      }
+
+      .contenido-format-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
       }
 
       .contenido-button {
@@ -2282,6 +2626,20 @@ export default function EditorContenidoCurso({
           width: 100%;
         }
 
+        .contenido-word-import-button {
+          width: 100%;
+        }
+
+        .contenido-primary-actions {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        .contenido-format-button {
+          width: 100%;
+        }
+
         .contenido-units-actions {
           grid-template-columns: 1fr;
         }
@@ -2329,6 +2687,51 @@ export default function EditorContenidoCurso({
     <div className="contenido-editor">
       {estilos}
 
+      {formateandoContenido &&
+        renderPortal(
+          <CargadorIAFCC
+            mensaje="Organizando tu contenido"
+            detalle="Preparando una jerarquía visual clara."
+            frases={[
+              "Identificando títulos y secciones…",
+              "Organizando la jerarquía visual…",
+              "Ajustando tamaños y alineaciones…",
+              "Preparando el borrador editable…",
+            ]}
+          />
+        )}
+
+      {avisoFormato === "listo" &&
+        !formateandoContenido &&
+        renderPortal(
+          <AvisoIAFCC
+            etiqueta="Formato listo"
+            titulo="Contenido organizado"
+            descripcion="Se aplicó una jerarquía visual usando únicamente los estilos disponibles en FCC Academy."
+            nota="Revisa el resultado antes de guardar. Todo permanece editable y puedes revertir el formato con Ctrl + Z."
+            textoPrincipal="Entendido"
+            onPrincipal={() => setAvisoFormato(null)}
+          />
+        )}
+
+      {avisoFormato === "tiempo" &&
+        !formateandoContenido &&
+        renderPortal(
+          <AvisoIAFCC
+            tipo="tiempo"
+            etiqueta="Está tardando más de lo esperado"
+            titulo="No se aplicó ningún cambio"
+            descripcion="La solicitud no terminó a tiempo. Tu contenido sigue exactamente como estaba y puedes intentarlo nuevamente."
+            textoPrincipal="Intentar de nuevo"
+            onPrincipal={() => {
+              setAvisoFormato(null);
+              window.setTimeout(() => void mejorarFormatoContenido(), 0);
+            }}
+            textoSecundario="Volver al editor"
+            onSecundario={() => setAvisoFormato(null)}
+          />
+        )}
+
       <div className="contenido-editor-layout">
         <section className="contenido-card contenido-form-card no-line">
           <div className="contenido-card-content">
@@ -2336,13 +2739,15 @@ export default function EditorContenidoCurso({
 
             <form onSubmit={handleAddBlock} className="contenido-form">
               <div className="contenido-field">
-                <label className="contenido-label">Título</label>
+                <label className="contenido-label">Título (obligatorio)</label>
                 <input
                   type="text"
                   value={titulo}
                   onChange={(e) => setTitulo(e.target.value)}
                   className="contenido-input"
                   placeholder=""
+                  required
+                  aria-required="true"
                 />
               </div>
 
@@ -2422,15 +2827,38 @@ export default function EditorContenidoCurso({
                 </div>
               </div>
 
-              <div className="contenido-actions">
+              <div className="contenido-actions contenido-create-actions">
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="contenido-button"
+                  type="button"
+                  className="contenido-word-import-button"
+                  onClick={abrirImportacionWord}
+                  disabled={loading || wordImporting}
                 >
-                  <Save size={17} strokeWidth={2.6} />
-                  {loading ? "Guardando..." : "Agregar bloque"}
+                  <FileUp size={17} strokeWidth={2.7} />
+                  Importar contenido desde Word
                 </button>
+
+                <div className="contenido-primary-actions">
+                  <button
+                    type="button"
+                    className="contenido-format-button"
+                    onClick={() => void mejorarFormatoContenido()}
+                    disabled={loading || wordImporting || formateandoContenido}
+                    title="Organizar automáticamente el formato del contenido"
+                  >
+                    <WandSparkles size={17} strokeWidth={2.6} />
+                    Mejorar formato
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={loading || wordImporting || formateandoContenido}
+                    className="contenido-button"
+                  >
+                    <Save size={17} strokeWidth={2.6} />
+                    {loading ? "Guardando..." : "Agregar bloque"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -2789,11 +3217,11 @@ export default function EditorContenidoCurso({
       {unidadAEliminar &&
         renderPortal(
           <div
-            className="contenido-editor-overlay"
+            className="contenido-editor-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setUnidadAEliminarId(null)}
           >
             <div
-              className="contenido-editor-modal"
+              className="contenido-editor-modal fcc-modal-enter-standard"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -2851,9 +3279,9 @@ export default function EditorContenidoCurso({
         )}
 
       {editBlock && renderPortal(
-        <div className="contenido-edit-overlay">
+        <div className="contenido-edit-overlay fcc-modal-backdrop-enter-standard">
           <div
-            className={`contenido-edit-shell ${
+            className={`contenido-edit-shell fcc-modal-enter-standard ${
               showFormulaPanel ? "with-panel" : ""
             }`}
           >
@@ -2874,6 +3302,10 @@ export default function EditorContenidoCurso({
                   value={editTitulo}
                   onChange={(e) => setEditTitulo(e.target.value)}
                   className="contenido-edit-title-input"
+                  placeholder="Título del contenido"
+                  required
+                  aria-required="true"
+                  aria-label="Título del contenido (obligatorio)"
                 />
 
                 <select
@@ -2904,6 +3336,7 @@ export default function EditorContenidoCurso({
                   value={editContenido}
                   onChange={setEditContenido}
                   fillHeight
+                  animateExpanded={false}
                   onRequestFormula={() => {
                     setTargetTextarea(null);
                     setShowFormulaModal(true);
@@ -3134,8 +3567,8 @@ export default function EditorContenidoCurso({
       />
 
       {showFormulaModal && renderPortal(
-        <div className="contenido-editor-overlay">
-          <div className="contenido-editor-modal contenido-resource-modal">
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal fcc-modal-enter-standard">
             <div className="contenido-editor-modal-content">
               <h2 className="contenido-editor-modal-title">
                 Insertar fórmula
@@ -3409,10 +3842,88 @@ export default function EditorContenidoCurso({
           </div>
         </div>
       )}
+      {/* Modal Importar Word */}
+      {showWordModal && renderPortal(
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal contenido-word-modal fcc-modal-enter-standard">
+            <button
+              type="button"
+              onClick={cerrarImportacionWord}
+              className="contenido-editor-modal-close"
+              aria-label="Cerrar importación de Word"
+              disabled={wordImporting}
+            >
+              <X size={19} strokeWidth={2.7} />
+            </button>
+
+            <div className="contenido-editor-modal-content">
+              <h2 className="contenido-editor-modal-title">
+                Importar desde Word
+              </h2>
+              <p className="contenido-editor-modal-description">
+                El texto, el formato compatible y las imágenes se agregarán al
+                borrador de un contenido nuevo.
+              </p>
+
+              <label className="contenido-file-picker">
+                <span>{wordFile?.name || "Seleccionar archivo .docx"}</span>
+                <input
+                  type="file"
+                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  disabled={wordImporting}
+                  onChange={(event) => {
+                    setWordFile(event.target.files?.[0] || null);
+                    setWordImportError("");
+                    setWordImportProgress("");
+                  }}
+                />
+              </label>
+
+              <p className="contenido-word-note">
+                Máximo 25 MB y 50 imágenes. Las imágenes grandes se reducen y
+                comprimen antes de guardarse; las pequeñas conservan su archivo
+                original.
+              </p>
+
+              {wordImportProgress && (
+                <div className="contenido-word-status" role="status">
+                  {wordImportProgress}
+                </div>
+              )}
+
+              {wordImportError && (
+                <div className="contenido-word-error" role="alert">
+                  {wordImportError}
+                </div>
+              )}
+
+              <div className="contenido-editor-modal-actions">
+                <button
+                  type="button"
+                  className="contenido-button secondary"
+                  onClick={cerrarImportacionWord}
+                  disabled={wordImporting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="contenido-button"
+                  onClick={() => void ejecutarImportacionWord()}
+                  disabled={!wordFile || wordImporting}
+                >
+                  {wordImporting ? "Importando..." : "Importar al borrador"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Imagen */}
       {showImageModal && renderPortal(
-        <div className="contenido-editor-overlay">
-          <div className="contenido-editor-modal contenido-resource-modal">
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal fcc-modal-enter-standard">
             <div className="contenido-editor-modal-content">
               <h2 className="contenido-editor-modal-title">Insertar imagen</h2>
               <label className="contenido-file-picker">
@@ -3520,8 +4031,8 @@ export default function EditorContenidoCurso({
 
       {/* Modal Video */}
       {showVideoModal && renderPortal(
-        <div className="contenido-editor-overlay">
-          <div className="contenido-editor-modal contenido-resource-modal">
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal fcc-modal-enter-standard">
             <div className="contenido-editor-modal-content">
               <h2 className="contenido-editor-modal-title">Insertar video</h2>
               <label className="contenido-file-picker">
@@ -3629,8 +4140,8 @@ export default function EditorContenidoCurso({
 
       {/* Modal Documento */}
       {showDocModal && renderPortal(
-        <div className="contenido-editor-overlay">
-          <div className="contenido-editor-modal contenido-resource-modal">
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal fcc-modal-enter-standard">
             <div className="contenido-editor-modal-content">
               <h2 className="contenido-editor-modal-title">Insertar documento</h2>
               <label className="contenido-file-picker">
@@ -3738,8 +4249,8 @@ export default function EditorContenidoCurso({
 
       {/* Modal Enlace */}
       {showLinkModal && renderPortal(
-        <div className="contenido-editor-overlay">
-          <div className="contenido-editor-modal contenido-resource-modal">
+        <div className="contenido-editor-overlay fcc-modal-backdrop-enter-standard">
+          <div className="contenido-editor-modal contenido-resource-modal fcc-modal-enter-standard">
             <div className="contenido-editor-modal-content">
               <h2 className="contenido-editor-modal-title">Insertar enlace</h2>
             <input

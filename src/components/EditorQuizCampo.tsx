@@ -4,6 +4,7 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +12,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import ImageBase from "@tiptap/extension-image";
 import { Mathematics } from "@tiptap/extension-mathematics";
+import katex from "katex";
 import "katex/dist/katex.min.css";
 
 export type EditorQuizCampoRef = {
@@ -78,7 +80,42 @@ const cleanEmptyEditorHtml = (html: string) => {
   return html;
 };
 
-const markdownMathToTiptapHtml = (value: string) => {
+export const normalizarEntradaLatex = (value: string) => {
+  let normalizada = String(value || "").trim();
+
+  normalizada = normalizada
+    .replace(/^```(?:latex|tex)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  if (normalizada.startsWith("$$") && normalizada.endsWith("$$")) {
+    normalizada = normalizada.slice(2, -2).trim();
+  } else if (normalizada.startsWith("$") && normalizada.endsWith("$")) {
+    normalizada = normalizada.slice(1, -1).trim();
+  } else if (normalizada.startsWith("\\[") && normalizada.endsWith("\\]")) {
+    normalizada = normalizada.slice(2, -2).trim();
+  } else if (normalizada.startsWith("\\(") && normalizada.endsWith("\\)")) {
+    normalizada = normalizada.slice(2, -2).trim();
+  }
+
+  return normalizada;
+};
+
+const escaparTextoHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+
+const escaparAtributoHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+export const convertirContenidoQuizATiptapHtml = (value: string) => {
   if (!value) return "";
 
   const trimmed = value.trim();
@@ -91,18 +128,32 @@ const markdownMathToTiptapHtml = (value: string) => {
     return trimmed;
   }
 
-  const escaped = trimmed
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const patronFormula = /\$\$([\s\S]*?)\$\$|\$([^$\n]+?)\$/g;
+  let resultado = "";
+  let cursor = 0;
 
-  const withMath = escaped.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) => {
-    const cleanLatex = String(latex).trim().replace(/"/g, "&quot;");
+  for (const coincidencia of trimmed.matchAll(patronFormula)) {
+    const indice = coincidencia.index ?? 0;
+    const latex = normalizarEntradaLatex(
+      String(coincidencia[1] || coincidencia[2] || "")
+    );
 
-    return `<span data-type="inline-math" data-latex="${cleanLatex}"></span>`;
-  });
+    resultado += escaparTextoHtml(trimmed.slice(cursor, indice));
 
-  return `<p>${withMath}</p>`;
+    if (latex) {
+      resultado +=
+        `<span data-type="inline-math" ` +
+        `data-latex="${escaparAtributoHtml(latex)}"></span>`;
+    } else {
+      resultado += escaparTextoHtml(coincidencia[0]);
+    }
+
+    cursor = indice + coincidencia[0].length;
+  }
+
+  resultado += escaparTextoHtml(trimmed.slice(cursor));
+
+  return `<p>${resultado}</p>`;
 };
 
 const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
@@ -124,6 +175,32 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
     const [uploadingImage, setUploadingImage] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [portalReady, setPortalReady] = useState(false);
+
+    const vistaPreviaFormula = useMemo(() => {
+      const latex = normalizarEntradaLatex(formulaLatex);
+
+      if (!latex) {
+        return { latex: "", html: "", error: "" };
+      }
+
+      try {
+        return {
+          latex,
+          html: katex.renderToString(latex, {
+            throwOnError: true,
+            strict: "ignore",
+            displayMode: true,
+          }),
+          error: "",
+        };
+      } catch {
+        return {
+          latex,
+          html: "",
+          error: "Revisa la sintaxis de la fórmula antes de insertarla.",
+        };
+      }
+    }, [formulaLatex]);
 
     useEffect(() => {
       setPortalReady(true);
@@ -158,7 +235,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
           },
         }),
       ],
-      content: markdownMathToTiptapHtml(value),
+      content: convertirContenidoQuizATiptapHtml(value),
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -174,7 +251,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
     useEffect(() => {
       if (!editor) return;
 
-      const nextRaw = markdownMathToTiptapHtml(value || "");
+      const nextRaw = convertirContenidoQuizATiptapHtml(value || "");
       const currentNormalized = cleanEmptyEditorHtml(editor.getHTML() || "");
       const nextNormalized = cleanEmptyEditorHtml(nextRaw || "");
 
@@ -187,7 +264,9 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
       ref,
       () => ({
         insertFormula(latex: string) {
-          if (!editor || !latex.trim()) return;
+          const latexNormalizado = normalizarEntradaLatex(latex);
+
+          if (!editor || !latexNormalizado) return;
 
           editor
             .chain()
@@ -195,7 +274,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
             .insertContent({
               type: "inlineMath",
               attrs: {
-                latex: latex.trim(),
+                latex: latexNormalizado,
               },
             })
             .run();
@@ -223,7 +302,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 
         setContent(html: string) {
           editor?.commands.setContent(
-            markdownMathToTiptapHtml(cleanEmptyEditorHtml(html || ""))
+            convertirContenidoQuizATiptapHtml(cleanEmptyEditorHtml(html || ""))
           );
         },
       }),
@@ -409,6 +488,37 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
           .editor-quiz-textarea:focus {
             border-color: color-mix(in srgb, var(--editor-quiz-accent) 52%, var(--editor-quiz-border));
             background: color-mix(in srgb, var(--editor-quiz-surface-strong) 88%, transparent);
+          }
+
+          .editor-quiz-formula-help {
+            margin: 8px 2px 0;
+            color: var(--editor-quiz-muted);
+            font-size: 0.78rem;
+            font-weight: 750;
+            line-height: 1.4;
+            text-align: center;
+          }
+
+          .editor-quiz-formula-preview {
+            min-height: 64px;
+            display: grid;
+            place-items: center;
+            margin-top: 12px;
+            overflow-x: auto;
+            border-radius: 14px;
+            padding: 12px;
+            color: var(--editor-quiz-text);
+            background: color-mix(in srgb, var(--editor-quiz-surface-strong) 68%, transparent);
+            border: 1px dashed var(--editor-quiz-border);
+          }
+
+          .editor-quiz-formula-preview.invalid {
+            color: #dc2626;
+            border-color: color-mix(in srgb, #ef4444 38%, var(--editor-quiz-border));
+          }
+
+          .editor-quiz-formula-preview .katex-display {
+            margin: 0;
           }
 
           .editor-quiz-file-picker {
@@ -614,8 +724,8 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 
         {showFormulaModal &&
           renderPortal(
-            <div className="editor-quiz-overlay">
-              <div className="editor-quiz-modal">
+            <div className="editor-quiz-overlay fcc-modal-backdrop-enter-standard">
+              <div className="editor-quiz-modal fcc-modal-enter-standard">
                 <h3 className="editor-quiz-modal-title">Insertar fórmula</h3>
 
                 <textarea
@@ -625,6 +735,28 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
                   className="editor-quiz-textarea"
                   placeholder="Formato LaTeX. Ej.: \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
                 />
+
+                <p className="editor-quiz-formula-help">
+                  Puedes pegar la fórmula con o sin delimitadores $...$ o $$...$$.
+                </p>
+
+                {(vistaPreviaFormula.html || vistaPreviaFormula.error) && (
+                  <div
+                    className={`editor-quiz-formula-preview ${
+                      vistaPreviaFormula.error ? "invalid" : ""
+                    }`}
+                  >
+                    {vistaPreviaFormula.error ? (
+                      <span>{vistaPreviaFormula.error}</span>
+                    ) : (
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: vistaPreviaFormula.html,
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
 
                 <div className="editor-quiz-modal-actions">
                   <button
@@ -640,8 +772,11 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 
                   <button
                     type="button"
+                    disabled={
+                      !vistaPreviaFormula.latex || Boolean(vistaPreviaFormula.error)
+                    }
                     onClick={() => {
-                      if (!formulaLatex.trim()) return;
+                      if (!vistaPreviaFormula.latex || vistaPreviaFormula.error) return;
 
                       editor
                         .chain()
@@ -649,7 +784,7 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
                         .insertContent({
                           type: "inlineMath",
                           attrs: {
-                            latex: formulaLatex.trim(),
+                            latex: vistaPreviaFormula.latex,
                           },
                         })
                         .run();
@@ -668,8 +803,8 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 
         {showImageModal &&
           renderPortal(
-            <div className="editor-quiz-overlay">
-              <div className="editor-quiz-modal">
+            <div className="editor-quiz-overlay fcc-modal-backdrop-enter-standard">
+              <div className="editor-quiz-modal fcc-modal-enter-standard">
                 <h3 className="editor-quiz-modal-title">Insertar imagen</h3>
 
                 <label className="editor-quiz-file-picker">
@@ -740,11 +875,11 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
         {previewImage &&
           renderPortal(
             <div
-              className="editor-quiz-preview-overlay"
+              className="editor-quiz-preview-overlay fcc-modal-backdrop-enter-standard"
               onClick={() => setPreviewImage(null)}
             >
               <div
-                className="editor-quiz-preview-content"
+                className="editor-quiz-preview-content fcc-modal-enter-standard"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -770,4 +905,3 @@ const EditorQuizCampo = forwardRef<EditorQuizCampoRef, Props>(
 );
 
 export default EditorQuizCampo;
-

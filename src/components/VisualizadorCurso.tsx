@@ -1670,13 +1670,11 @@ export default function VisualizadorCurso({
       </div>
 
       {/* Formulario */}
-      <div className="curso-premium-card p-4 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
+      {formulas.length > 0 && (
+        <div className="curso-premium-card p-4 sm:p-6 space-y-4 min-w-0 overflow-hidden" style={cardStyle}>
         <h2 className="text-lg sm:text-xl font-black tracking-[-0.04em]" style={{ color: "var(--fcc-premium-text)" }}>
           Formulario
         </h2>
-        {formulas.length === 0 && (
-          <p style={{ color: "var(--color-muted)" }}>Aún no hay fórmulas públicas.</p>
-        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {formulas.map((f) => {
             const hasDescription = Boolean(f.descripcion?.trim());
@@ -1773,15 +1771,16 @@ export default function VisualizadorCurso({
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
       {previewMedia &&
         createPortal(
           <div
-            className="curso-preview-overlay fixed inset-0 flex justify-center items-center z-[9999]"
+            className="curso-preview-overlay fcc-modal-backdrop-enter-standard fixed inset-0 flex justify-center items-center z-[9999]"
             onClick={closePreviewMedia}
           >
             <div
-              className="relative max-w-[92vw] max-h-[85vh]"
+              className="fcc-modal-enter-standard relative max-w-[92vw] max-h-[85vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <button

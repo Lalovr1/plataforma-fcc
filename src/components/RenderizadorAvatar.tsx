@@ -1,6 +1,11 @@
 /**
- * Renderiza el avatar del usuario en base a una configuración de capas.
- * Cada capa corresponde a una parte del avatar (piel, ojos, ropa, etc.)
+ * Renderizador de avatar V2 de FCC Academy.
+ *
+ * La fuente de verdad es el catálogo generado desde
+ * public/elementos_avatar_nuevo. No convierte IDs del sistema anterior.
+ * Las configuraciones antiguas se consideran ausentes y muestran únicamente
+ * una configuración visual inicial del catálogo nuevo mientras termina la
+ * transición del editor.
  */
 
 "use client";
@@ -18,23 +23,113 @@ import {
   obtenerUrlImagenOptimizada,
   precargarImagenes,
 } from "@/lib/imagenes";
+import {
+  completarAvatarConfigBaseEstudiante,
+  crearAvatarConfigInicialEstudiante,
+  esAvatarConfigPersonalizadoV2,
+  esAvatarConfigV2,
+  limpiarAvatarConfigV2,
+  obtenerSlotItemAvatar,
+  type AvatarConfigV2,
+} from "@/lib/avatarConfig";
+import {
+  obtenerEstudiantePersonalizadoAvatar,
+  obtenerExpresionEstudiantePersonalizadoPorId,
+  obtenerItemAvatarPorId,
+  obtenerItemEstudiantePersonalizadoPorId,
+  obtenerProfesorAvatar,
+  obtenerExpresionProfesorPersonalizadoPorId,
+  obtenerItemProfesorPersonalizadoPorId,
+  obtenerSeccionCuerpoAvatar,
+  resolverOpcionImagenAvatar,
+  resolverVarianteItemAvatar,
+  type CapaSimpleAvatar,
+  type CapaTintAvatar,
+  type GeneroAvatar,
+  type ItemCatalogoAvatar,
+  type VarianteItemAvatar,
+} from "@/lib/avatarCatalogo";
 
-export type AvatarConfig = {
+/**
+ * Forma antigua conservada SOLO como superficie TypeScript durante la
+ * sustitución progresiva de componentes. El renderizador no traduce ninguno
+ * de estos IDs al catálogo V2.
+ */
+export type AvatarConfigAnterior = {
   gender: "masculino" | "femenino";
-  skin: string;
+  skin?: string;
   skinColor?: string;
-  eyes: string;
-  mouth: string;
-  nose: string;
-  hair: string;
-  playera: string;
-  sueter: string;
+  eyes?: string;
+  mouth?: string;
+  nose?: string;
+  hair?: string;
+  playera?: string;
+  sueter?: string;
   sueterColor?: string;
-  glasses: string;
-  collar: string;
-  pulsera: string;
-  accessory: string;
+  glasses?: string;
+  collar?: string;
+  pulsera?: string;
+  accessory?: string;
 };
+
+export type AvatarConfig = AvatarConfigV2 | AvatarConfigAnterior;
+
+
+function obtenerUsuarioPersonalizadoDeConfig(
+  config: AvatarConfigV2
+) {
+  if (!esAvatarConfigPersonalizadoV2(config)) {
+    return null;
+  }
+
+  return config.customRole === "profesor"
+    ? obtenerProfesorAvatar(config.customKey)
+    : obtenerEstudiantePersonalizadoAvatar(config.customKey);
+}
+
+function obtenerItemPersonalizadoDeConfig(
+  config: AvatarConfigV2,
+  itemId: string
+) {
+  if (!esAvatarConfigPersonalizadoV2(config)) {
+    return null;
+  }
+
+  return config.customRole === "profesor"
+    ? obtenerItemProfesorPersonalizadoPorId(
+        config.customKey,
+        itemId
+      )
+    : obtenerItemEstudiantePersonalizadoPorId(
+        config.customKey,
+        itemId
+      );
+}
+
+function obtenerExpresionPersonalizadaDeConfig(
+  config: AvatarConfigV2
+) {
+  if (!esAvatarConfigPersonalizadoV2(config)) {
+    return null;
+  }
+
+  const usuario = obtenerUsuarioPersonalizadoDeConfig(config);
+  if (!usuario) return null;
+
+  return (
+    (config.customRole === "profesor"
+      ? obtenerExpresionProfesorPersonalizadoPorId(
+          config.customKey,
+          config.expression
+        )
+      : obtenerExpresionEstudiantePersonalizadoPorId(
+          config.customKey,
+          config.expression
+        )) ??
+    usuario.expressions[0] ??
+    null
+  );
+}
 
 interface Props {
   config?: AvatarConfig | null;
@@ -43,194 +138,244 @@ interface Props {
   onReady?: () => void;
 }
 
-const defaultConfig: AvatarConfig = {
-  gender: "masculino",
-  skin: "base/masculino/piel.png",
-  skinColor: "#f1c27d",
-  eyes: "Ojos1.png",
-  mouth: "Boca1.png",
-  nose: "Nariz1.png",
-  glasses: "none",
-  hair: "Cabello1.png",
-  playera: "Playera1",
-  sueter: "none",
-  sueterColor: "#ffffff",
-  collar: "none",
-  pulsera: "none",
-  accessory: "none",
-};
-
-function isNone(value?: string | null) {
-  return !value || value === "none";
-}
-
-function isComplexSweater(name: string) {
-  return /^Sueter\d+$/i.test(name);
-}
-
-function isComplexShirt(name: string) {
-  return /^Playera\d+$/i.test(name);
-}
-
-function normalizeConfig(config?: AvatarConfig | null): AvatarConfig | null {
-  if (!config) return null;
-
-  const raw: any = config;
-
-  const genderRaw = raw.gender ?? raw.bodyType;
-  const gender =
-    genderRaw === "femenino" || genderRaw === "female"
-      ? "femenino"
-      : "masculino";
-
-  return {
-    ...defaultConfig,
-    ...raw,
-    gender,
-    skin: raw.skin ?? defaultConfig.skin,
-    skinColor: raw.skinColor ?? defaultConfig.skinColor,
-    eyes: raw.eyes ?? defaultConfig.eyes,
-    mouth: raw.mouth ?? defaultConfig.mouth,
-    nose: raw.nose ?? defaultConfig.nose,
-    hair: raw.hair ?? defaultConfig.hair,
-    playera: raw.playera ?? raw.clothes ?? defaultConfig.playera,
-    sueter: raw.sueter ?? defaultConfig.sueter,
-    sueterColor: raw.sueterColor ?? defaultConfig.sueterColor,
-    glasses: raw.glasses ?? defaultConfig.glasses,
-    collar: raw.collar ?? defaultConfig.collar,
-    pulsera: raw.pulsera ?? defaultConfig.pulsera,
-    accessory: raw.accessory ?? defaultConfig.accessory,
-  };
-}
-
-function getConfigKey(config: AvatarConfig | null) {
-  if (!config) return "null";
-
-  return [
-    config.gender,
-    config.skinColor,
-    config.eyes,
-    config.mouth,
-    config.nose,
-    config.hair,
-    config.playera,
-    config.sueter,
-    config.sueterColor,
-    config.glasses,
-    config.accessory,
-  ].join("|");
-}
-
 const AvatarImageResolverContext = createContext<(src: string) => string>(
   (src) => src
 );
 
-function getVisibleSources(config: AvatarConfig) {
-  const sources: string[] = [];
-  const gender = config.gender;
-
-  sources.push(`/elementos_avatar/base/${gender}/piel.png`);
-  sources.push(`/elementos_avatar/base/${gender}/contorno.png`);
-
-  if (!isNone(config.mouth)) {
-    sources.push(`/elementos_avatar/cara/bocas/${config.mouth}`);
+function inferirGeneroConfig(config?: AvatarConfig | null): GeneroAvatar {
+  if (
+    config &&
+    typeof config === "object" &&
+    (config.gender === "masculino" || config.gender === "femenino")
+  ) {
+    return config.gender;
   }
 
-  if (!isNone(config.nose)) {
-    sources.push(`/elementos_avatar/cara/narices/${config.nose}`);
-  }
+  return "masculino";
+}
 
-  if (!isNone(config.eyes)) {
-    const ojosGenericos = ["Ojos5.png", "Ojos6.png", "Ojos7.png"];
-
-    sources.push(
-      ojosGenericos.includes(config.eyes)
-        ? `/elementos_avatar/cara/ojos/${config.eyes}`
-        : `/elementos_avatar/cara/ojos/${gender}/${config.eyes}`
+function itemSirveParaGenero(
+  item: ItemCatalogoAvatar,
+  gender: GeneroAvatar
+) {
+  if (item.customization.type === "image_variants") {
+    return Boolean(
+      resolverOpcionImagenAvatar(
+        item,
+        item.customization.defaultOption,
+        gender
+      )?.layer
     );
   }
 
-  if (!isNone(config.glasses)) {
-    sources.push(`/elementos_avatar/cara/lentes/${config.glasses}`);
-  }
-
-  if (!isNone(config.hair)) {
-    sources.push(`/elementos_avatar/cabello/${gender}/${config.hair}`);
-  }
-
-  if (!isNone(config.playera)) {
-    const base = `/elementos_avatar/ropa/${gender}/playeras/${config.playera}`;
-
-    if (isComplexShirt(config.playera)) {
-      sources.push(`${base}_Relleno.png`);
-      sources.push(`${base}_Contorno.png`);
-    } else {
-      sources.push(`${base}.png`);
-    }
-  }
-
-  if (!isNone(config.sueter)) {
-    if (/^Capa/i.test(config.sueter)) {
-      sources.push(`/elementos_avatar/ropa_profesor/${gender}/${config.sueter}.png`);
-    } else {
-      const base = `/elementos_avatar/ropa/${gender}/sueteres/${config.sueter}`;
-
-      if (isComplexSweater(config.sueter)) {
-        sources.push(`${base}_Relleno.png`);
-        sources.push(`${base}_Contorno.png`);
-      } else {
-        sources.push(`${base}.png`);
-      }
-    }
-  }
-
-  if (!isNone(config.accessory)) {
-    sources.push(`/elementos_avatar/accesorios/${config.accessory}`);
-  }
-
-  return sources;
-}
-
-function getAnchoOptimizado(size: number) {
-  return Math.min(640, Math.max(96, Math.ceil(size * 2)));
+  return Boolean(resolverVarianteItemAvatar(item, gender));
 }
 
 /**
- * Prepara exclusivamente las capas de la configuración que se va a mostrar.
- * No descarga el catálogo completo del editor y, por tanto, evita gastar
- * datos en prendas que el usuario quizá nunca seleccione.
+ * Configuración visual temporal para una cuenta que todavía no tiene
+ * avatar_config V2. No toma IDs del formato anterior ni los migra.
+ */
+function crearConfigVisualInicial(gender: GeneroAvatar): AvatarConfigV2 {
+  return crearAvatarConfigInicialEstudiante(gender);
+}
+
+function normalizarConfigRender(
+  config?: AvatarConfig | null
+): AvatarConfigV2 {
+  if (esAvatarConfigV2(config)) {
+    if (esAvatarConfigPersonalizadoV2(config)) {
+      const usuario =
+        obtenerUsuarioPersonalizadoDeConfig(config);
+
+      if (
+        usuario?.body &&
+        usuario.expressions.length > 0
+      ) {
+        return limpiarAvatarConfigV2(config);
+      }
+
+      // Un custom solo permanece activo si su propio catalogo
+      // (estudiante o profesor) conserva Cuerpo.png + expresion real.
+      return crearConfigVisualInicial(config.gender);
+    }
+
+    return completarAvatarConfigBaseEstudiante(config);
+  }
+
+  return crearConfigVisualInicial(inferirGeneroConfig(config));
+}
+
+function getConfigKey(config: AvatarConfigV2) {
+  return JSON.stringify(config);
+}
+
+function getAnchoOptimizado(size: number) {
+  // Mantiene suficiente densidad para que el avatar siga nítido incluso
+  // cuando un contenedor responsivo aplica escalas fraccionarias.
+  return Math.min(1024, Math.max(128, Math.ceil(size * 3)));
+}
+
+function esCapaSimple(
+  variante: VarianteItemAvatar
+): variante is CapaSimpleAvatar {
+  return typeof variante.image === "string";
+}
+
+function esCapaTint(
+  variante: VarianteItemAvatar
+): variante is CapaTintAvatar {
+  return (
+    typeof variante.image === "object" &&
+    "fill" in variante.image
+  );
+}
+
+function obtenerFuentesItem(
+  item: ItemCatalogoAvatar,
+  config: AvatarConfigV2
+) {
+  if (item.customization.type === "image_variants") {
+    const resolved = resolverOpcionImagenAvatar(
+      item,
+      config.imageVariants[item.id],
+      config.gender
+    );
+
+    return resolved?.layer?.image ? [resolved.layer.image] : [];
+  }
+
+  const variante = resolverVarianteItemAvatar(item, config.gender);
+  if (!variante) return [];
+
+  if (esCapaSimple(variante)) {
+    return [variante.image];
+  }
+
+  if (esCapaTint(variante)) {
+    return [variante.image.fill, variante.image.outline];
+  }
+
+  return [];
+}
+
+function obtenerItemsSeleccionados(config: AvatarConfigV2) {
+  const items: Array<{
+    slot: string;
+    item: ItemCatalogoAvatar;
+  }> = [];
+
+  const resolverItem = (itemId: string) =>
+    esAvatarConfigPersonalizadoV2(config)
+      ? obtenerItemPersonalizadoDeConfig(config, itemId)
+      : obtenerItemAvatarPorId(itemId);
+
+  for (const [slot, itemId] of Object.entries(config.selections)) {
+    const item = resolverItem(itemId);
+    if (!item) continue;
+    if (obtenerSlotItemAvatar(item) !== slot) continue;
+    if (!itemSirveParaGenero(item, config.gender)) continue;
+
+    items.push({ slot, item });
+  }
+
+  const pesoSlot = (slot: string) => {
+    if (slot === "ojos") return 30;
+    if (slot === "accesorios/lentes") return 40;
+    if (slot === "cabello") return 50;
+    if (slot === "ropa/base") return 65;
+    if (slot.startsWith("ropa/")) return 70;
+    if (slot.startsWith("accesorios/")) return 90;
+    return 100;
+  };
+
+  return items.sort((a, b) => {
+    const diferencia = pesoSlot(a.slot) - pesoSlot(b.slot);
+    return diferencia || a.slot.localeCompare(b.slot, "es");
+  });
+}
+
+function getVisibleSources(config: AvatarConfigV2) {
+  const sources: string[] = [];
+
+  const tieneRopa = Object.keys(
+    config.selections
+  ).some((slot) => slot.startsWith("ropa/"));
+
+  if (esAvatarConfigPersonalizadoV2(config)) {
+    const usuario =
+      obtenerUsuarioPersonalizadoDeConfig(config);
+
+    if (usuario?.body && !tieneRopa) {
+      sources.push(usuario.body);
+    }
+
+    const expresion =
+      obtenerExpresionPersonalizadaDeConfig(config);
+
+    if (expresion?.image) {
+      sources.push(expresion.image);
+    }
+  } else {
+    const cuerpo = obtenerSeccionCuerpoAvatar();
+    const bodyVariant = cuerpo?.variants[config.gender];
+
+    if (!tieneRopa) {
+      if (bodyVariant?.image) {
+        sources.push(bodyVariant.image);
+      }
+
+      if (bodyVariant?.fill) {
+        sources.push(bodyVariant.fill);
+      }
+
+      if (bodyVariant?.outline) {
+        sources.push(bodyVariant.outline);
+      }
+    }
+
+    // Cara.png es independiente de Cuerpo y nunca desaparece al cambiar ropa.
+    if (bodyVariant?.face) {
+      sources.push(bodyVariant.face);
+    }
+  }
+
+  for (const { item } of obtenerItemsSeleccionados(config)) {
+    sources.push(...obtenerFuentesItem(item, config));
+  }
+
+  return Array.from(new Set(sources.filter(Boolean)));
+}
+
+/**
+ * Precarga únicamente las capas visibles de la configuración solicitada.
  */
 export async function prepararRecursosAvatarFCC(
   config?: AvatarConfig | null,
   size = 150
 ) {
-  const normalizada = normalizeConfig(config);
-  if (!normalizada) return false;
-
+  const normalizada = normalizarConfigRender(config);
   const ancho = getAnchoOptimizado(size);
   const sources = getVisibleSources(normalizada).map((src) =>
-    obtenerUrlImagenOptimizada(src, ancho, 82)
+    obtenerUrlImagenOptimizada(src, ancho, 88)
   );
 
+  if (sources.length === 0) return false;
   return precargarImagenes(sources);
 }
 
 function LayerImage({
   src,
   alt,
-  zIndex,
 }: {
   src: string;
   alt: string;
-  zIndex?: number;
 }) {
   const resolver = useContext(AvatarImageResolverContext);
 
   return (
     <img
       src={resolver(src)}
-      className="absolute inset-0 w-full h-full object-contain"
-      style={{ zIndex }}
+      className="absolute inset-0 h-full w-full object-contain"
       alt={alt}
       draggable={false}
       decoding="async"
@@ -241,22 +386,19 @@ function LayerImage({
 function MaskTint({
   src,
   color,
-  opacity = 0.5,
-  zIndex,
+  opacity = 0.62,
 }: {
   src: string;
   color: string;
   opacity?: number;
-  zIndex?: number;
 }) {
   const resolver = useContext(AvatarImageResolverContext);
   const resolvedSrc = resolver(src);
 
   return (
     <div
-      className="absolute inset-0 w-full h-full pointer-events-none"
+      className="absolute inset-0 h-full w-full pointer-events-none"
       style={{
-        zIndex,
         backgroundColor: color,
         opacity,
         maskImage: `url(${resolvedSrc})`,
@@ -272,180 +414,243 @@ function MaskTint({
   );
 }
 
-function PlayeraLayer({ config }: { config: AvatarConfig }) {
-  const resolver = useContext(AvatarImageResolverContext);
+function CuerpoLayer({ config }: { config: AvatarConfigV2 }) {
+  const cuerpo = obtenerSeccionCuerpoAvatar();
+  const variante = cuerpo?.variants[config.gender];
 
-  if (isNone(config.playera)) return null;
-
-  const gender = config.gender;
-  const name = config.playera;
-  const base = `/elementos_avatar/ropa/${gender}/playeras/${name}`;
-
-  if (isComplexShirt(name)) {
-    const relleno = `${base}_Relleno.png`;
-    const contorno = `${base}_Contorno.png`;
-
-    return (
-      <div className="absolute inset-0">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url(${resolver(relleno)})`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-            backgroundSize: "contain",
-          }}
-        />
-
-        <MaskTint
-          src={relleno}
-          color={config.sueterColor ?? "#ffffff"}
-          opacity={0.6}
-        />
-
-        <LayerImage src={contorno} alt="playera" />
-      </div>
-    );
-  }
-
-  return (
-    <LayerImage
-      src={`${base}.png`}
-      alt="playera"
-    />
-  );
-}
-
-function SueterLayer({ config }: { config: AvatarConfig }) {
-  const resolver = useContext(AvatarImageResolverContext);
-
-  if (isNone(config.sueter)) return null;
-
-  const gender = config.gender;
-  const name = config.sueter;
-
-  if (/^Capa/i.test(name)) {
+  if (variante?.image) {
     return (
       <LayerImage
-        src={`/elementos_avatar/ropa_profesor/${gender}/${name}.png`}
-        alt="ropa profesor"
+        src={variante.image}
+        alt="cuerpo"
       />
     );
   }
 
-  const base = `/elementos_avatar/ropa/${gender}/sueteres/${name}`;
+  if (!variante?.fill || !variante?.outline) {
+    return null;
+  }
 
-  if (isComplexSweater(name)) {
-    const relleno = `${base}_Relleno.png`;
-    const contorno = `${base}_Contorno.png`;
+  return (
+    <div className="absolute inset-0">
+      <LayerImage src={variante.fill} alt="cuerpo" />
+      <MaskTint
+        src={variante.fill}
+        color={config.skinColor ?? "#f1c27d"}
+        opacity={0.72}
+      />
+      <LayerImage
+        src={variante.outline}
+        alt="contorno del cuerpo"
+      />
+    </div>
+  );
+}
 
-    return (
-      <div className="absolute inset-0">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url(${resolver(relleno)})`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-            backgroundSize: "contain",
-          }}
-        />
+function CaraLayer({ config }: { config: AvatarConfigV2 }) {
+  const cuerpo = obtenerSeccionCuerpoAvatar();
+  const variante = cuerpo?.variants[config.gender];
 
-        <MaskTint
-          src={relleno}
-          color={config.sueterColor ?? "#ffffff"}
-          opacity={0.5}
-        />
-
-        <LayerImage src={contorno} alt="suéter" />
-      </div>
-    );
+  if (!variante?.face) {
+    return null;
   }
 
   return (
     <LayerImage
-      src={`${base}.png`}
-      alt="suéter"
+      src={variante.face}
+      alt="cara"
     />
   );
 }
 
+function ItemLayer({
+  item,
+  config,
+}: {
+  item: ItemCatalogoAvatar;
+  config: AvatarConfigV2;
+}) {
+  if (item.customization.type === "image_variants") {
+    const resolved = resolverOpcionImagenAvatar(
+      item,
+      config.imageVariants[item.id],
+      config.gender
+    );
+
+    if (!resolved?.layer?.image) return null;
+
+    return <LayerImage src={resolved.layer.image} alt={item.name} />;
+  }
+
+  const variante = resolverVarianteItemAvatar(item, config.gender);
+  if (!variante) return null;
+
+  if (esCapaSimple(variante)) {
+    return <LayerImage src={variante.image} alt={item.name} />;
+  }
+
+  if (esCapaTint(variante)) {
+    const color =
+      config.colors[item.id] ??
+      (item.customization.type === "tint"
+        ? item.customization.colors[0]
+        : null) ??
+      "#ffffff";
+
+    return (
+      <div className="absolute inset-0">
+        <LayerImage src={variante.image.fill} alt={`${item.name} relleno`} />
+        <MaskTint src={variante.image.fill} color={color} opacity={0.66} />
+        <LayerImage src={variante.image.outline} alt={`${item.name} contorno`} />
+      </div>
+    );
+  }
+
+  return null;
+}
+
 type AvatarFrame = {
   key: string;
-  config: AvatarConfig;
+  config: AvatarConfigV2;
   resolver: (src: string) => string;
 };
 
+async function esperarImagenDOM(img: HTMLImageElement) {
+  if (!img.complete) {
+    const cargo = await new Promise<boolean>((resolve) => {
+      const listo = () => {
+        limpiar();
+        resolve(true);
+      };
+      const fallo = () => {
+        limpiar();
+        resolve(false);
+      };
+      const limpiar = () => {
+        img.removeEventListener("load", listo);
+        img.removeEventListener("error", fallo);
+      };
+
+      img.addEventListener("load", listo, { once: true });
+      img.addEventListener("error", fallo, { once: true });
+    });
+
+    if (!cargo) return false;
+  }
+
+  if (img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+    return false;
+  }
+
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode();
+    } catch {
+      // Algunos navegadores pueden rechazar decode() aun con la imagen ya
+      // disponible. naturalWidth/naturalHeight siguen siendo la comprobacion.
+    }
+  }
+
+  return img.naturalWidth > 0 && img.naturalHeight > 0;
+}
+
+async function esperarFrameDOMListo(nodo: HTMLDivElement | null) {
+  if (!nodo) return false;
+
+  const imagenes = Array.from(
+    nodo.querySelectorAll<HTMLImageElement>("img")
+  );
+
+  const resultados = await Promise.all(
+    imagenes.map((img) => esperarImagenDOM(img))
+  );
+
+  return resultados.every(Boolean);
+}
+
+function siguienteFrameNavegador() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 function CapasAvatar({ frame }: { frame: AvatarFrame }) {
-  const gender = frame.config.gender;
-  const skinSrc = `/elementos_avatar/base/${gender}/piel.png`;
-  const contornoSrc = `/elementos_avatar/base/${gender}/contorno.png`;
+  const items = obtenerItemsSeleccionados(frame.config);
+  const personalizado =
+    obtenerUsuarioPersonalizadoDeConfig(frame.config);
+
+  const expresion = personalizado
+    ? obtenerExpresionPersonalizadaDeConfig(frame.config)
+    : null;
+
+  const ropa = items.filter(({ slot }) =>
+    slot.startsWith("ropa/")
+  );
+
+  const elementosEstandar = personalizado
+    ? []
+    : items.filter(
+        ({ slot }) => !slot.startsWith("ropa/")
+      );
+
+  const accesoriosPersonalizados = personalizado
+    ? items.filter(({ slot }) =>
+        slot.startsWith("accesorios/")
+      )
+    : [];
+
+  const tieneRopa = ropa.length > 0;
 
   return (
     <AvatarImageResolverContext.Provider value={frame.resolver}>
       <div className="relative h-full w-full fcc-avatar-completo">
-        <div className="absolute inset-0 z-0">
-          <LayerImage src={skinSrc} alt="base piel" />
+        {personalizado ? (
+          personalizado.body && !tieneRopa ? (
+            <LayerImage
+              src={personalizado.body}
+              alt="cuerpo personalizado"
+            />
+          ) : null
+        ) : !tieneRopa ? (
+          <CuerpoLayer config={frame.config} />
+        ) : null}
 
-          <MaskTint
-            src={skinSrc}
-            color={frame.config.skinColor ?? "#f1c27d"}
-            opacity={0.5}
+        {ropa.map(({ slot, item }) => (
+          <ItemLayer
+            key={`${slot}:${item.id}`}
+            item={item}
+            config={frame.config}
           />
+        ))}
 
-          <LayerImage src={contornoSrc} alt="contorno" />
-        </div>
+        {/* En estudiantes estándar, Cara.png nunca depende de la ropa.
+            Nariz y boca forman parte de esta misma capa fija. */}
+        {!personalizado && (
+          <CaraLayer config={frame.config} />
+        )}
 
-        {!isNone(frame.config.mouth) && (
+        {elementosEstandar.map(({ slot, item }) => (
+          <ItemLayer
+            key={`${slot}:${item.id}`}
+            item={item}
+            config={frame.config}
+          />
+        ))}
+
+        {expresion?.image && (
           <LayerImage
-            src={`/elementos_avatar/cara/bocas/${frame.config.mouth}`}
-            alt="boca"
+            src={expresion.image}
+            alt={expresion.name}
           />
         )}
 
-        {!isNone(frame.config.nose) && (
-          <LayerImage
-            src={`/elementos_avatar/cara/narices/${frame.config.nose}`}
-            alt="nariz"
+        {accesoriosPersonalizados.map(({ slot, item }) => (
+          <ItemLayer
+            key={`${slot}:${item.id}`}
+            item={item}
+            config={frame.config}
           />
-        )}
-
-        {!isNone(frame.config.eyes) && (
-          <LayerImage
-            src={
-              ["Ojos5.png", "Ojos6.png", "Ojos7.png"].includes(
-                frame.config.eyes
-              )
-                ? `/elementos_avatar/cara/ojos/${frame.config.eyes}`
-                : `/elementos_avatar/cara/ojos/${gender}/${frame.config.eyes}`
-            }
-            alt="ojos"
-          />
-        )}
-
-        {!isNone(frame.config.glasses) && (
-          <LayerImage
-            src={`/elementos_avatar/cara/lentes/${frame.config.glasses}`}
-            alt="lentes"
-          />
-        )}
-
-        {!isNone(frame.config.hair) && (
-          <LayerImage
-            src={`/elementos_avatar/cabello/${gender}/${frame.config.hair}`}
-            alt="cabello"
-          />
-        )}
-
-        <PlayeraLayer config={frame.config} />
-        <SueterLayer config={frame.config} />
-
-        {!isNone(frame.config.accessory) && (
-          <LayerImage
-            src={`/elementos_avatar/accesorios/${frame.config.accessory}`}
-            alt="accesorio"
-          />
-        )}
+        ))}
       </div>
     </AvatarImageResolverContext.Provider>
   );
@@ -519,40 +724,37 @@ export default function RenderizadorAvatar({
   mantenerAnteriorDuranteCarga = false,
   onReady,
 }: Props) {
-  const normalizedConfig = useMemo(() => normalizeConfig(config), [config]);
-  const configKey = useMemo(() => getConfigKey(normalizedConfig), [normalizedConfig]);
+  const normalizedConfig = useMemo(
+    () => normalizarConfigRender(config),
+    [config]
+  );
+  const configKey = useMemo(
+    () => getConfigKey(normalizedConfig),
+    [normalizedConfig]
+  );
   const anchoOptimizado = useMemo(
     () => getAnchoOptimizado(size),
     [size]
   );
   const resolver = useMemo(
-    () => (src: string) => obtenerUrlImagenOptimizada(src, anchoOptimizado, 82),
+    () => (src: string) =>
+      obtenerUrlImagenOptimizada(src, anchoOptimizado, 88),
     [anchoOptimizado]
   );
 
   const [frames, setFrames] = useState<AvatarFrame[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [stagedKey, setStagedKey] = useState<string | null>(null);
-  const [cargando, setCargando] = useState(Boolean(normalizedConfig));
+  const [cargando, setCargando] = useState(true);
   const [falloCarga, setFalloCarga] = useState(false);
   const activeKeyRef = useRef<string | null>(null);
   const latestRequestRef = useRef("");
   const onReadyRef = useRef(onReady);
+  const frameRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   onReadyRef.current = onReady;
 
   useEffect(() => {
-    if (!normalizedConfig) {
-      latestRequestRef.current = "";
-      activeKeyRef.current = null;
-      setFrames([]);
-      setActiveKey(null);
-      setStagedKey(null);
-      setCargando(false);
-      setFalloCarga(false);
-      return;
-    }
-
     let active = true;
     const requestKey = `${configKey}@${anchoOptimizado}`;
     latestRequestRef.current = requestKey;
@@ -577,6 +779,12 @@ export default function RenderizadorAvatar({
     }
 
     const sources = getVisibleSources(normalizedConfig).map(resolver);
+
+    if (sources.length === 0) {
+      setFalloCarga(true);
+      setCargando(false);
+      return;
+    }
 
     void precargarImagenes(sources).then((completo) => {
       if (!active || latestRequestRef.current !== requestKey) return;
@@ -615,37 +823,62 @@ export default function RenderizadorAvatar({
   useLayoutEffect(() => {
     if (!stagedKey) return;
 
-    let activo = true;
-    let primerFrame = 0;
-    let segundoFrame = 0;
+    let cancelado = false;
+    const clave = stagedKey;
 
-    primerFrame = window.requestAnimationFrame(() => {
-      segundoFrame = window.requestAnimationFrame(() => {
-        if (!activo || latestRequestRef.current !== stagedKey) return;
+    const confirmarYActivar = async () => {
+      // El nuevo frame ya esta montado pero completamente invisible.
+      // Esperamos a que SUS <img> reales esten cargados y decodificados;
+      // precargar la URL por separado no garantiza que Chromium ya haya
+      // pintado el nodo que React acaba de montar.
+      const nodo = frameRefs.current.get(clave) ?? null;
+      const domListo = await esperarFrameDOMListo(nodo);
 
-        activeKeyRef.current = stagedKey;
-        setActiveKey(stagedKey);
-        setStagedKey(null);
-        setCargando(false);
-        onReadyRef.current?.();
+      if (
+        cancelado ||
+        latestRequestRef.current !== clave ||
+        !domListo
+      ) {
+        if (!cancelado && latestRequestRef.current === clave && !domListo) {
+          setFalloCarga(true);
+          setCargando(false);
+          setStagedKey(null);
+        }
+        return;
+      }
 
-        window.setTimeout(() => {
-          if (latestRequestRef.current !== stagedKey) return;
-          setFrames((actuales) =>
-            actuales.filter((frame) => frame.key === stagedKey)
-          );
-        }, 120);
-      });
-    });
+      // Dos cuadros completos con el frame nuevo ya decodificado. El anterior
+      // sigue siendo el unico visible durante toda esta espera.
+      await siguienteFrameNavegador();
+      await siguienteFrameNavegador();
+
+      if (cancelado || latestRequestRef.current !== clave) return;
+
+      // Un solo commit cambia las clases: el anterior deja de ser activo y el
+      // nuevo pasa a activo. Nunca existe un estado visual sin uno de los dos.
+      activeKeyRef.current = clave;
+      setActiveKey(clave);
+      setStagedKey(null);
+      setCargando(false);
+      onReadyRef.current?.();
+
+      window.setTimeout(() => {
+        if (latestRequestRef.current !== clave) return;
+        setFrames((actuales) =>
+          actuales.filter((frame) => frame.key === clave)
+        );
+      }, 120);
+    };
+
+    void confirmarYActivar();
 
     return () => {
-      activo = false;
-      window.cancelAnimationFrame(primerFrame);
-      window.cancelAnimationFrame(segundoFrame);
+      cancelado = true;
     };
   }, [stagedKey]);
 
-  const activeFrame = frames.find((frame) => frame.key === activeKey) ?? null;
+  const activeFrame =
+    frames.find((frame) => frame.key === activeKey) ?? null;
   const estadoAvatar = activeFrame
     ? cargando
       ? "updating"
@@ -679,6 +912,13 @@ export default function RenderizadorAvatar({
         return (
           <div
             key={frame.key}
+            ref={(node) => {
+              if (node) {
+                frameRefs.current.set(frame.key, node);
+              } else {
+                frameRefs.current.delete(frame.key);
+              }
+            }}
             className={`fcc-avatar-frame ${
               esActivo ? "is-active" : "is-staging"
             }`}
@@ -700,8 +940,6 @@ export default function RenderizadorAvatar({
           width: 100%;
           height: 100%;
           contain: layout paint style;
-          transform: translateZ(0);
-          backface-visibility: hidden;
           pointer-events: none;
         }
 
@@ -713,7 +951,7 @@ export default function RenderizadorAvatar({
 
         .fcc-avatar-frame.is-staging {
           z-index: 1;
-          opacity: 0.001;
+          opacity: 0;
           visibility: visible;
         }
       `}</style>

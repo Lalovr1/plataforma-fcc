@@ -14,13 +14,20 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import LayoutGeneral from "@/components/LayoutGeneral";
 import CargadorFCC from "@/components/CargadorFCC";
+import BarraXP from "@/components/BarraXP";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
-import { iniciarIndicadorNavegacionFCC } from "@/components/IndicadorNavegacionFCC";
+import AvisoPreparacionQuiz, {
+  type TemaPreparacionQuiz,
+} from "@/components/AvisoPreparacionQuiz";
+import {
+  iniciarIndicadorNavegacionFCC,
+  mensajeParaRutaFCC,
+} from "@/components/IndicadorNavegacionFCC";
 import {
   extraerFuentesImagenHtml,
   precargarImagenes,
 } from "@/lib/imagenes";
-import { AlertCircle, CheckCircle2, Sparkles, Target, Trophy } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, Sparkles, Target, Trophy } from "lucide-react";
 import "katex/dist/katex.min.css";
 
 type Pregunta = { id: string; enunciado: string };
@@ -180,6 +187,14 @@ export default function ResolverQuizPage() {
   const [esPreview, setEsPreview] = useState<boolean>(false);
 
   const [xpGanado, setXpGanado] = useState<number>(0);
+  const [mostrarResumenResultado, setMostrarResumenResultado] = useState(false);
+  const [mostrarAnimacionXP, setMostrarAnimacionXP] = useState(false);
+  const [xpAntesIntento, setXpAntesIntento] = useState(0);
+  const [xpDespuesIntento, setXpDespuesIntento] = useState(0);
+  const [xpAnimado, setXpAnimado] = useState(0);
+  const [xpAnimacionLista, setXpAnimacionLista] = useState(false);
+  const [mostrarProgresoCompacto, setMostrarProgresoCompacto] = useState(false);
+  const progresoQuizRef = useRef<HTMLElement | null>(null);
 
   const [estado, setEstado] = useState<EstadoQuiz>("intro");
   const [timeLeftSec, setTimeLeftSec] = useState<number | null>(null);
@@ -209,6 +224,11 @@ export default function ResolverQuizPage() {
   const [ultimoIntentoId, setUltimoIntentoId] = useState<string | null>(null);
   const [resultadoHistorico, setResultadoHistorico] = useState(false);
   const [cargandoResultadoAnterior, setCargandoResultadoAnterior] = useState(false);
+  const [temasPreparacionPendientes, setTemasPreparacionPendientes] = useState<
+    TemaPreparacionQuiz[]
+  >([]);
+  const [mostrarAvisoPreparacion, setMostrarAvisoPreparacion] = useState(false);
+  const [preparacionConfirmada, setPreparacionConfirmada] = useState(false);
 
   const cargarRetroalimentacionIntento = async (intentoId: string) => {
     const { data, error } = await supabase.rpc(
@@ -444,7 +464,25 @@ export default function ResolverQuizPage() {
 
     setIntentosRealizados((prev) => Math.max(prev, numeroIntento));
     setMejorPuntaje((prev) => Math.max(prev, puntaje));
-    setXpGanado(Number(resumen.xp_agregado ?? 0));
+    const xpAgregadoResumen = Number(resumen.xp_agregado ?? 0);
+    const xpTotalResumenRaw = Number(resumen.xp_total);
+    const xpTotalResumen =
+      Number.isFinite(xpTotalResumenRaw) && xpTotalResumenRaw >= 0
+        ? xpTotalResumenRaw
+        : 0;
+
+    setXpGanado(xpAgregadoResumen);
+    setXpAntesIntento(
+      xpTotalResumen > 0
+        ? Math.max(0, xpTotalResumen - xpAgregadoResumen)
+        : 0
+    );
+    setXpDespuesIntento(xpTotalResumen);
+    setXpAnimado(
+      xpTotalResumen > 0
+        ? Math.max(0, xpTotalResumen - xpAgregadoResumen)
+        : 0
+    );
     setResultadoHistorico(true);
     setEnvioAutomaticoPorTiempo(false);
     setMostrarAvisoTiempo(false);
@@ -489,6 +527,7 @@ export default function ResolverQuizPage() {
 
     activarBarreraResultado();
     setEstado("finalizado");
+    setMostrarResumenResultado(true);
     return true;
   };
 
@@ -651,8 +690,41 @@ export default function ResolverQuizPage() {
         setRespuestas(mapa);
         setIntentosRealizados(intentos);
         setMejorPuntaje(best);
+        setTemasPreparacionPendientes([]);
+        setPreparacionConfirmada(false);
 
         if (!preview) {
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+
+            if (session?.access_token) {
+              const responsePreparacion = await fetch(
+                `/api/quizzes/${encodeURIComponent(quizId)}/preparacion`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                  },
+                }
+              );
+              const dataPreparacion = await responsePreparacion.json();
+
+              if (responsePreparacion.ok && dataPreparacion?.ok) {
+                setTemasPreparacionPendientes(
+                  Array.isArray(dataPreparacion.pendientes)
+                    ? dataPreparacion.pendientes
+                    : []
+                );
+              }
+            }
+          } catch (errorPreparacion) {
+            console.warn(
+              "No se pudo cargar la recomendacion de preparacion del quiz:",
+              errorPreparacion
+            );
+          }
+
           const { data: intentoActivo, error: intentoActivoError } =
             await supabase.rpc("obtener_intento_activo_quiz", {
               p_quiz_id: quizId,
@@ -710,6 +782,54 @@ export default function ResolverQuizPage() {
   }, [seleccionadas]);
 
   useEffect(() => {
+    if (!mostrarAnimacionXP) return;
+
+    const desde = Math.max(0, xpAntesIntento);
+    const hasta = Math.max(desde, xpDespuesIntento);
+    setXpAnimado(desde);
+    setXpAnimacionLista(false);
+
+    if (hasta <= desde) {
+      setXpAnimado(hasta);
+      setXpAnimacionLista(true);
+      return;
+    }
+
+    const reducirMovimiento =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (reducirMovimiento) {
+      setXpAnimado(hasta);
+      setXpAnimacionLista(true);
+      return;
+    }
+
+    let frameId = 0;
+    const inicio = performance.now();
+    const duracion = 1650;
+
+    const animar = (ahora: number) => {
+      const avance = Math.min(1, (ahora - inicio) / duracion);
+      const suavizado = 1 - Math.pow(1 - avance, 3);
+      setXpAnimado(Math.round(desde + (hasta - desde) * suavizado));
+
+      if (avance < 1) {
+        frameId = window.requestAnimationFrame(animar);
+      } else {
+        setXpAnimado(hasta);
+        setXpAnimacionLista(true);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animar);
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
+  }, [mostrarAnimacionXP, xpAntesIntento, xpDespuesIntento]);
+
+  useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
@@ -736,6 +856,9 @@ export default function ResolverQuizPage() {
         setMostrarAvisoTiempo(false);
         setMensajeResultadoAutomatico(null);
         setXpGanado(0);
+        setMostrarResumenResultado(false);
+        setMostrarAnimacionXP(false);
+        setXpAnimacionLista(false);
         enviadoRef.current = false;
         setEstado("intro");
         window.scrollTo({ top: 0, behavior: "auto" });
@@ -993,6 +1116,9 @@ export default function ResolverQuizPage() {
     setResultadoHistorico(false);
     setMensajeResultadoAutomatico(null);
     setPreguntaPendienteEnvio(null);
+    setMostrarResumenResultado(false);
+    setMostrarAnimacionXP(false);
+    setXpAnimacionLista(false);
 
     if (verificandoIntentos && !esPreview) {
       alert("Espera un momento. Estamos verificando tus intentos disponibles.");
@@ -1062,6 +1188,26 @@ export default function ResolverQuizPage() {
     }
   };
 
+  const solicitarInicio = () => {
+    if (
+      !esPreview &&
+      !intentoActivoId &&
+      !preparacionConfirmada &&
+      temasPreparacionPendientes.length > 0
+    ) {
+      setMostrarAvisoPreparacion(true);
+      return;
+    }
+
+    void iniciar();
+  };
+
+  const continuarDesdeAvisoPreparacion = () => {
+    setPreparacionConfirmada(true);
+    setMostrarAvisoPreparacion(false);
+    void iniciar();
+  };
+
   const enviarQuiz = async (
     auto: boolean = false
   ): Promise<boolean> => {
@@ -1105,8 +1251,13 @@ export default function ResolverQuizPage() {
         correctas,
         total,
       });
+      setXpGanado(0);
+      setXpAntesIntento(0);
+      setXpDespuesIntento(0);
+      setXpAnimado(0);
 
       setEstado("finalizado");
+      setMostrarResumenResultado(true);
       return true;
     }
 
@@ -1176,6 +1327,13 @@ export default function ResolverQuizPage() {
       setIntentosRealizados(resultadoServidor.numero_intento);
       setMejorPuntaje(nuevoMejor);
       setXpGanado(resultadoServidor.xp_agregado);
+      setXpAntesIntento(
+        Math.max(0, resultadoServidor.xp_total - resultadoServidor.xp_agregado)
+      );
+      setXpDespuesIntento(Math.max(0, resultadoServidor.xp_total));
+      setXpAnimado(
+        Math.max(0, resultadoServidor.xp_total - resultadoServidor.xp_agregado)
+      );
       setResultadoHistorico(false);
 
       const puedeVerExplicaciones =
@@ -1210,6 +1368,7 @@ export default function ResolverQuizPage() {
       activarBarreraResultado();
 
       setEstado("finalizado");
+      setMostrarResumenResultado(true);
 
       if (auto && typeof window !== "undefined") {
         window.setTimeout(() => {
@@ -1398,9 +1557,12 @@ export default function ResolverQuizPage() {
       }
 
       if (pendiente.tipo === "navegar") {
-        iniciarIndicadorNavegacionFCC("Abriendo la sección", {
-          destino: pendiente.destino,
-        });
+        iniciarIndicadorNavegacionFCC(
+          mensajeParaRutaFCC(pendiente.destino),
+          {
+            destino: pendiente.destino,
+          }
+        );
         router.push(pendiente.destino);
         return;
       }
@@ -1453,6 +1615,9 @@ export default function ResolverQuizPage() {
 
       setResultadoHistorico(true);
       setXpGanado(0);
+      setMostrarResumenResultado(false);
+      setMostrarAnimacionXP(false);
+      setXpAnimacionLista(false);
       activarBarreraResultado();
       setEstado("finalizado");
     } catch (error) {
@@ -1485,6 +1650,12 @@ export default function ResolverQuizPage() {
     setResultadoHistorico(false);
     setMostrarAvisoTiempo(false);
     setMensajeResultadoAutomatico(null);
+    setMostrarResumenResultado(false);
+    setMostrarAnimacionXP(false);
+    setXpAnimacionLista(false);
+    setXpAntesIntento(0);
+    setXpDespuesIntento(0);
+    setXpAnimado(0);
     enviadoRef.current = false;
   };
 
@@ -1599,6 +1770,34 @@ export default function ResolverQuizPage() {
     }
   };
 
+  useEffect(() => {
+    if (estado !== "en_curso") {
+      setMostrarProgresoCompacto(false);
+      return;
+    }
+
+    const elemento = progresoQuizRef.current;
+    if (!elemento || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setMostrarProgresoCompacto(
+          !entry.isIntersecting && entry.boundingClientRect.bottom < 0
+        );
+      },
+      { threshold: [0, 0.01] }
+    );
+
+    observer.observe(elemento);
+
+    return () => {
+      observer.disconnect();
+      setMostrarProgresoCompacto(false);
+    };
+  }, [estado]);
+
   const intentosMax = quizInfo?.intentos_max ?? 1;
   const quizCompletadoPerfecto =
     !esPreview &&
@@ -1617,6 +1816,111 @@ export default function ResolverQuizPage() {
 
   const tiempoTieneLimite =
     !!quizInfo?.tiempo_limite_min && quizInfo.tiempo_limite_min > 0;
+
+  const preguntasRespondidas = preguntas.reduce(
+    (total, pregunta) => total + (seleccionadas[pregunta.id] ? 1 : 0),
+    0
+  );
+  const progresoRespuestas =
+    preguntas.length > 0
+      ? Math.min(100, Math.round((preguntasRespondidas / preguntas.length) * 100))
+      : 0;
+  const preguntasPendientes = Math.max(0, preguntas.length - preguntasRespondidas);
+
+  const tituloResultado =
+    puntajeResultado === 100
+      ? "¡Excelente!"
+      : puntajeResultado >= 75
+      ? "¡Muy buen trabajo!"
+      : puntajeResultado >= 50
+      ? "Buen avance"
+      : "Sigue practicando";
+
+  const hayRetroalimentacionDisponible =
+    Object.keys(retroalimentacionIntento).length > 0;
+
+  const detalleResultado =
+    puntajeResultado === 100
+      ? "Dominaste este quiz y alcanzaste el puntaje máximo."
+      : puntajeResultado >= 75
+      ? hayRetroalimentacionDisponible
+        ? "Mostraste un buen dominio del contenido. Revisa la retroalimentación para afianzarlo."
+        : "Mostraste un buen dominio del contenido. Repasa los puntos que te costaron antes de tu siguiente intento."
+      : puntajeResultado >= 50
+      ? hayRetroalimentacionDisponible
+        ? "Ya tienes una base. Usa la retroalimentación para reforzar lo que faltó."
+        : "Ya tienes una base. Repasa el contenido y vuelve a intentarlo para mejorar tu puntaje."
+      : hayRetroalimentacionDisponible
+        ? "Revisa tus respuestas y usa la retroalimentación para preparar tu siguiente intento."
+        : "Repasa el contenido y vuelve a intentarlo para mejorar tu puntaje.";
+
+  const renderResumenResultado = () => {
+    if (!resultado) return null;
+
+    return (
+      <div className="quiz-result-dashboard">
+        <div className="quiz-result-dashboard-head">
+          <div>
+            <span className="quiz-result-kicker">Resultado del quiz</span>
+            <h2>{quizInfo?.titulo || "Quiz"}</h2>
+          </div>
+
+          <span
+            className={`quiz-result-badge ${
+              puntajeResultado >= 75 ? "success" : "neutral"
+            }`}
+          >
+            {tituloResultado}
+          </span>
+        </div>
+
+        <div className="quiz-result-hero">
+          <div
+            className="quiz-score-ring"
+            style={{
+              background: `conic-gradient(var(--quiz-accent) ${
+                puntajeResultado * 3.6
+              }deg, color-mix(in srgb, var(--quiz-accent) 12%, var(--quiz-border)) 0deg)`,
+            }}
+          >
+            <div className="quiz-score-ring-inner">
+              <strong>{puntajeResultado}</strong>
+              <span>Puntaje final</span>
+            </div>
+          </div>
+
+          <div className="quiz-result-message">
+            <span className="quiz-result-message-icon" aria-hidden="true">
+              {puntajeResultado === 100 ? (
+                <Trophy size={30} strokeWidth={2.35} />
+              ) : (
+                <Sparkles size={30} strokeWidth={2.25} />
+              )}
+            </span>
+            <div>
+              <strong>{tituloResultado}</strong>
+              <p>{detalleResultado}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="quiz-result-metrics">
+          <div>
+            <span>Respondidas</span>
+            <strong>{preguntasRespondidas} / {resultado.total}</strong>
+          </div>
+          <div>
+            <span>Correctas</span>
+            <strong>{resultado.correctas}</strong>
+          </div>
+          <div>
+            <span>Intento</span>
+            <strong>{Math.max(1, intentosRealizados)} / {intentosMax}</strong>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const estilos = (
     <style>{`
@@ -2583,6 +2887,683 @@ export default function ResolverQuizPage() {
           width: 100%;
         }
       }
+
+
+      /* Rediseño visual del quiz: no cambia la lógica del intento. */
+      .quiz-page {
+        gap: 20px;
+      }
+
+      .quiz-intro-card {
+        padding: clamp(22px, 3vw, 34px);
+      }
+
+      .quiz-intro-content {
+        width: min(100%, 1060px);
+        margin-inline: auto;
+        gap: 20px;
+      }
+
+      .quiz-stat-box {
+        min-height: 106px;
+        border-radius: 22px;
+        padding: 18px;
+      }
+
+      .quiz-stat-label {
+        font-size: 0.82rem;
+      }
+
+      .quiz-stat-value {
+        font-size: clamp(1.2rem, 1.6vw, 1.4rem);
+      }
+
+      .quiz-primary-button,
+      .quiz-secondary-button,
+      .quiz-success-button,
+      .quiz-danger-button {
+        min-height: 50px;
+        padding-inline: 22px;
+        border-radius: 16px;
+        font-size: 1rem;
+      }
+
+      .quiz-progress-shell {
+        position: relative;
+        z-index: 35;
+        display: grid;
+        gap: 14px;
+        padding: 16px 18px;
+        border-radius: 24px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface) 94%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        box-shadow: 0 14px 34px color-mix(in srgb, var(--quiz-text) 8%, transparent);
+        backdrop-filter: blur(18px);
+      }
+
+      .quiz-progress-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .quiz-progress-copy {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .quiz-progress-copy strong {
+        color: var(--quiz-text);
+        font-size: clamp(1rem, 1.4vw, 1.16rem);
+        font-weight: 950;
+      }
+
+      .quiz-progress-copy span {
+        color: var(--quiz-muted);
+        font-size: 0.9rem;
+        font-weight: 720;
+        line-height: 1.35;
+      }
+
+      .quiz-progress-timer {
+        min-width: 126px;
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        border-radius: 16px;
+        padding: 0 16px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 9%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 24%, var(--quiz-border));
+        font-size: 1.06rem;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .quiz-progress-timer.danger {
+        color: var(--color-danger);
+        background: color-mix(in srgb, var(--color-danger) 8%, var(--quiz-surface));
+        border-color: color-mix(in srgb, var(--color-danger) 30%, var(--quiz-border));
+      }
+
+      .quiz-progress-track {
+        width: 100%;
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--quiz-muted) 16%, transparent);
+        box-shadow: inset 0 1px 3px color-mix(in srgb, var(--quiz-text) 9%, transparent);
+      }
+
+      .quiz-progress-track > span {
+        display: block;
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          var(--quiz-accent),
+          color-mix(in srgb, var(--quiz-cyan) 78%, var(--quiz-accent))
+        );
+        box-shadow: 0 0 14px color-mix(in srgb, var(--quiz-accent) 22%, transparent);
+        transition: width 280ms ease;
+      }
+
+      .quiz-questions {
+        gap: 20px;
+      }
+
+      .quiz-question-card,
+      .quiz-question-card.has-feedback {
+        padding: clamp(26px, 3vw, 38px) clamp(26px, 3vw, 38px) 96px;
+        border-radius: 30px;
+        overflow: hidden;
+      }
+
+      .quiz-question-card.has-feedback {
+        padding-bottom: clamp(26px, 3vw, 38px);
+      }
+
+      .quiz-question-card > .quiz-card-content {
+        position: relative;
+      }
+
+      .quiz-question-top {
+        margin: 0 auto 24px;
+        padding-top: 42px;
+      }
+
+      .quiz-question-number {
+        left: 0;
+        top: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+        font-size: 1rem;
+      }
+
+      .quiz-question-text {
+        width: min(100%, 1080px);
+        margin-inline: auto;
+        font-size: clamp(1.12rem, 1.7vw, 1.38rem);
+        font-weight: 850;
+        line-height: 1.55;
+      }
+
+      .quiz-answers {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        width: min(100%, 1180px);
+        margin-inline: auto;
+      }
+
+      .quiz-answer-row {
+        position: relative;
+        display: block;
+        min-width: 0;
+      }
+
+      .quiz-radio {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .quiz-answer-card {
+        min-height: 92px;
+        height: 100%;
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr);
+        align-items: center;
+        gap: 14px;
+        border-radius: 21px;
+        padding: 17px 18px;
+        text-align: left;
+      }
+
+      .quiz-answer-row:focus-within .quiz-answer-card {
+        outline: 3px solid color-mix(in srgb, var(--quiz-accent) 26%, transparent);
+        outline-offset: 3px;
+      }
+
+      .quiz-answer-letter {
+        width: 46px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 7%, var(--quiz-surface));
+        border: 2px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        font-size: 1.08rem;
+        font-weight: 950;
+        transition: 170ms ease;
+      }
+
+      .quiz-answer-card.selected .quiz-answer-letter {
+        color: #ffffff;
+        background: var(--quiz-accent);
+        border-color: var(--quiz-accent);
+      }
+
+      .theme-oscuro .quiz-answer-card.selected .quiz-answer-letter {
+        color: #050505;
+      }
+
+      .quiz-answer-content {
+        min-width: 0;
+        color: var(--quiz-text);
+        font-size: clamp(0.98rem, 1.22vw, 1.08rem);
+        font-weight: 720;
+        line-height: 1.5;
+      }
+
+      .quiz-question-card.has-feedback .quiz-feedback-card,
+      .quiz-feedback-card {
+        width: min(100%, 1180px);
+        margin: 20px auto 0;
+        padding: 16px 18px;
+        border-radius: 18px;
+      }
+
+      .quiz-feedback-head {
+        font-size: 0.88rem;
+      }
+
+      .quiz-feedback-text {
+        font-size: 0.98rem;
+      }
+
+      .quiz-result-card {
+        margin-block: 28px 24px;
+        padding: clamp(20px, 3vw, 34px);
+      }
+
+      .quiz-result-content {
+        width: min(100%, 980px);
+        margin-inline: auto;
+        gap: 20px;
+      }
+
+      .quiz-result-dashboard {
+        width: 100%;
+        display: grid;
+        gap: 20px;
+      }
+
+      .quiz-result-dashboard-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        text-align: left;
+      }
+
+      .quiz-result-kicker {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--quiz-accent);
+        font-size: 0.78rem;
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .quiz-result-dashboard-head h2,
+      .quiz-xp-flow-head h2 {
+        margin: 0;
+        color: var(--quiz-text);
+        font-size: clamp(1.55rem, 3vw, 2.35rem);
+        font-weight: 950;
+        letter-spacing: -0.05em;
+        line-height: 1.05;
+      }
+
+      .quiz-result-badge {
+        flex: 0 0 auto;
+        border-radius: 14px;
+        padding: 10px 14px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 8%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        font-size: 0.92rem;
+        font-weight: 950;
+      }
+
+      .quiz-result-badge.success {
+        color: var(--color-success);
+        background: color-mix(in srgb, var(--color-success) 8%, var(--quiz-surface));
+        border-color: color-mix(in srgb, var(--color-success) 24%, var(--quiz-border));
+      }
+
+      .quiz-result-hero {
+        display: grid;
+        grid-template-columns: minmax(190px, 0.72fr) minmax(0, 1.6fr);
+        align-items: center;
+        gap: 28px;
+        border-radius: 26px;
+        padding: clamp(20px, 3vw, 30px);
+        background:
+          radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--quiz-cyan) 10%, transparent), transparent 34%),
+          color-mix(in srgb, var(--quiz-accent) 4%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 16%, var(--quiz-border));
+      }
+
+      .quiz-score-ring {
+        width: clamp(150px, 18vw, 190px);
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        margin-inline: auto;
+        border-radius: 999px;
+        box-shadow: 0 18px 34px color-mix(in srgb, var(--quiz-accent) 16%, transparent);
+      }
+
+      .quiz-score-ring-inner {
+        width: calc(100% - 18px);
+        aspect-ratio: 1;
+        display: grid;
+        place-content: center;
+        gap: 3px;
+        border-radius: inherit;
+        text-align: center;
+        background: var(--quiz-surface);
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-score-ring-inner strong {
+        color: var(--quiz-accent);
+        font-size: clamp(2.8rem, 6vw, 4.5rem);
+        font-weight: 950;
+        line-height: 0.95;
+        letter-spacing: -0.07em;
+      }
+
+      .quiz-score-ring-inner span {
+        color: var(--quiz-muted);
+        font-size: 0.86rem;
+        font-weight: 850;
+      }
+
+      .quiz-result-message {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+        text-align: left;
+      }
+
+      .quiz-result-message-icon {
+        width: 58px;
+        height: 58px;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        color: var(--quiz-accent);
+        background: color-mix(in srgb, var(--quiz-accent) 9%, var(--quiz-surface));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 18%, var(--quiz-border));
+      }
+
+      .quiz-result-message strong {
+        display: block;
+        color: var(--quiz-accent);
+        font-size: clamp(1.35rem, 2.3vw, 1.85rem);
+        font-weight: 950;
+        line-height: 1.1;
+      }
+
+      .quiz-result-message p {
+        margin: 8px 0 0;
+        color: var(--quiz-text-soft);
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.55;
+      }
+
+      .quiz-result-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .quiz-result-metrics > div {
+        display: grid;
+        gap: 7px;
+        border-radius: 18px;
+        padding: 16px;
+        text-align: center;
+        background: color-mix(in srgb, var(--quiz-surface-strong) 76%, transparent);
+        border: 1px solid var(--quiz-border);
+      }
+
+      .quiz-result-metrics span {
+        color: var(--quiz-muted);
+        font-size: 0.8rem;
+        font-weight: 850;
+      }
+
+      .quiz-result-metrics strong {
+        color: var(--quiz-text);
+        font-size: 1.3rem;
+        font-weight: 950;
+      }
+
+      .quiz-result-page-actions,
+      .quiz-flow-actions {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .quiz-progress-floating {
+        --quiz-accent: var(--fcc-premium-accent);
+        --quiz-cyan: var(--fcc-premium-cyan);
+        --quiz-surface: var(--fcc-premium-surface);
+        --quiz-text: var(--fcc-premium-text);
+        --quiz-muted: var(--fcc-premium-muted);
+        --quiz-border: var(--fcc-premium-border);
+
+        position: fixed;
+        right: 18px;
+        bottom: max(18px, env(safe-area-inset-bottom));
+        z-index: 12000;
+        width: min(232px, calc(100vw - 28px));
+        display: grid;
+        gap: 9px;
+        border-radius: 17px;
+        padding: 10px 12px;
+        color: var(--quiz-text);
+        background: color-mix(in srgb, var(--quiz-surface) 94%, transparent);
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 22%, var(--quiz-border));
+        box-shadow: 0 14px 34px rgba(2, 8, 23, 0.18);
+        backdrop-filter: blur(16px);
+      }
+
+      .quiz-progress-floating-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .quiz-progress-floating-top > strong {
+        font-size: 0.88rem;
+        font-weight: 950;
+        white-space: nowrap;
+      }
+
+      .quiz-progress-floating-time {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--quiz-accent);
+        font-size: 0.82rem;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .quiz-progress-floating-time.danger {
+        color: var(--color-danger);
+      }
+
+      .quiz-progress-floating .quiz-progress-track {
+        height: 7px;
+      }
+
+      .quiz-flow-overlay {
+        --quiz-accent: var(--fcc-premium-accent);
+        --quiz-cyan: var(--fcc-premium-cyan);
+        --quiz-surface: var(--fcc-premium-surface);
+        --quiz-surface-soft: var(--fcc-premium-surface-soft);
+        --quiz-surface-strong: var(--fcc-premium-surface-strong);
+        --quiz-text: var(--fcc-premium-text);
+        --quiz-text-soft: var(--fcc-premium-text-soft);
+        --quiz-muted: var(--fcc-premium-muted);
+        --quiz-border: var(--fcc-premium-border);
+        --quiz-button: var(--fcc-premium-button);
+
+        position: fixed;
+        inset: 0;
+        z-index: 40000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(2, 8, 23, 0.74);
+        backdrop-filter: blur(10px);
+      }
+
+      .quiz-flow-modal {
+        width: min(940px, calc(100vw - 32px));
+        max-height: calc(100dvh - 32px);
+        overflow-y: auto;
+        border-radius: 30px;
+        padding: clamp(20px, 3vw, 34px);
+        color: var(--quiz-text);
+        background: linear-gradient(135deg, var(--quiz-surface), var(--quiz-surface-soft));
+        border: 1px solid color-mix(in srgb, var(--quiz-accent) 20%, var(--quiz-border));
+        box-shadow: 0 32px 90px rgba(2, 8, 23, 0.32);
+      }
+
+      .quiz-result-flow-modal {
+        display: grid;
+        gap: 24px;
+      }
+
+      .quiz-xp-flow-modal {
+        width: min(720px, calc(100vw - 32px));
+        display: grid;
+        gap: 22px;
+      }
+
+      .quiz-xp-flow-head {
+        text-align: center;
+      }
+
+      .quiz-xp-flow-head p {
+        max-width: 560px;
+        margin: 10px auto 0;
+        color: var(--quiz-muted);
+        font-size: 0.98rem;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 860px) {
+        .quiz-answers {
+          grid-template-columns: 1fr;
+        }
+
+        .quiz-result-hero {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .quiz-progress-shell {
+          border-radius: 20px;
+          padding: 14px;
+        }
+
+        .quiz-progress-row {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .quiz-progress-timer {
+          width: 100%;
+          min-width: 0;
+        }
+
+        .quiz-question-card,
+        .quiz-question-card.has-feedback {
+          padding: 20px 14px 80px;
+          border-radius: 24px;
+        }
+
+        .quiz-question-card.has-feedback {
+          padding-bottom: 22px;
+        }
+
+        .quiz-question-top {
+          padding-top: 46px;
+          margin-bottom: 18px;
+        }
+
+        .quiz-question-text {
+          font-size: 1.08rem;
+          line-height: 1.5;
+        }
+
+        .quiz-answer-card {
+          min-height: 78px;
+          grid-template-columns: 42px minmax(0, 1fr);
+          gap: 11px;
+          border-radius: 18px;
+          padding: 14px;
+        }
+
+        .quiz-answer-letter {
+          width: 40px;
+          height: 40px;
+          font-size: 1rem;
+        }
+
+        .quiz-answer-content {
+          font-size: 0.98rem;
+        }
+
+        .quiz-result-dashboard-head {
+          display: grid;
+        }
+
+        .quiz-result-badge {
+          width: fit-content;
+        }
+
+        .quiz-result-hero {
+          gap: 20px;
+          padding: 18px 14px;
+        }
+
+        .quiz-score-ring {
+          width: 150px;
+        }
+
+        .quiz-result-message {
+          grid-template-columns: 1fr;
+          justify-items: center;
+          text-align: center;
+        }
+
+        .quiz-result-message p {
+          font-size: 0.94rem;
+        }
+
+        .quiz-result-metrics {
+          grid-template-columns: 1fr;
+        }
+
+        .quiz-result-card {
+          margin-block: 18px 20px;
+        }
+
+        .quiz-progress-floating {
+          right: 10px;
+          bottom: max(10px, env(safe-area-inset-bottom));
+          width: min(206px, calc(100vw - 20px));
+          padding: 9px 10px;
+          border-radius: 15px;
+        }
+
+        .quiz-flow-overlay {
+          align-items: flex-end;
+          padding: 10px;
+        }
+
+        .quiz-flow-modal {
+          width: 100%;
+          max-height: calc(100dvh - 20px);
+          border-radius: 26px 26px 18px 18px;
+          padding: 18px 14px;
+        }
+
+        .quiz-flow-actions .quiz-primary-button,
+        .quiz-result-page-actions .quiz-primary-button,
+        .quiz-result-page-actions .quiz-secondary-button {
+          width: 100%;
+        }
+      }
     `}</style>
   );
 
@@ -2713,7 +3694,7 @@ export default function ResolverQuizPage() {
 
               <button
                 type="button"
-                onClick={iniciar}
+                onClick={solicitarInicio}
                 disabled={
                   verificandoIntentos ||
                   sinMasIntentos ||
@@ -2778,21 +3759,53 @@ export default function ResolverQuizPage() {
           </section>
         )}
 
-        {estado === "en_curso" &&
-          timeLeftSec !== null &&
-          tiempoTieneLimite && (
-            <section className="quiz-card quiz-timer-card no-diagonal">
-              <div className="quiz-card-content">
-                <p
-                  className={`quiz-timer-value ${
-                    timeLeftSec <= 60 ? "danger" : ""
-                  }`}
-                >
-                  {mmss(timeLeftSec)}
-                </p>
+        {estado === "en_curso" && (
+          <section
+            ref={progresoQuizRef}
+            className="quiz-progress-shell"
+            aria-label="Progreso del quiz"
+          >
+            <div className="quiz-progress-row">
+              <div className="quiz-progress-copy">
+                <strong>
+                  {preguntasRespondidas} de {preguntas.length} respondidas
+                </strong>
+                <span>
+                  {preguntasPendientes === 0
+                    ? "Todo listo. Ya puedes enviar tus respuestas."
+                    : preguntasPendientes === 1
+                    ? "Te falta 1 pregunta por responder."
+                    : `Te faltan ${preguntasPendientes} preguntas por responder.`}
+                </span>
               </div>
-            </section>
-          )}
+
+              <div
+                className={`quiz-progress-timer ${
+                  tiempoTieneLimite && timeLeftSec !== null && timeLeftSec <= 60
+                    ? "danger"
+                    : ""
+                }`}
+              >
+                <Clock3 size={21} strokeWidth={2.35} aria-hidden="true" />
+                <span>
+                  {tiempoTieneLimite && timeLeftSec !== null
+                    ? mmss(timeLeftSec)
+                    : "Sin límite"}
+                </span>
+              </div>
+            </div>
+
+            <div
+              className="quiz-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={preguntas.length}
+              aria-valuenow={preguntasRespondidas}
+            >
+              <span style={{ width: `${progresoRespuestas}%` }} />
+            </div>
+          </section>
+        )}
 
         {(estado === "en_curso" || estado === "finalizado") && (
           <div className="quiz-questions">
@@ -2823,7 +3836,7 @@ export default function ResolverQuizPage() {
                   </div>
 
                   <div className="quiz-answers">
-                    {(respuestas[p.id] || []).map((r) => {
+                    {(respuestas[p.id] || []).map((r, answerIndex) => {
                       const disabled = estado === "finalizado";
                       const selected = seleccionadas[p.id] === r.id;
 
@@ -2846,14 +3859,20 @@ export default function ResolverQuizPage() {
                           />
 
                           <div
-                            className={`quiz-render quiz-answer-card ${
-                              selected ? "selected" : ""
-                            } max-w-none overflow-x-auto text-sm text-center [&_.katex-display]:overflow-x-auto [&_.katex-display]:text-center [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-44 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer`}
-                            onClick={handleQuizContentClick}
-                            dangerouslySetInnerHTML={{
-                              __html: renderQuizHTML(r.texto),
-                            }}
-                          />
+                            className={`quiz-answer-card ${selected ? "selected" : ""}`}
+                          >
+                            <span className="quiz-answer-letter" aria-hidden="true">
+                              {String.fromCharCode(65 + answerIndex)}
+                            </span>
+
+                            <div
+                              className="quiz-render quiz-answer-content max-w-none overflow-x-auto text-center [&_.katex-display]:overflow-x-auto [&_.katex-display]:text-center [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-48 [&_img]:rounded-xl [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
+                              onClick={handleQuizContentClick}
+                              dangerouslySetInnerHTML={{
+                                __html: renderQuizHTML(r.texto),
+                              }}
+                            />
+                          </div>
                         </label>
                       );
                     })}
@@ -2929,104 +3948,79 @@ export default function ResolverQuizPage() {
         {resultado && (
           <section className="quiz-card quiz-result-card no-diagonal">
             <div className="quiz-card-content quiz-result-content">
-              {!esPreview && (
-                <div
-                  className={`quiz-result-visual ${
-                    puntajeResultado === 100
-                      ? "perfect"
-                      : !sinMasIntentos
-                      ? "retry"
-                      : "finished"
-                  }`}
-                >
-                  <div className="quiz-result-visual-icon" aria-hidden="true">
-                    {puntajeResultado === 100 ? (
-                      <Trophy size={26} strokeWidth={2.35} />
-                    ) : !sinMasIntentos ? (
-                      <Sparkles size={25} strokeWidth={2.25} />
-                    ) : (
-                      <CheckCircle2 size={25} strokeWidth={2.3} />
-                    )}
-                  </div>
+              {renderResumenResultado()}
 
-                  <strong>
-                    {puntajeResultado === 100
-                      ? "¡Excelente, completaste el quiz!"
-                      : !sinMasIntentos
-                      ? "Tu intento quedó registrado"
-                      : "Resultado registrado"}
-                  </strong>
+              <div className="quiz-result-page-actions">
+                {!esPreview &&
+                  (sinMasIntentos || resultado.correctas === resultado.total) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const destino = `/curso/${materiaId}`;
+                        iniciarIndicadorNavegacionFCC("Regresando al curso", {
+                          destino,
+                        });
+                        router.push(destino);
+                      }}
+                      className="quiz-secondary-button quiz-emphasis-button"
+                    >
+                      Regresar al curso
+                    </button>
+                  )}
 
-                  <span>
-                    {puntajeResultado === 100
-                      ? "Obtuviste el puntaje máximo."
-                      : !sinMasIntentos
-                      ? "Aún tienes intentos disponibles para seguir mejorando."
-                      : "Puedes revisar tus respuestas y la retroalimentación disponible."}
-                  </span>
-                </div>
-              )}
-
-              <div className="quiz-result-score">
-                <p className="quiz-result-main">
-                  Respuestas correctas:{" "}
-                  <span className="quiz-result-success">
-                    {resultado.correctas}
-                  </span>{" "}
-                  de {resultado.total}
-                </p>
-
-                <p className="quiz-result-main">
-                  Puntaje final:{" "}
-                  <strong>{puntajeResultado} pts</strong>
-                </p>
-
-                {!esPreview && xpGanado > 0 && (
-                  <p className="quiz-result-main">
-                    XP ganado en este intento: <strong>{xpGanado}</strong>
-                  </p>
-                )}
+                {!esPreview &&
+                  !sinMasIntentos &&
+                  resultado.correctas < resultado.total && (
+                    <button
+                      type="button"
+                      onClick={reiniciarQuiz}
+                      className="quiz-primary-button"
+                    >
+                      Reintentar quiz
+                    </button>
+                  )}
               </div>
-
-              {!esPreview &&
-                (sinMasIntentos || resultado.correctas === resultado.total) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const destino = `/curso/${materiaId}`;
-                      iniciarIndicadorNavegacionFCC("Regresando al curso", {
-                        destino,
-                      });
-                      router.push(destino);
-                    }}
-                    className="quiz-secondary-button quiz-emphasis-button"
-                  >
-                    Regresar al curso
-                  </button>
-                )}
-
-              {!esPreview &&
-                !sinMasIntentos &&
-                resultado.correctas < resultado.total && (
-                  <button
-                    type="button"
-                    onClick={reiniciarQuiz}
-                    className="quiz-primary-button"
-                  >
-                    Reintentar quiz
-                  </button>
-                )}
             </div>
           </section>
         )}
       </div>
 
       {estado === "en_curso" &&
-        timeLeftSec !== null &&
-        tiempoTieneLimite &&
-        timeLeftSec <= 60 &&
+        mostrarProgresoCompacto &&
         createPortal(
-          <div className="quiz-floating-timer">{mmss(timeLeftSec)}</div>,
+          <aside
+            className="quiz-progress-floating fcc-modal-enter-standard"
+            aria-label="Progreso compacto del quiz"
+          >
+            <div className="quiz-progress-floating-top">
+              <strong>
+                {preguntasRespondidas}/{preguntas.length} respondidas
+              </strong>
+
+              <span
+                className={`quiz-progress-floating-time ${
+                  tiempoTieneLimite && timeLeftSec !== null && timeLeftSec <= 60
+                    ? "danger"
+                    : ""
+                }`}
+              >
+                <Clock3 size={16} strokeWidth={2.35} aria-hidden="true" />
+                {tiempoTieneLimite && timeLeftSec !== null
+                  ? mmss(timeLeftSec)
+                  : "Sin límite"}
+              </span>
+            </div>
+
+            <div
+              className="quiz-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={preguntas.length}
+              aria-valuenow={preguntasRespondidas}
+            >
+              <span style={{ width: `${progresoRespuestas}%` }} />
+            </div>
+          </aside>,
           document.body
         )}
 
@@ -3039,10 +4033,88 @@ export default function ResolverQuizPage() {
           document.body
         )}
 
+      {mostrarResumenResultado &&
+        resultado &&
+        createPortal(
+          <div className="quiz-flow-overlay fcc-modal-backdrop-enter-standard">
+            <div className="quiz-flow-modal quiz-result-flow-modal fcc-modal-enter-standard">
+              {renderResumenResultado()}
+
+              <div className="quiz-flow-actions">
+                <button
+                  type="button"
+                  className="quiz-primary-button"
+                  onClick={() => {
+                    setMostrarResumenResultado(false);
+
+                    if (!esPreview && xpGanado > 0 && xpDespuesIntento > 0) {
+                      setMostrarAnimacionXP(true);
+                      return;
+                    }
+
+                    window.setTimeout(() => {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }, 0);
+                  }}
+                >
+                  Continuar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {mostrarAnimacionXP &&
+        !esPreview &&
+        xpGanado > 0 &&
+        createPortal(
+          <div className="quiz-flow-overlay fcc-modal-backdrop-enter-standard">
+            <div className="quiz-flow-modal quiz-xp-flow-modal fcc-modal-enter-standard">
+              <div className="quiz-xp-flow-head">
+                <span className="quiz-result-kicker">Experiencia obtenida</span>
+                <h2>+{xpGanado} XP</h2>
+                <p>
+                  Tu experiencia se aplicó correctamente. Mira cómo avanza tu
+                  nivel antes de continuar.
+                </p>
+              </div>
+
+              <BarraXP xp={xpAnimado} />
+
+              <div className="quiz-flow-actions">
+                <button
+                  type="button"
+                  className="quiz-primary-button"
+                  disabled={!xpAnimacionLista}
+                  onClick={() => {
+                    setMostrarAnimacionXP(false);
+                    window.dispatchEvent(new Event("xpActualizada"));
+
+                    window.setTimeout(() => {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }, 0);
+                  }}
+                >
+                  {xpAnimacionLista ? "Continuar" : "Sumando experiencia..."}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      <AvisoPreparacionQuiz
+        open={mostrarAvisoPreparacion}
+        temas={temasPreparacionPendientes}
+        onCancelar={() => setMostrarAvisoPreparacion(false)}
+        onContinuar={continuarDesdeAvisoPreparacion}
+      />
+
       {mostrarAvisoSalida &&
         createPortal(
           <div
-            className="quiz-exit-overlay"
+            className="quiz-exit-overlay fcc-modal-enter-standard"
             onClick={cancelarSalidaQuiz}
           >
             <div
@@ -3096,7 +4168,7 @@ export default function ResolverQuizPage() {
       {preguntaPendienteEnvio !== null &&
         createPortal(
           <div
-            className="quiz-exit-overlay"
+            className="quiz-exit-overlay fcc-modal-enter-standard"
             onClick={() => setPreguntaPendienteEnvio(null)}
           >
             <div
@@ -3143,11 +4215,11 @@ export default function ResolverQuizPage() {
       {previewImage &&
         createPortal(
           <div
-            className="quiz-preview-overlay"
+            className="quiz-preview-overlay fcc-modal-backdrop-enter-standard"
             onClick={() => setPreviewImage(null)}
           >
             <div
-              className="quiz-preview-modal"
+              className="quiz-preview-modal fcc-modal-enter-standard"
               onClick={(e) => e.stopPropagation()}
             >
               <button

@@ -2,14 +2,58 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { getAIProvider } from "@/lib/ai";
+import { interpretarErrorIA } from "@/lib/ai/errorPublico";
 
 import {
+  contenidoQuizATextoIA,
   construirFormulasQuizIA,
   construirImagenesQuizIA,
   construirRecursosAdicionalesIA,
 } from "@/lib/ai/quizMedia";
 
 export const runtime = "nodejs";
+export const maxDuration = 180;
+
+const LIMITE_ANALISIS_IA_MS = 165_000;
+const LIMITE_CARGA_IMAGEN_MS = 15_000;
+
+class ErrorTiempoAnalisisIA extends Error {
+  constructor() {
+    super("El análisis superó el tiempo máximo permitido.");
+    this.name = "ErrorTiempoAnalisisIA";
+  }
+}
+
+function normalizarContenidoComparacionIA(
+  value: unknown
+) {
+  return contenidoQuizATextoIA(value)
+    .replace(/\$/g, "")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\s+/g, "")
+    .trim()
+    .toLocaleLowerCase("es-MX");
+}
+
+async function ejecutarConLimiteIA<T>(
+  operacion: Promise<T>,
+  tiempoMs: number
+): Promise<T> {
+  let temporizador: ReturnType<typeof setTimeout> | null = null;
+
+  const limite = new Promise<never>((_, reject) => {
+    temporizador = setTimeout(
+      () => reject(new ErrorTiempoAnalisisIA()),
+      Math.max(1, tiempoMs)
+    );
+  });
+
+  try {
+    return await Promise.race([operacion, limite]);
+  } finally {
+    if (temporizador) clearTimeout(temporizador);
+  }
+}
 
 type AccionRevisionIA = {
   tipo:
@@ -247,104 +291,93 @@ const schemaAnalisis = {
 };
 
 
-function htmlATexto(
-  value: unknown
-): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value
-    .replace(
-      /<script[\s\S]*?<\/script>/gi,
-      " "
-    )
-    .replace(
-      /<style[\s\S]*?<\/style>/gi,
-      " "
-    )
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-
 async function cargarImagenInlineIA(
   url: string,
   mimeEsperado: string
 ) {
-  const response = await fetch(
-    url,
-    {
-      cache: "no-store",
-    }
+  const controlador = new AbortController();
+  const temporizador = setTimeout(
+    () => controlador.abort(),
+    LIMITE_CARGA_IMAGEN_MS
   );
 
-  if (!response.ok) {
-    throw new Error(
-      "No se pudo leer una de las imágenes seleccionadas."
-    );
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal: controlador.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "No se pudo leer una de las imágenes seleccionadas."
+      );
+    }
+
+    const contentType =
+      response.headers
+        .get("content-type")
+        ?.split(";")[0]
+        .trim()
+        .toLowerCase();
+
+    const mimeType =
+      contentType?.startsWith("image/")
+        ? contentType
+        : mimeEsperado;
+
+    const permitidos =
+      new Set([
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/bmp",
+      ]);
+
+    if (!permitidos.has(mimeType)) {
+      throw new Error(
+        "Una de las imágenes utiliza un formato no compatible con el análisis."
+      );
+    }
+
+    const bytes =
+      await response.arrayBuffer();
+
+    const MAX_IMAGE_BYTES =
+      5 * 1024 * 1024;
+
+    if (
+      bytes.byteLength >
+      MAX_IMAGE_BYTES
+    ) {
+      throw new Error(
+        "Una de las imágenes supera el límite de 5 MB para el análisis."
+      );
+    }
+
+    return {
+      type: "image",
+      data:
+        Buffer
+          .from(bytes)
+          .toString("base64"),
+      mime_type:
+        mimeType,
+    };
+  } catch (error) {
+    if (controlador.signal.aborted) {
+      throw new ErrorTiempoAnalisisIA();
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(temporizador);
   }
-
-  const contentType =
-    response.headers
-      .get("content-type")
-      ?.split(";")[0]
-      .trim()
-      .toLowerCase();
-
-  const mimeType =
-    contentType?.startsWith("image/")
-      ? contentType
-      : mimeEsperado;
-
-  const permitidos =
-    new Set([
-      "image/png",
-      "image/jpeg",
-      "image/webp",
-      "image/bmp",
-    ]);
-
-  if (!permitidos.has(mimeType)) {
-    throw new Error(
-      "Una de las imágenes utiliza un formato no compatible con el análisis."
-    );
-  }
-
-  const bytes =
-    await response.arrayBuffer();
-
-  const MAX_IMAGE_BYTES =
-    5 * 1024 * 1024;
-
-  if (
-    bytes.byteLength >
-    MAX_IMAGE_BYTES
-  ) {
-    throw new Error(
-      "Una de las imágenes supera el límite de 5 MB para el análisis."
-    );
-  }
-
-  return {
-    type: "image",
-    data:
-      Buffer
-        .from(bytes)
-        .toString("base64"),
-    mime_type:
-      mimeType,
-  };
 }
 export async function POST(
   request: Request
 ) {
+  const inicioSolicitud = Date.now();
+
   try {
     const authHeader =
       request.headers.get("authorization");
@@ -867,6 +900,49 @@ export async function POST(
           }
         );
       }
+
+      const bloquePrincipal =
+        bloques.find(
+          (bloque) =>
+            bloque.id === quiz.bloque_id
+        );
+
+      if (!bloquePrincipal) {
+        return NextResponse.json(
+          {
+            error:
+              "No se encontró el bloque principal del quiz.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const ordenPrincipal =
+        Number(
+          bloquePrincipal.orden ?? 0
+        );
+
+      if (
+        bloques.some(
+          (bloque) =>
+            bloque.unidad_id !==
+              bloquePrincipal.unidad_id ||
+            Number(bloque.orden ?? 0) >
+              ordenPrincipal
+        )
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Sólo puedes utilizar el bloque principal y bloques anteriores de la misma unidad.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
     }
 
     let formulas:
@@ -935,7 +1011,7 @@ export async function POST(
                     respuesta.id,
 
                   texto:
-                    htmlATexto(
+                    contenidoQuizATextoIA(
                       respuesta.texto
                     ),
 
@@ -951,7 +1027,7 @@ export async function POST(
               pregunta.id,
 
             enunciado:
-              htmlATexto(
+              contenidoQuizATextoIA(
                 pregunta.enunciado
               ),
 
@@ -971,12 +1047,12 @@ export async function POST(
             "",
 
           introduccion:
-            htmlATexto(
+            contenidoQuizATextoIA(
               bloque.introduccion
             ),
 
           contenido:
-            htmlATexto(
+            contenidoQuizATextoIA(
               bloque.contenido
             ),
 
@@ -1244,8 +1320,17 @@ ${contextoMultimedia}`,
     const ai =
       getAIProvider();
 
+    const tiempoRestante =
+      LIMITE_ANALISIS_IA_MS -
+      (Date.now() - inicioSolicitud);
+
+    if (tiempoRestante <= 0) {
+      throw new ErrorTiempoAnalisisIA();
+    }
+
     const analisis =
-      await ai.generateJSON<AnalisisQuiz>(
+      await ejecutarConLimiteIA(
+        ai.generateJSON<AnalisisQuiz>(
         inputIA as any,
         schemaAnalisis,
         {
@@ -1426,8 +1511,20 @@ si actualmente A está marcada pero determinas que B debería ser correcta, gene
 31. Las correcciones editoriales no deben alterar innecesariamente la retroalimentación académica.
 
 32. La retroalimentación debe explicar brevemente por qué una respuesta es correcta o qué debería revisar el estudiante cuando responde incorrectamente. Evita frases vacías como "revisa el tema" sin explicar qué concepto debe revisar.
+
+33. Si una pregunta sólo tiene un problema de ortografía, gramática, claridad o redacción, conserva estado_respuesta_correcta = "coherente" y usa impacto = "editorial".
+
+34. Si una pregunta no tiene problemas, devuelve estado_respuesta_correcta = "coherente", contexto_suficiente = true, motivo_revision = "", advertencias = [] y acciones = [].
+
+35. Las fórmulas incluidas dentro de preguntas y opciones aparecen entre $...$. Son contenido real del quiz: nunca las interpretes como campos vacíos y no propongas completarlas sólo por estar escritas en LaTeX.
+
+36. Cuando texto_actual o texto_propuesto contengan una fórmula, conserva una expresión válida para KaTeX entre $...$. No devuelvas comandos LaTeX sueltos sin delimitadores.
+
+37. No generes cambiar_respuesta_correcta si respuesta_objetivo_id ya corresponde a la opción marcada como correcta. Una acción debe representar un cambio real.
           `.trim(),
         }
+        ),
+        tiempoRestante
       );
 
     if (
@@ -1506,11 +1603,80 @@ si actualmente A está marcada pero determinas que B debería ser correcta, gene
       const clavesAcciones =
         new Set<string>();
 
+      const respuestaCorrectaActual =
+        original.opciones.find(
+          (opcion) =>
+            opcion.marcada_correcta
+        );
+
       preguntaAnalizada.acciones =
         (
           preguntaAnalizada.acciones ||
           []
-        ).filter((accion) => {
+        )
+        .map((accion) =>
+          accion.tipo === "cambiar_respuesta_correcta"
+            ? { ...accion, impacto: "academico" as const }
+            : accion
+        )
+        .filter((accion) => {
+          if (
+            accion.tipo ===
+              "cambiar_respuesta_correcta" &&
+            accion.respuesta_objetivo_id ===
+              respuestaCorrectaActual?.id
+          ) {
+            return false;
+          }
+
+          if (
+            accion.tipo ===
+            "reescribir_pregunta"
+          ) {
+            const actual =
+              normalizarContenidoComparacionIA(
+                original.enunciado
+              );
+            const propuesta =
+              normalizarContenidoComparacionIA(
+                accion.texto_propuesto
+              );
+
+            if (
+              actual &&
+              actual === propuesta
+            ) {
+              return false;
+            }
+          }
+
+          if (
+            accion.tipo ===
+            "reescribir_respuesta"
+          ) {
+            const respuestaActual =
+              original.opciones.find(
+                (opcion) =>
+                  opcion.id ===
+                  accion.respuesta_objetivo_id
+              );
+            const actual =
+              normalizarContenidoComparacionIA(
+                respuestaActual?.texto
+              );
+            const propuesta =
+              normalizarContenidoComparacionIA(
+                accion.texto_propuesto
+              );
+
+            if (
+              actual &&
+              actual === propuesta
+            ) {
+              return false;
+            }
+          }
+
           const clave =
             accion.tipo ===
             "cambiar_respuesta_correcta"
@@ -1551,6 +1717,49 @@ si actualmente A está marcada pero determinas que B debería ser correcta, gene
         }
       }
     }
+
+    if (
+      Date.now() - inicioSolicitud >=
+      LIMITE_ANALISIS_IA_MS
+    ) {
+      throw new ErrorTiempoAnalisisIA();
+    }
+
+    const {
+      error: limpiarContextoError,
+    } = await admin
+      .from("quiz_bloques_contexto")
+      .delete()
+      .eq("quiz_id", quiz.id)
+      .eq("origen", "analisis");
+
+    if (limpiarContextoError) {
+      throw limpiarContextoError;
+    }
+
+    const {
+      error: guardarContextoError,
+    } = await admin
+      .from("quiz_bloques_contexto")
+      .insert(
+        bloques.map((bloque) => ({
+          quiz_id: quiz.id,
+          bloque_id: bloque.id,
+          origen: "analisis",
+        }))
+      );
+
+    if (guardarContextoError) {
+      throw guardarContextoError;
+    }
+
+    if (
+      Date.now() - inicioSolicitud >=
+      LIMITE_ANALISIS_IA_MS
+    ) {
+      throw new ErrorTiempoAnalisisIA();
+    }
+
     const numeroIntento =
       usados + 1;
 
@@ -1570,8 +1779,11 @@ si actualmente A está marcada pero determinas que B debería ser correcta, gene
           numeroIntento,
 
         modelo:
-          process.env.GEMINI_MODEL ||
-          "gemini-3.7-flash",
+          (ai as {
+            modeloUtilizado?: string;
+          }).modeloUtilizado ||
+          process.env.GEMINI_QUIZ_MODEL ||
+          "gemini-3.5-flash",
 
         resultado:
           analisis,
@@ -1630,55 +1842,42 @@ si actualmente A está marcada pero determinas que B debería ser correcta, gene
         },
       }
     );
-  } catch (error: any) {
-    const mensaje =
-      error instanceof Error
-        ? error.message
-        : String(error ?? "");
-
-    const status =
-      Number(
-        error?.status ??
-        error?.statusCode ??
-        0
-      );
-
-    const esCuota =
-      status === 429 ||
-      /429|RESOURCE_EXHAUSTED|quota|rate limit/i.test(
-        mensaje
-      );
-
-    if (esCuota) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "IA_QUOTA",
-
-          error:
-            "Gemini alcanzó temporalmente su límite de uso. Este intento no se descontó. Espera un poco e inténtalo nuevamente.",
-        },
-        {
-          status: 429,
-        }
-      );
-    }
-
+  } catch (error: unknown) {
     console.error(
       "Error analizando quiz con IA:",
       error
+    );
+    if (error instanceof ErrorTiempoAnalisisIA) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "AI_TIMEOUT",
+          error:
+            "El análisis tardó más de lo esperado. Revisa tu conexión o vuelve a intentarlo más tarde. No se descontó ningún intento.",
+        },
+        { status: 504 }
+      );
+    }
+
+    const publico = interpretarErrorIA(
+      error,
+      "analizar"
     );
 
     return NextResponse.json(
       {
         ok: false,
-
-        error:
-          mensaje ||
-          "Error desconocido al analizar el quiz.",
+        code: publico.code,
+        error: publico.error,
+        ...(publico.retry_after_seconds
+          ? {
+              retry_after_seconds:
+                publico.retry_after_seconds,
+            }
+          : {}),
       },
       {
-        status: 500,
+        status: publico.status,
       }
     );
   }

@@ -1,0 +1,3 @@
+﻿Negro=#39393c
+Cafe=#e0b07c
+Azul=#0e2248
