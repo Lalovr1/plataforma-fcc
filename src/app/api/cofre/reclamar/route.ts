@@ -498,6 +498,32 @@ function completarBienvenidaCinco(
     }
   }
 
+  // Fallback seguro para catálogos que todavía no tienen suficientes
+  // categorías no-ropa desbloqueables. Conserva todas las reglas esenciales:
+  // 1) la primera recompensa sigue siendo ropa legendaria;
+  // 2) las otras cuatro no pueden ser legendarias;
+  // 3) posiciones 2-3 llegan como máximo a épico;
+  // 4) posiciones 4-5 llegan como máximo a raro;
+  // 5) nunca se repite el mismo objeto.
+  //
+  // Primero se intenta SIEMPRE la composición diversa de tres prendas.
+  // Solo si el catálogo no puede construirla se permite completar con ropa.
+  const patronSoloRopa = [true, true, true, true];
+
+  for (const primera of legendariasRopa) {
+    const resultado = completarSlots(
+      [primera],
+      patronSoloRopa,
+      0,
+      new Set([primera.id]),
+      new Set()
+    );
+
+    if (resultado?.length === 5) {
+      return resultado;
+    }
+  }
+
   return [] as RecompensaDisponible[];
 }
 
@@ -549,14 +575,10 @@ function bienvenidaCincoEsValida(
     return false;
   }
 
-  // 5) EXACTAMENTE tres prendas entre las cinco.
-  if (
-    recompensas.filter((item) => item.tipo === "ropa").length !== 3
-  ) {
-    return false;
-  }
-
-  // 6) Toda categoría distinta de ropa puede aparecer como máximo una vez.
+  // 5) Si hay recompensas no-ropa, cada categoría distinta de ropa
+  // puede aparecer como máximo una vez. No se exige una cantidad fija
+  // de prendas porque el catálogo puede estar en una etapa donde todavía
+  // no existan suficientes categorías no-ropa desbloqueables.
   const tiposNoRopa = recompensas
     .filter((item) => item.tipo !== "ropa")
     .map((item) => item.tipo);
