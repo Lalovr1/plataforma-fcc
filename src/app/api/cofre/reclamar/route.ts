@@ -335,7 +335,46 @@ function retirarDelMapaPrincipal(
   );
 }
 
-function barajar<T>(items: T[]) {
+function seleccionarTresPorRondas(
+  disponibles: Record<Rareza, RecompensaDisponible[]>
+) {
+  const seleccionadas: RecompensaDisponible[] = [];
+
+  const planes: Rareza[][] = [
+    ["legendario", "epico", "raro", "comun"],
+    Math.random() < 0.5
+      ? ["epico", "raro", "comun"]
+      : ["raro", "epico", "comun"],
+    Math.random() < 0.5
+      ? ["raro", "comun"]
+      : ["comun", "raro"],
+  ];
+
+  for (const planRarezas of planes) {
+    const tiposUsados = obtenerTiposUsados(seleccionadas);
+    const permitidas = disponiblesRespetandoTipos(
+      disponibles,
+      tiposUsados
+    );
+
+    let elegida: RecompensaDisponible | null = null;
+
+    for (const rareza of planRarezas) {
+      elegida = extraerAleatoria(permitidas, rareza);
+
+      if (elegida) break;
+    }
+
+    if (!elegida) {
+      continue;
+    }
+
+    seleccionadas.push(elegida);
+    retirarDelMapaPrincipal(disponibles, elegida);
+  }
+
+  return seleccionadas;
+}function barajar<T>(items: T[]) {
   const copia = [...items];
 
   for (let i = copia.length - 1; i > 0; i -= 1) {
@@ -902,7 +941,105 @@ async function repararCofreExistente({
   };
 }
 
-export async function POST(req: Request) {
+export async function GET(req: Request) {
+  try {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
+    const authorization = req.headers.get("authorization");
+    const bearerToken =
+      authorization?.startsWith("Bearer ")
+        ? authorization.slice(7).trim()
+        : null;
+
+    let user: { id: string } | null = null;
+    let authError: any = null;
+
+    if (bearerToken) {
+      const resultadoAuth = await admin.auth.getUser(bearerToken);
+
+      user = resultadoAuth.data.user
+        ? { id: resultadoAuth.data.user.id }
+        : null;
+      authError = resultadoAuth.error;
+    } else {
+      const cookieStore = await cookies();
+
+      const supabaseAuth = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll();
+            },
+            setAll(cookiesToSet) {
+              try {
+                cookiesToSet.forEach(
+                  ({ name, value, options }) => {
+                    cookieStore.set(name, value, options);
+                  }
+                );
+              } catch {}
+            },
+          },
+        }
+      );
+
+      const resultadoAuth = await supabaseAuth.auth.getUser();
+
+      user = resultadoAuth.data.user
+        ? { id: resultadoAuth.data.user.id }
+        : null;
+      authError = resultadoAuth.error;
+    }
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    const tipo = new URL(req.url).searchParams.get("tipo");
+
+    if (tipo !== "bienvenida") {
+      return NextResponse.json(
+        { error: "Tipo de cofre no válido" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await admin
+      .from("cofres_reclamados")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("tipo", "bienvenida")
+      .is("nivel", null)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      reclamado: Boolean(data?.id),
+    });
+  } catch (error: any) {
+    console.error("Error consultando cofre de bienvenida:", error);
+
+    return NextResponse.json(
+      { error: "No se pudo consultar el cofre de bienvenida" },
+      { status: 500 }
+    );
+  }
+}export async function POST(req: Request) {
   try {
     const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1010,35 +1147,9 @@ export async function POST(req: Request) {
 
     const nivelActual = Number(perfil.nivel ?? 0);
 
-    if (tipo === "bienvenida" && !perfil.tutorial_visto) {
-      const { data: logrosTutorial, error: errorLogrosTutorial } =
-        await admin
-          .from("logros_usuarios")
-          .select("logro_id")
-          .eq("usuario_id", user.id);
-
-      if (errorLogrosTutorial) {
-        throw errorLogrosTutorial;
-      }
-
-      const tutorialCompletado = (logrosTutorial ?? []).some(
-        (logro: any) =>
-          logro.logro_id ===
-            "bcb1b071-5f6a-4c20-a72a-df7e2f8ab610" ||
-          logro.logro_id === "tutorial"
-      );
-
-      if (!tutorialCompletado) {
-        return NextResponse.json(
-          {
-            error:
-              "Primero debe completarse el tutorial para preparar el cofre de bienvenida",
-            codigo: "TUTORIAL_NO_COMPLETADO",
-          },
-          { status: 409 }
-        );
-      }
-    }
+    // El cofre de bienvenida es independiente del tutorial.
+    // En móvil puede reclamarse antes del recorrido de PC y la unicidad
+    // de cofres_reclamados evita que vuelva a entregarse.
 
     if (tipo === "nivel" && nivelActual < 1) {
       return NextResponse.json(
@@ -1135,27 +1246,12 @@ export async function POST(req: Request) {
       });
     }
 
-    const seleccionadas =
-      tipo === "bienvenida"
-        ? completarBienvenidaCinco(disponibles)
-        : completarSeleccion(disponibles, [], tipo);
-
-    // Con el catálogo actual esta condición no debe ocurrir. Es únicamente
-    // una protección por si en el futuro se eliminan del catálogo las piezas
-    // necesarias para cumplir las reglas del cofre de bienvenida.
-    if (
-      tipo === "bienvenida" &&
-      !bienvenidaCincoEsValida(seleccionadas)
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "El catálogo actual no permite construir el cofre de bienvenida",
-          codigo: "COFRE_BIENVENIDA_CATALOGO_INSUFICIENTE",
-        },
-        { status: 409 }
-      );
-    }
+    // Bienvenida y nivel comparten el mismo patrón de tres intentos:
+    // 1) Legendario con descenso.
+    // 2) 50/50 Épico/Raro y después Común.
+    // 3) 50/50 Raro/Común.
+    // Ropa puede repetirse como categoría; las demás categorías, máximo una.
+    const seleccionadas = seleccionarTresPorRondas(disponibles);
 
     if (seleccionadas.length === 0) {
       return NextResponse.json(

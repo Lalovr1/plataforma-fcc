@@ -79,6 +79,7 @@ type EstadoTutorial =
   | "pendiente"
   | "verificando"
   | "mostrar"
+  | "bienvenida-movil"
   | "recuperar-cofre"
   | "completo"
   | "error";
@@ -255,10 +256,152 @@ function RecuperarCofreBienvenida({
   );
 }
 
-function VerificarTutorial() {
+function CofreBienvenidaMovil({
+  userId,
+  onComplete,
+}: {
+  userId: string;
+  onComplete: () => void;
+}) {
+  const [estado, setEstado] = useState<"cargando" | "cofre" | "error">(
+    "cargando"
+  );
+  const [recompensas, setRecompensas] = useState<any[]>([]);
+  const [reintento, setReintento] = useState(0);
+
+  useEffect(() => {
+    let activo = true;
+
+    async function prepararBienvenidaMovil() {
+      setEstado("cargando");
+
+      try {
+        const { obtenerRecompensasAleatorias } = await import(
+          "@/lib/obtenerRecompensas"
+        );
+        const resultado = await obtenerRecompensasAleatorias(
+          userId,
+          "bienvenida"
+        );
+
+        if (resultado.error) {
+          throw new Error(resultado.error);
+        }
+
+        // Si otro acceso ya reclamó el cofre, no se vuelve a mostrar.
+        if (resultado.yaReclamado) {
+          if (activo) onComplete();
+          return;
+        }
+
+        if (resultado.recompensas.length === 0) {
+          if (resultado.agotado || resultado.bloqueadoHistorico) {
+            if (activo) onComplete();
+            return;
+          }
+
+          throw new Error(
+            "El cofre de bienvenida no devolvió recompensas."
+          );
+        }
+
+        const recursosListos = await prepararRecursosCofreFCC(
+          resultado.recompensas
+        );
+
+        if (!recursosListos) {
+          throw new Error(
+            "No se pudieron descargar completamente las imágenes del cofre."
+          );
+        }
+
+        if (!activo) return;
+
+        setRecompensas(resultado.recompensas);
+        setEstado("cofre");
+      } catch (error) {
+        console.error("Error preparando bienvenida móvil:", error);
+
+        if (activo) {
+          setRecompensas([]);
+          setEstado("error");
+        }
+      }
+    }
+
+    void prepararBienvenidaMovil();
+
+    return () => {
+      activo = false;
+    };
+  }, [userId, reintento]);
+
+  if (estado === "error") {
+    return (
+      <ErrorTutorialFlotante
+        titulo="No pudimos preparar tu cofre de bienvenida"
+        detalle="El tutorial seguirá pendiente para cuando entres desde una computadora. Reintenta únicamente la entrega de tu cofre."
+        onRetry={() => setReintento((actual) => actual + 1)}
+      />
+    );
+  }
+
+  if (estado === "cargando") {
+    return (
+      <CargadorFCC
+        flotante
+        mensaje="Preparando tu cofre de bienvenida"
+        detalle=""
+      />
+    );
+  }
+
+  return (
+    <div
+      className="fcc-reward-overlay"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 25000,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <AnimacionCofre
+        userId={userId}
+        recompensas={recompensas}
+        nivel={1}
+        tipo="bienvenida"
+        recursosPrecargados
+        onFinish={onComplete}
+      />
+    </div>
+  );
+}function VerificarTutorial() {
   const [estado, setEstado] = useState<EstadoTutorial>("pendiente");
   const [userId, setUserId] = useState<string | null>(null);
   const [reintento, setReintento] = useState(0);
+  const [esMovil, setEsMovil] = useState<boolean | null>(null);
+  const [bienvenidaYaEntregada, setBienvenidaYaEntregada] =
+    useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+
+    const actualizar = () => {
+      setEsMovil(media.matches);
+    };
+
+    actualizar();
+    media.addEventListener("change", actualizar);
+
+    return () => {
+      media.removeEventListener("change", actualizar);
+    };
+  }, []);
 
   function completarLocalmente(id?: string | null) {
     const usuario = id || localStorage.getItem("user_id");
@@ -271,6 +414,8 @@ function VerificarTutorial() {
   }
 
   useEffect(() => {
+    if (esMovil === null) return;
+
     let activo = true;
     let completadoDuranteConsulta = false;
 
@@ -301,20 +446,27 @@ function VerificarTutorial() {
 
         setUserId(user.id);
 
-        const [resultadoPerfil, resultadoLogros] = await Promise.all([
-          supabase
-            .from("usuarios")
-            .select("tutorial_visto")
-            .eq("id", user.id)
-            .single(),
-          supabase
-            .from("logros_usuarios")
-            .select("logro_id")
-            .eq("usuario_id", user.id),
-        ]);
+        const { consultarCofreBienvenidaReclamado } = await import(
+          "@/lib/obtenerRecompensas"
+        );
+
+        const [resultadoPerfil, resultadoLogros, estadoCofre] =
+          await Promise.all([
+            supabase
+              .from("usuarios")
+              .select("tutorial_visto")
+              .eq("id", user.id)
+              .single(),
+            supabase
+              .from("logros_usuarios")
+              .select("logro_id")
+              .eq("usuario_id", user.id),
+            consultarCofreBienvenidaReclamado(),
+          ]);
 
         if (resultadoPerfil.error) throw resultadoPerfil.error;
         if (resultadoLogros.error) throw resultadoLogros.error;
+        if (estadoCofre.error) throw new Error(estadoCofre.error);
         if (!activo || completadoDuranteConsulta) return;
 
         const tutorialVisto = Boolean(resultadoPerfil.data?.tutorial_visto);
@@ -323,9 +475,21 @@ function VerificarTutorial() {
             logro.logro_id === TUTORIAL_LOGRO_ID ||
             logro.logro_id === "tutorial"
         );
+        const cofreYaEntregado = estadoCofre.reclamado;
+
+        setBienvenidaYaEntregada(cofreYaEntregado);
 
         if (tutorialVisto) {
           completarLocalmente(user.id);
+          return;
+        }
+
+        // En móvil el tutorial NO se monta. Sólo se entrega el cofre una vez
+        // y tutorial_visto permanece pendiente para el primer acceso en PC.
+        if (esMovil) {
+          setEstado(
+            cofreYaEntregado ? "completo" : "bienvenida-movil"
+          );
           return;
         }
 
@@ -352,7 +516,7 @@ function VerificarTutorial() {
       activo = false;
       window.removeEventListener("tutorial:completado", completar);
     };
-  }, [reintento]);
+  }, [reintento, esMovil]);
 
   if (estado === "error") {
     return (
@@ -364,11 +528,30 @@ function VerificarTutorial() {
     );
   }
 
-  if (estado === "pendiente" || estado === "verificando") {
+  if (
+    esMovil === null ||
+    estado === "pendiente" ||
+    estado === "verificando"
+  ) {
     return null;
   }
 
-  if (estado === "mostrar") return <TutorialInicio />;
+  if (estado === "mostrar") {
+    return (
+      <TutorialInicio
+        bienvenidaYaEntregada={bienvenidaYaEntregada}
+      />
+    );
+  }
+
+  if (estado === "bienvenida-movil" && userId) {
+    return (
+      <CofreBienvenidaMovil
+        userId={userId}
+        onComplete={() => setEstado("completo")}
+      />
+    );
+  }
 
   if (estado === "recuperar-cofre" && userId) {
     return (

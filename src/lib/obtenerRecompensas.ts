@@ -17,7 +17,56 @@ type ResultadoCofre = {
   error?: string;
 };
 
-export async function obtenerRecompensasAleatorias(
+export async function consultarCofreBienvenidaReclamado(): Promise<{
+  reclamado: boolean;
+  error?: string;
+}> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const response = await fetch("/api/cofre/reclamar?tipo=bienvenida", {
+      method: "GET",
+      headers: {
+        ...(session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {}),
+      },
+      cache: "no-store",
+    });
+
+    const texto = await response.text();
+    let data: any = {};
+
+    try {
+      data = texto ? JSON.parse(texto) : {};
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      return {
+        reclamado: false,
+        error:
+          typeof data?.error === "string" && data.error.trim()
+            ? data.error
+            : "No se pudo consultar el estado del cofre de bienvenida.",
+      };
+    }
+
+    return {
+      reclamado: Boolean(data?.reclamado),
+    };
+  } catch (error: any) {
+    return {
+      reclamado: false,
+      error:
+        error?.message ||
+        "No se pudo consultar el estado del cofre de bienvenida.",
+    };
+  }
+}export async function obtenerRecompensasAleatorias(
   _userId: string,
   tipo?: "normal" | "bienvenida"
 ): Promise<ResultadoCofre> {

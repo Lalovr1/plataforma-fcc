@@ -33,7 +33,13 @@ const RECURSOS_TUTORIAL = [
   "/ui/cofre/frame5.webp",
 ];
 
-export default function TutorialInicio() {
+type TutorialInicioProps = {
+  bienvenidaYaEntregada?: boolean;
+};
+
+export default function TutorialInicio({
+  bienvenidaYaEntregada = false,
+}: TutorialInicioProps) {
   const [cargando, setCargando] = useState(true);
   const [visible, setVisible] = useState(false);
   const [entradaTutorialVisible, setEntradaTutorialVisible] = useState(false);
@@ -260,8 +266,9 @@ export default function TutorialInicio() {
   const pasos = [
     {
       id: "bienvenida",
-      texto:
-        "¡Bienvenido a FCC Academy! Aquí podrás repasar tus cursos, practicar con quizzes y ver tu progreso dentro de la plataforma mientras ganas experiencia, logros y recompensas.",
+      texto: bienvenidaYaEntregada
+        ? "Ahora que estás usando FCC Academy desde una computadora, te mostraremos dónde encontrar las principales secciones de esta versión. Si ya conociste la plataforma desde tu celular, este recorrido te ayudará a ubicarte rápidamente en la experiencia para PC."
+        : "¡Bienvenido a FCC Academy! Aquí podrás repasar tus cursos, practicar con quizzes y ver tu progreso dentro de la plataforma mientras ganas experiencia, logros y recompensas.",
       selector: null,
       pos: "center",
     },
@@ -798,6 +805,18 @@ export default function TutorialInicio() {
 
       if (resultado.error) {
         throw new Error(resultado.error);
+      }
+
+      // Si el cofre ya se entregó antes (por ejemplo, desde móvil),
+      // el tutorial de PC se completa sin mostrar ni registrar otro cofre.
+      if (resultado.yaReclamado) {
+        const confirmado = await confirmarYCerrarTutorial();
+
+        if (!confirmado) {
+          setFinalizado(false);
+        }
+
+        return;
       }
 
       if (resultado.recompensas.length === 0) {
