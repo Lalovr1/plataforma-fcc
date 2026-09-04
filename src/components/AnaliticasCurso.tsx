@@ -38,6 +38,8 @@ import CargadorFCC, {
 } from "@/components/CargadorFCC";
 import EstadoErrorCargaFCC from "@/components/EstadoErrorCargaFCC";
 import toast from "react-hot-toast";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 type PeriodoOpt = {
   id: string;
@@ -190,6 +192,85 @@ function textoPlano(value: unknown) {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function decodeHtmlAttrAnalytics(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function escapeHtmlAnalytics(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderAnalyticsHTML(value: unknown) {
+  if (typeof value !== "string" || !value) return "";
+
+  const hasHtml = /<\/?[a-z][\s\S]*>/i.test(value);
+  let html = hasHtml ? value : escapeHtmlAnalytics(value);
+
+  html = html.replace(
+    /<span[^>]*data-type=["']inline-math["'][^>]*data-latex=["']([^"']+)["'][^>]*><\/span>/gi,
+    (_, latex) => {
+      try {
+        return katex.renderToString(decodeHtmlAttrAnalytics(latex), {
+          throwOnError: false,
+          strict: "ignore",
+          displayMode: false,
+        });
+      } catch {
+        return decodeHtmlAttrAnalytics(latex);
+      }
+    }
+  );
+
+  html = html.replace(
+    /<span[^>]*data-latex=["']([^"']+)["'][^>]*data-type=["']inline-math["'][^>]*><\/span>/gi,
+    (_, latex) => {
+      try {
+        return katex.renderToString(decodeHtmlAttrAnalytics(latex), {
+          throwOnError: false,
+          strict: "ignore",
+          displayMode: false,
+        });
+      } catch {
+        return decodeHtmlAttrAnalytics(latex);
+      }
+    }
+  );
+
+  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) => {
+    try {
+      return katex.renderToString(String(latex).trim(), {
+        throwOnError: false,
+        strict: "ignore",
+        displayMode: true,
+      });
+    } catch {
+      return String(latex);
+    }
+  });
+
+  html = html.replace(/\$([^$\n]+?)\$/g, (_, latex) => {
+    try {
+      return katex.renderToString(String(latex).trim(), {
+        throwOnError: false,
+        strict: "ignore",
+        displayMode: false,
+      });
+    } catch {
+      return String(latex);
+    }
+  });
+
+  return html;
 }
 
 function formatearFecha(value: string | null | undefined) {
@@ -1578,6 +1659,37 @@ export default function AnaliticasCurso({
       .analytics-question-body strong { color: var(--analytics-text); font-size: .78rem; font-weight: 900; line-height: 1.35; }
       .analytics-answer-line { color: var(--analytics-text-soft); font-size: .7rem; font-weight: 700; line-height: 1.35; }
       .analytics-answer-line b { color: var(--analytics-text); }
+      .analytics-question-rich,
+      .analytics-answer-rich {
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .analytics-question-rich {
+        color: var(--analytics-text);
+        font-size: .78rem;
+        font-weight: 900;
+        line-height: 1.45;
+      }
+      .analytics-rich-content {
+        min-width: 0;
+        overflow: visible;
+      }
+      .analytics-rich-content p {
+        display: inline;
+        margin: 0;
+      }
+      .analytics-rich-content .katex {
+        font-size: 1.05em;
+      }
+      .analytics-rich-content .katex-display {
+        display: inline-block;
+        margin: 0 .12em;
+        overflow: visible;
+        vertical-align: middle;
+      }
       .analytics-concept-chip { width: max-content; max-width: 100%; border-radius: 999px; padding: 4px 8px; color: #6d4aff; background: color-mix(in srgb, #7c5cff 8%, transparent); font-size: .62rem; font-weight: 850; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .analytics-version-old { color: #d97706; font-size: .6rem; font-weight: 850; }
 
@@ -3624,24 +3736,44 @@ export default function AnaliticasCurso({
                                           )}
                                         </span>
                                         <div className="analytics-question-body">
-                                          <strong>
-                                            Pregunta {respuesta.orden_pregunta + 1} · {textoPlano(respuesta.pregunta_enunciado)}
-                                          </strong>
-                                          <span className="analytics-answer-line">
-                                            <b>Respondió:</b>{" "}
-                                            {textoPlano(
-                                              respuesta.respuesta_seleccionada_texto ||
-                                                "Sin respuesta"
-                                            )}
-                                          </span>
+                                          <div className="analytics-question-rich">
+                                            <strong>
+                                              Pregunta {respuesta.orden_pregunta + 1} ·
+                                            </strong>
+                                            <div
+                                              className="analytics-rich-content"
+                                              dangerouslySetInnerHTML={{
+                                                __html: renderAnalyticsHTML(
+                                                  respuesta.pregunta_enunciado
+                                                ),
+                                              }}
+                                            />
+                                          </div>
+                                          <div className="analytics-answer-line analytics-answer-rich">
+                                            <b>Respondió:</b>
+                                            <div
+                                              className="analytics-rich-content"
+                                              dangerouslySetInnerHTML={{
+                                                __html: renderAnalyticsHTML(
+                                                  respuesta.respuesta_seleccionada_texto ||
+                                                    "Sin respuesta"
+                                                ),
+                                              }}
+                                            />
+                                          </div>
                                           {!respuesta.es_correcta && (
-                                            <span className="analytics-answer-line">
-                                              <b>Correcta:</b>{" "}
-                                              {textoPlano(
-                                                respuesta.respuesta_correcta_texto ||
-                                                  "Sin información"
-                                              )}
-                                            </span>
+                                            <div className="analytics-answer-line analytics-answer-rich">
+                                              <b>Correcta:</b>
+                                              <div
+                                                className="analytics-rich-content"
+                                                dangerouslySetInnerHTML={{
+                                                  __html: renderAnalyticsHTML(
+                                                    respuesta.respuesta_correcta_texto ||
+                                                      "Sin información"
+                                                  ),
+                                                }}
+                                              />
+                                            </div>
                                           )}
                                           {respuesta.concepto_principal && (
                                             <span className="analytics-concept-chip">
@@ -3781,22 +3913,32 @@ export default function AnaliticasCurso({
                                         )}
                                       </span>
                                     </div>
-                                    <span className="analytics-answer-line">
-                                      <b>Respondió:</b>{" "}
-                                      {textoPlano(
-                                        respuestaCeldaSeleccionada.respuesta
-                                          .respuesta_seleccionada_texto ||
-                                          "Sin respuesta"
-                                      )}
-                                    </span>
-                                    <span className="analytics-answer-line">
-                                      <b>Respuesta correcta:</b>{" "}
-                                      {textoPlano(
-                                        respuestaCeldaSeleccionada.respuesta
-                                          .respuesta_correcta_texto ||
-                                          "Sin información"
-                                      )}
-                                    </span>
+                                    <div className="analytics-answer-line analytics-answer-rich">
+                                      <b>Respondió:</b>
+                                      <div
+                                        className="analytics-rich-content"
+                                        dangerouslySetInnerHTML={{
+                                          __html: renderAnalyticsHTML(
+                                            respuestaCeldaSeleccionada.respuesta
+                                              .respuesta_seleccionada_texto ||
+                                              "Sin respuesta"
+                                          ),
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="analytics-answer-line analytics-answer-rich">
+                                      <b>Respuesta correcta:</b>
+                                      <div
+                                        className="analytics-rich-content"
+                                        dangerouslySetInnerHTML={{
+                                          __html: renderAnalyticsHTML(
+                                            respuestaCeldaSeleccionada.respuesta
+                                              .respuesta_correcta_texto ||
+                                              "Sin información"
+                                          ),
+                                        }}
+                                      />
+                                    </div>
                                     {respuestaCeldaSeleccionada.respuesta
                                       .concepto_principal && (
                                       <span className="analytics-concept-chip">

@@ -2454,6 +2454,22 @@ export default function ResolverQuizPage() {
         margin: 0;
       }
 
+      .quiz-render,
+      .quiz-question-text,
+      .quiz-answer-content {
+        overflow: visible !important;
+      }
+
+      .quiz-render .katex,
+      .quiz-render .katex-display {
+        overflow: visible !important;
+      }
+
+      .quiz-render .katex-display {
+        margin: 0.36em 0;
+        padding-block: 0.08em;
+      }
+
       .quiz-render img {
         border: 2px solid color-mix(in srgb, var(--quiz-accent) 34%, var(--quiz-border));
         box-shadow: none;
@@ -2629,25 +2645,58 @@ export default function ResolverQuizPage() {
         position: fixed;
         right: 24px;
         top: 24px;
-        z-index: 140;
         pointer-events: none;
         border-radius: 16px;
-        background: var(--color-danger);
         color: #ffffff;
         box-shadow: var(--quiz-shadow);
       }
 
       .quiz-floating-timer {
+        z-index: 140;
         padding: 10px 16px;
         font-weight: 950;
+        background: var(--color-danger);
       }
 
       .quiz-floating-alert {
-        width: min(520px, calc(100vw - 48px));
+        z-index: 1000001;
+        width: min(560px, calc(100vw - 48px));
+        display: flex;
+        align-items: flex-start;
+        gap: 11px;
         padding: 14px 16px;
-        font-size: 0.9rem;
-        font-weight: 850;
+        color: #ffffff;
+        background: linear-gradient(135deg, #2563eb, #0891b2);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: 0 18px 48px rgba(2, 8, 23, 0.28);
+      }
+
+      .quiz-floating-alert-icon {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .quiz-floating-alert-copy {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
         line-height: 1.35;
+      }
+
+      .quiz-floating-alert-copy strong {
+        font-size: 0.91rem;
+        font-weight: 950;
+      }
+
+      .quiz-floating-alert-copy span {
+        font-size: 0.82rem;
+        font-weight: 720;
+        opacity: 0.96;
       }
 
       .quiz-exit-overlay {
@@ -3827,7 +3876,7 @@ export default function ResolverQuizPage() {
                     <span className="quiz-question-number">{idx + 1}</span>
 
                     <div
-                      className="quiz-render quiz-question-text max-w-none overflow-x-auto text-center [&_.katex-display]:overflow-x-auto [&_img]:max-w-full [&_img]:max-h-56 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
+                      className="quiz-render quiz-question-text max-w-none text-center [&_img]:max-w-full [&_img]:max-h-56 [&_img]:rounded-lg [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
                       onClick={handleQuizContentClick}
                       dangerouslySetInnerHTML={{
                         __html: renderQuizHTML(p.enunciado),
@@ -3866,7 +3915,7 @@ export default function ResolverQuizPage() {
                             </span>
 
                             <div
-                              className="quiz-render quiz-answer-content max-w-none overflow-x-auto text-center [&_.katex-display]:overflow-x-auto [&_.katex-display]:text-center [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-48 [&_img]:rounded-xl [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
+                              className="quiz-render quiz-answer-content max-w-none text-center [&_.katex-display]:text-center [&_p]:text-center [&_img]:max-w-full [&_img]:max-h-48 [&_img]:rounded-xl [&_img]:my-2 [&_img]:mx-auto [&_img]:cursor-pointer"
                               onClick={handleQuizContentClick}
                               dangerouslySetInnerHTML={{
                                 __html: renderQuizHTML(r.texto),
@@ -4026,9 +4075,21 @@ export default function ResolverQuizPage() {
 
       {mostrarAvisoTiempo &&
         createPortal(
-          <div className="quiz-floating-alert">
-            Se terminó el tiempo. Se enviaron automáticamente las respuestas que
-            alcanzaron a guardarse dentro del tiempo establecido.
+          <div
+            className="quiz-floating-alert fcc-modal-enter-standard"
+            role="status"
+            aria-live="assertive"
+          >
+            <span className="quiz-floating-alert-icon" aria-hidden="true">
+              <Clock3 size={20} strokeWidth={2.4} />
+            </span>
+            <span className="quiz-floating-alert-copy">
+              <strong>Tiempo finalizado</strong>
+              <span>
+                El intento se envió automáticamente con las respuestas que
+                alcanzaron a guardarse dentro del tiempo establecido.
+              </span>
+            </span>
           </div>,
           document.body
         )}
