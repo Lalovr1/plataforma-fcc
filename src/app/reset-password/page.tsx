@@ -610,6 +610,163 @@ export default function ResetPasswordPage() {
             font-size: 0.72rem;
           }
         }
+/* FCC_AUTH_MOBILE_COMPACT_V2
+           Movil: mantiene Reset Password compacto y con scroll interno
+           de emergencia sin alterar el layout de escritorio. */
+        @media (max-width: 640px) {
+          .reset-page {
+            height: 100dvh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior-y: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 12px;
+            scroll-padding-block: 10px;
+          }
+
+          .reset-card {
+            flex: 0 0 auto;
+            width: min(100%, 400px);
+            margin-block: auto;
+            border-radius: 24px;
+            padding: 14px;
+          }
+
+          .reset-card::after {
+            inset: 8px;
+            border-radius: 19px;
+          }
+
+          .reset-content {
+            gap: 9px;
+          }
+
+          .reset-title-wrap {
+            gap: 4px;
+          }
+
+          .reset-kicker {
+            gap: 7px;
+            font-size: 0.58rem;
+            letter-spacing: 0.18em;
+          }
+
+          .reset-kicker::before,
+          .reset-kicker::after {
+            width: 20px;
+          }
+
+          .reset-title {
+            font-size: clamp(1.45rem, 6.6vw, 1.8rem);
+            line-height: 1;
+          }
+
+          .reset-description {
+            font-size: 0.8rem;
+            line-height: 1.28;
+          }
+
+          .reset-form {
+            gap: 7px;
+            padding: 9px;
+            border-radius: 18px;
+          }
+
+          .reset-input {
+            min-height: 40px;
+            border-radius: 13px;
+            padding: 0 12px;
+            font-size: 0.84rem;
+          }
+
+          .reset-button,
+          .reset-login-button {
+            min-height: 42px;
+            border-radius: 14px;
+            font-size: 0.88rem;
+          }
+
+          .reset-message {
+            border-radius: 14px;
+            padding: 7px 9px;
+            font-size: 0.75rem;
+            line-height: 1.25;
+          }
+
+          .reset-link-text {
+            font-size: 0.76rem;
+          }
+        }
+
+        @media (max-width: 640px) and (max-height: 600px) {
+          .reset-page {
+            padding: 6px 10px;
+            scroll-padding-block: 6px;
+          }
+
+          .reset-card {
+            width: min(100%, 380px);
+            border-radius: 20px;
+            padding: 10px;
+          }
+
+          .reset-card::after {
+            inset: 6px;
+            border-radius: 16px;
+          }
+
+          .reset-content {
+            gap: 6px;
+          }
+
+          .reset-kicker {
+            font-size: 0.52rem;
+            letter-spacing: 0.16em;
+          }
+
+          .reset-title {
+            font-size: clamp(1.25rem, 6vw, 1.5rem);
+          }
+
+          .reset-description {
+            font-size: 0.72rem;
+            line-height: 1.2;
+          }
+
+          .reset-form {
+            gap: 5px;
+            padding: 7px;
+            border-radius: 15px;
+          }
+
+          .reset-input {
+            min-height: 36px;
+            border-radius: 11px;
+            font-size: 0.78rem;
+          }
+
+          .reset-button,
+          .reset-login-button {
+            min-height: 38px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+          }
+
+          .reset-message {
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+          }
+
+          .reset-link-text {
+            font-size: 0.7rem;
+          }
+        }
       `}</style>
 
       <main className="reset-page">

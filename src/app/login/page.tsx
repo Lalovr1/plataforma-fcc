@@ -759,6 +759,195 @@ export default function LoginPage() {
             font-size: 0.8rem;
           }
         }
+/* FCC_AUTH_MOBILE_COMPACT_V2
+           Movil: interfaz compacta + scroll interno solo cuando haga falta.
+           No toca el comportamiento de escritorio ni el overflow global del dashboard. */
+        @media (max-width: 640px) {
+          .login-page {
+            height: 100dvh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior-y: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 12px;
+            scroll-padding-block: 10px;
+          }
+
+          .login-card {
+            flex: 0 0 auto;
+            width: min(100%, 400px);
+            max-height: none;
+            margin-block: auto;
+            border-radius: 24px;
+            padding: 14px;
+          }
+
+          .login-card::after {
+            inset: 8px;
+            border-radius: 19px;
+          }
+
+          .login-content {
+            gap: 9px;
+          }
+
+          .login-logo-wrap {
+            padding: 0;
+          }
+
+          .login-logo-wrap::before {
+            width: min(210px, 62vw, 32dvh);
+            aspect-ratio: 260 / 170;
+            border-radius: 21px;
+          }
+
+          .login-logo-wrap::after {
+            width: min(184px, 54vw, 28dvh);
+            aspect-ratio: 226 / 144;
+            border-radius: 18px;
+          }
+
+          .login-logo {
+            width: min(170px, 52vw, 26dvh);
+            transform: translateY(-6px);
+          }
+
+          .login-title-wrap {
+            gap: 4px;
+            padding-top: 0;
+          }
+
+          .login-kicker {
+            gap: 7px;
+            font-size: 0.58rem;
+            letter-spacing: 0.18em;
+          }
+
+          .login-kicker::before,
+          .login-kicker::after {
+            width: 20px;
+          }
+
+          .login-title {
+            font-size: clamp(1.55rem, 7vw, 1.9rem);
+            line-height: 1;
+          }
+
+          .login-form {
+            margin-top: 0;
+            gap: 7px;
+            padding: 9px;
+            border-radius: 18px;
+          }
+
+          .login-field-icon {
+            left: 12px;
+          }
+
+          .login-input {
+            min-height: 40px;
+            border-radius: 13px;
+            padding: 0 12px 0 40px;
+            font-size: 0.84rem;
+          }
+
+          .login-button {
+            min-height: 42px;
+            border-radius: 14px;
+            font-size: 0.88rem;
+          }
+
+          .login-message {
+            border-radius: 14px;
+            padding: 7px 10px;
+            font-size: 0.75rem;
+            line-height: 1.25;
+          }
+
+          .login-message-action {
+            margin-top: 6px;
+          }
+
+          .login-register {
+            padding-top: 0;
+            font-size: 0.76rem;
+          }
+        }
+
+        @media (max-width: 640px) and (max-height: 600px) {
+          .login-page {
+            padding: 6px 10px;
+            scroll-padding-block: 6px;
+          }
+
+          .login-card {
+            border-radius: 20px;
+            padding: 10px;
+          }
+
+          .login-card::after {
+            inset: 6px;
+            border-radius: 16px;
+          }
+
+          .login-content {
+            gap: 6px;
+          }
+
+          .login-logo-wrap::before {
+            width: min(170px, 52vw, 29dvh);
+          }
+
+          .login-logo-wrap::after {
+            width: min(148px, 46vw, 25dvh);
+          }
+
+          .login-logo {
+            width: min(136px, 43vw, 23dvh);
+            transform: translateY(-4px);
+          }
+
+          .login-kicker {
+            font-size: 0.53rem;
+          }
+
+          .login-title {
+            font-size: clamp(1.35rem, 6.4vw, 1.65rem);
+          }
+
+          .login-form {
+            gap: 5px;
+            padding: 7px;
+            border-radius: 15px;
+          }
+
+          .login-input {
+            min-height: 36px;
+            border-radius: 11px;
+            font-size: 0.78rem;
+          }
+
+          .login-button {
+            min-height: 38px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+          }
+
+          .login-message {
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+          }
+
+          .login-register {
+            font-size: 0.7rem;
+          }
+        }
       `}</style>
 
       <main className="login-page">

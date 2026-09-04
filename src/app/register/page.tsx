@@ -596,6 +596,155 @@ export default function RegisterPage() {
             font-size: 0.7rem;
           }
         }
+/* FCC_AUTH_MOBILE_COMPACT_V2
+           Movil: compacta el formulario y convierte la propia vista en
+           contenedor desplazable si el teclado, un error o los campos BUAP
+           superan la altura disponible. */
+        @media (max-width: 640px) {
+          .register-page {
+            height: 100dvh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior-y: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 12px;
+            scroll-padding-block: 10px;
+          }
+
+          .register-card {
+            flex: 0 0 auto;
+            width: min(100%, 400px);
+            margin-block: auto;
+            border-radius: 24px;
+            padding: 14px;
+          }
+
+          .register-card::after {
+            inset: 8px;
+            border-radius: 19px;
+          }
+
+          .register-content {
+            gap: 9px;
+          }
+
+          .register-title-wrap {
+            gap: 3px;
+          }
+
+          .register-kicker {
+            gap: 7px;
+            font-size: 0.58rem;
+            letter-spacing: 0.18em;
+          }
+
+          .register-kicker::before,
+          .register-kicker::after {
+            width: 20px;
+          }
+
+          .register-title {
+            font-size: clamp(1.55rem, 7vw, 1.85rem);
+            line-height: 1;
+          }
+
+          .register-form {
+            gap: 7px;
+            padding: 9px;
+            border-radius: 18px;
+          }
+
+          .register-input,
+          .register-select {
+            min-height: 40px;
+            border-radius: 13px;
+            padding: 0 12px;
+            font-size: 0.84rem;
+          }
+
+          .register-button {
+            min-height: 42px;
+            border-radius: 14px;
+            font-size: 0.88rem;
+          }
+
+          .register-message {
+            border-radius: 14px;
+            padding: 7px 9px;
+            font-size: 0.75rem;
+            line-height: 1.25;
+          }
+
+          .register-login {
+            font-size: 0.76rem;
+          }
+        }
+
+        @media (max-width: 640px) and (max-height: 600px) {
+          .register-page {
+            padding: 6px 10px;
+            scroll-padding-block: 6px;
+          }
+
+          .register-card {
+            width: min(100%, 380px);
+            border-radius: 20px;
+            padding: 10px;
+          }
+
+          .register-card::after {
+            inset: 6px;
+            border-radius: 16px;
+          }
+
+          .register-content {
+            gap: 6px;
+          }
+
+          .register-kicker {
+            font-size: 0.52rem;
+            letter-spacing: 0.16em;
+          }
+
+          .register-title {
+            font-size: clamp(1.3rem, 6.2vw, 1.55rem);
+          }
+
+          .register-form {
+            gap: 5px;
+            padding: 7px;
+            border-radius: 15px;
+          }
+
+          .register-input,
+          .register-select {
+            min-height: 36px;
+            border-radius: 11px;
+            padding: 0 10px;
+            font-size: 0.78rem;
+          }
+
+          .register-button {
+            min-height: 38px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+          }
+
+          .register-message {
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+          }
+
+          .register-login {
+            font-size: 0.7rem;
+          }
+        }
       `}</style>
 
       <main className="register-page">
