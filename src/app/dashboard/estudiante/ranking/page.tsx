@@ -1373,18 +1373,14 @@ export default function EstudianteRanking() {
             font-size: 0.86rem;
           }
 
-          .ranking-user-card,
-          .ranking-row {
-            gap: 10px;
-            padding: 16px;
-          }
-
           .ranking-user-card {
             position: relative;
             grid-template-columns: 1fr;
             justify-items: center;
-            text-align: center;
+            gap: 10px;
+            padding: 16px;
             padding-top: 18px;
+            text-align: center;
           }
 
           .ranking-user-card .ranking-position-pill {
@@ -1398,64 +1394,83 @@ export default function EstudianteRanking() {
             font-size: clamp(1.6rem, 8vw, 2.1rem);
           }
 
-          .ranking-user-card .ranking-avatar-stage {
-            justify-self: center;
-          }
-
+          .ranking-user-card .ranking-avatar-stage,
           .ranking-user-card .ranking-user-name,
           .ranking-user-card .ranking-points {
             justify-self: center;
             text-align: center;
           }
 
-          .ranking-points {
-            justify-self: center;
-          }
-
+          /*
+            Lista movil estable:
+            posicion | avatar | identidad | puntos.
+            No cambia entre Top 1-3 y Top 4+.
+          */
           .ranking-row {
-            grid-template-columns: 1fr;
-            justify-items: center;
-            text-align: center;
-            padding: 18px 16px 16px;
-            min-height: 196px;
+            grid-template-columns:
+              54px
+              auto
+              minmax(0, 1fr)
+              max-content;
+            grid-template-areas: "medal avatar identity points";
+            align-items: center;
+            justify-items: stretch;
+            column-gap: 10px;
+            row-gap: 5px;
+            min-height: 132px;
+            padding: 12px 14px;
+            text-align: left;
           }
 
           .ranking-row .ranking-medal {
-            position: absolute;
-            left: 18px;
-            top: 50%;
-            z-index: 3;
-            transform: translateY(-50%);
+            position: static;
+            grid-area: medal;
+            justify-self: start;
+            transform: none;
             min-width: 54px;
             min-height: 50px;
           }
 
           .ranking-row .ranking-avatar-stage {
+            grid-area: avatar;
             justify-self: center;
+            align-self: center;
           }
 
           .ranking-row .ranking-name-block {
-            justify-items: center;
-            text-align: center;
+            grid-area: identity;
+            min-width: 0;
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 5px 8px;
+            text-align: left;
           }
 
           .ranking-row .ranking-name {
-            text-align: center;
+            min-width: 0;
+            max-width: 100%;
+            text-align: left;
+            overflow-wrap: anywhere;
           }
 
           .ranking-row .ranking-social-badge {
-            position: absolute;
-            right: 18px;
-            top: 50%;
-            z-index: 3;
-            transform: translateY(-50%);
-            width: max-content;
+            position: static;
+            inset: auto;
+            transform: none;
+            flex: 0 0 auto;
+            width: fit-content;
+            max-width: 100%;
           }
 
           .ranking-row .ranking-points {
+            grid-area: points;
             grid-column: auto;
-            justify-self: center;
-            text-align: center;
+            justify-self: end;
+            align-self: center;
+            text-align: right;
           }
 
           .ranking-profile-header {
@@ -1468,6 +1483,51 @@ export default function EstudianteRanking() {
 
           .ranking-profile-social {
             justify-content: center;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .ranking-row {
+            grid-template-columns:
+              48px
+              auto
+              minmax(0, 1fr);
+            grid-template-areas:
+              "medal avatar identity"
+              "medal avatar points";
+            column-gap: 8px;
+            row-gap: 4px;
+            min-height: 126px;
+            padding: 11px 12px;
+          }
+
+          .ranking-row .ranking-medal {
+            align-self: center;
+          }
+
+          .ranking-row .ranking-avatar-stage {
+            align-self: center;
+          }
+
+          .ranking-row .ranking-name-block {
+            align-self: end;
+            flex-direction: column;
+            flex-wrap: nowrap;
+            align-items: flex-start;
+            justify-content: flex-end;
+            gap: 4px;
+          }
+
+          .ranking-row .ranking-social-badge {
+            min-height: 22px;
+            padding-inline: 8px;
+            font-size: 0.68rem;
+          }
+
+          .ranking-row .ranking-points {
+            justify-self: start;
+            align-self: start;
+            text-align: left;
           }
         }
       `}</style>

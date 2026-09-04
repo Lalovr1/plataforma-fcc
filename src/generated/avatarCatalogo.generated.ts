@@ -744,19 +744,19 @@ export const avatarCatalogoGenerado = {
                 "name": "DeportivaNegraFCC",
                 "section": "ropa",
                 "subsection": "playeras+camisas",
-                "rarity": "inicial",
+                "rarity": "epico",
                 "scope": "global",
                 "customization": {
                   "type": "none"
                 },
                 "variants": {
                   "masculino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/inicial/masculino/DeportivaNegraFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/inicial/masculino/previews/DeportivaNegraFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/epico/masculino/DeportivaNegraFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/epico/masculino/previews/DeportivaNegraFCC.png"
                   },
                   "femenino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/inicial/femenino/DeportivaNegraFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/inicial/femenino/previews/DeportivaNegraFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/epico/femenino/DeportivaNegraFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/playeras+camisas/epico/femenino/previews/DeportivaNegraFCC.png"
                   }
                 }
               },
@@ -873,19 +873,19 @@ export const avatarCatalogoGenerado = {
                 "name": "ChamarraUniversitaria",
                 "section": "ropa",
                 "subsection": "sueteres+chamarras",
-                "rarity": "inicial",
+                "rarity": "comun",
                 "scope": "global",
                 "customization": {
                   "type": "none"
                 },
                 "variants": {
                   "masculino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/ChamarraUniversitaria.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/previews/ChamarraUniversitaria.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/comun/masculino/ChamarraUniversitaria.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/comun/masculino/previews/ChamarraUniversitaria.png"
                   },
                   "femenino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/ChamarraUniversitaria.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/previews/ChamarraUniversitaria.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/comun/femenino/ChamarraUniversitaria.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/comun/femenino/previews/ChamarraUniversitaria.png"
                   }
                 }
               },
@@ -975,19 +975,19 @@ export const avatarCatalogoGenerado = {
                 "name": "SudaderaFCC",
                 "section": "ropa",
                 "subsection": "sueteres+chamarras",
-                "rarity": "inicial",
+                "rarity": "raro",
                 "scope": "global",
                 "customization": {
                   "type": "none"
                 },
                 "variants": {
                   "masculino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/SudaderaFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/previews/SudaderaFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/raro/masculino/SudaderaFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/raro/masculino/previews/SudaderaFCC.png"
                   },
                   "femenino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/SudaderaFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/previews/SudaderaFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/raro/femenino/SudaderaFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/raro/femenino/previews/SudaderaFCC.png"
                   }
                 }
               },
@@ -1017,19 +1017,19 @@ export const avatarCatalogoGenerado = {
                 "name": "SudaderaLoboFCC",
                 "section": "ropa",
                 "subsection": "sueteres+chamarras",
-                "rarity": "inicial",
+                "rarity": "epico",
                 "scope": "global",
                 "customization": {
                   "type": "none"
                 },
                 "variants": {
                   "masculino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/SudaderaLoboFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/masculino/previews/SudaderaLoboFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/epico/masculino/SudaderaLoboFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/epico/masculino/previews/SudaderaLoboFCC.png"
                   },
                   "femenino": {
-                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/SudaderaLoboFCC.png",
-                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/inicial/femenino/previews/SudaderaLoboFCC.png"
+                    "image": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/epico/femenino/SudaderaLoboFCC.png",
+                    "preview": "/elementos_avatar_nuevo/estudiantes/ropa/sueteres+chamarras/epico/femenino/previews/SudaderaLoboFCC.png"
                   }
                 }
               },
@@ -1235,12 +1235,8 @@ export const avatarCatalogoGenerado = {
       "ojos/Ojos3",
       "ojos/Ojos4",
       "ojos/Ojos5",
-      "ropa/playeras+camisas/DeportivaNegraFCC",
       "ropa/playeras+camisas/PlayeraTirantes",
-      "ropa/sueteres+chamarras/ChamarraUniversitaria",
-      "ropa/sueteres+chamarras/SudaderaBuap",
-      "ropa/sueteres+chamarras/SudaderaFCC",
-      "ropa/sueteres+chamarras/SudaderaLoboFCC"
+      "ropa/sueteres+chamarras/SudaderaBuap"
     ],
     "users": {}
   },
@@ -1806,5 +1802,5 @@ export const avatarCatalogoGenerado = {
     "warnings": [],
     "errors": []
   },
-  "generatedAt": "2026-09-03T11:36:43.902Z"
+  "generatedAt": "2026-09-04T05:54:07.046Z"
 } as const;

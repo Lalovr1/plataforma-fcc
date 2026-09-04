@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/utils/supabaseClient";
 import RenderizadorAvatar from "@/components/RenderizadorAvatar";
@@ -51,6 +51,9 @@ function parseAvatarConfigCurso(value: any) {
   return value;
 }
 
+const LIMITE_PREPARACION_VISUAL_CURSO_MS = 30_000;
+const DURACION_MINIMA_APERTURA_CURSO_MS = 950;
+
 export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   const [materiasConEstado, setMateriasConEstado] = useState<any[]>(() =>
     prepararMateriasIniciales(materias)
@@ -67,6 +70,13 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   /* FCC_COURSE_AVATAR_LOADER_PROTECTION_V1C */
   const [avatarProfesorModalListo, setAvatarProfesorModalListo] = useState(true);
 
+  /* FCC_COURSE_VISUAL_PROTECTION_V2 */
+  const [preparandoCursoId, setPreparandoCursoId] = useState<string | null>(
+    null
+  );
+  const [cursoVisualListo, setCursoVisualListo] = useState(false);
+  const inicioPreparacionCursoRef = useRef(0);
+
   useEffect(() => {
     setMateriasConEstado(prepararMateriasIniciales(materias));
   }, [materias]);
@@ -74,23 +84,78 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
   useEffect(() => {
     if (
       !selected ||
+      !preparandoCursoId ||
+      selected.id !== preparandoCursoId ||
       mostrarFormularioInscripcion ||
-      avatarProfesorModalListo ||
-      !selected.profesor?.avatar_config
+      cursoVisualListo ||
+      !avatarProfesorModalListo
     ) {
       return;
     }
 
-    const timeout = window.setTimeout(() => {
-      setAvatarProfesorModalListo(true);
-    }, 30000);
+    let cancelado = false;
+    let frame1: number | null = null;
+    let frame2: number | null = null;
+    const idPreparado = preparandoCursoId;
+    const transcurrido =
+      performance.now() - inicioPreparacionCursoRef.current;
+    const espera = Math.max(
+      0,
+      DURACION_MINIMA_APERTURA_CURSO_MS - transcurrido
+    );
 
-    return () => window.clearTimeout(timeout);
+    const timer = window.setTimeout(() => {
+      frame1 = window.requestAnimationFrame(() => {
+        frame2 = window.requestAnimationFrame(() => {
+          if (cancelado) return;
+
+          setCursoVisualListo(true);
+          setPreparandoCursoId((actual) =>
+            actual === idPreparado ? null : actual
+          );
+        });
+      });
+    }, espera);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+      if (frame1 !== null) window.cancelAnimationFrame(frame1);
+      if (frame2 !== null) window.cancelAnimationFrame(frame2);
+    };
   }, [
     selected,
+    preparandoCursoId,
     mostrarFormularioInscripcion,
+    cursoVisualListo,
     avatarProfesorModalListo,
   ]);
+
+  useEffect(() => {
+    if (!preparandoCursoId || cursoVisualListo) {
+      return;
+    }
+
+    const idPreparado = preparandoCursoId;
+    const transcurrido =
+      performance.now() - inicioPreparacionCursoRef.current;
+    const restante = Math.max(
+      0,
+      LIMITE_PREPARACION_VISUAL_CURSO_MS - transcurrido
+    );
+
+    const limite = window.setTimeout(() => {
+      if (selected?.id === idPreparado) {
+        setCursoVisualListo(true);
+      }
+
+      setPreparandoCursoId((actual) =>
+        actual === idPreparado ? null : actual
+      );
+    }, restante);
+
+    return () => window.clearTimeout(limite);
+  }, [preparandoCursoId, cursoVisualListo, selected]);
 
   useEffect(() => {
     const fetchSecciones = async () => {
@@ -195,9 +260,19 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
     setSelected(null);
     setMostrarFormularioInscripcion(false);
     setAvatarProfesorModalListo(true);
+    setPreparandoCursoId(null);
+    setCursoVisualListo(false);
   };
 
   const abrirCurso = async (m: any) => {
+    if (preparandoCursoId) return;
+
+    inicioPreparacionCursoRef.current = performance.now();
+    setPreparandoCursoId(m.id);
+    setCursoVisualListo(false);
+    setAvatarProfesorModalListo(false);
+    setMostrarFormularioInscripcion(false);
+
     const { data: progresoRow, error } = await supabase
       .from("progreso")
       .select("id, visible")
@@ -206,6 +281,9 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
       .maybeSingle();
 
     if (error) {
+      setPreparandoCursoId(null);
+      setCursoVisualListo(false);
+      setAvatarProfesorModalListo(true);
       toast.error("No se pudo confirmar tu estado en este curso");
       return;
     }
@@ -1028,10 +1106,9 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
           </div>
         )}
 
-        {selected &&
+        {preparandoCursoId &&
           !mostrarFormularioInscripcion &&
-          selected.profesor?.avatar_config &&
-          !avatarProfesorModalListo && (
+          !cursoVisualListo && (
             <CargadorFCC
               flotante
               mensaje="Preparando curso"
@@ -1045,21 +1122,10 @@ export default function CuadriculaCursos({ materias, groupBy, userId }: Props) {
           createPortal(
             <div
               className="fcc-course-modal-overlay"
-              aria-hidden={Boolean(
-                selected.profesor?.avatar_config &&
-                  !avatarProfesorModalListo
-              )}
+              aria-hidden={!cursoVisualListo}
               style={{
-                opacity:
-                  selected.profesor?.avatar_config &&
-                  !avatarProfesorModalListo
-                    ? 0
-                    : 1,
-                pointerEvents:
-                  selected.profesor?.avatar_config &&
-                  !avatarProfesorModalListo
-                    ? "none"
-                    : "auto",
+                opacity: cursoVisualListo ? 1 : 0,
+                pointerEvents: cursoVisualListo ? "auto" : "none",
               }}
               onClick={cerrarModal}
             >

@@ -588,9 +588,11 @@ export default function IndicadorNavegacionFCC() {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
-      // El quiz muestra primero una confirmación de salida. Su navegación
-      // real activa el indicador después de que el usuario confirma.
+      // Los flujos protegidos muestran primero su confirmación de salida.
+      // La navegación real activa el indicador después de que el usuario confirma.
       if ((window as any).__fccQuizIntentoActivo?.quizId) return;
+      if ((window as any).__fccContenidoEdicionActiva?.cursoId) return;
+      if ((window as any).__fccQuizEdicionActiva?.cursoId) return;
 
       const enlace = target.closest<HTMLAnchorElement>("a[href]");
       if (!enlace) return;
@@ -638,6 +640,8 @@ export default function IndicadorNavegacionFCC() {
     };
 
     const iniciarPorHistorial = () => {
+      if ((window as any).__fccContenidoEdicionActiva?.cursoId) return;
+
       const pathnameDestino = window.location.pathname;
       const pathnameOrigen = pathnameDeDestino(rutaConocidaRef.current);
       const destino = rutaConBusqueda(

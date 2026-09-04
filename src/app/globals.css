@@ -4117,3 +4117,341 @@ html[data-fcc-navigation-boot="pantalla"] body::before {
 }
 
 /* FCC_PROFILE_TEACHERS_COURSE_V6_END */
+
+/* FCC_RESPONSIVE_AVATAR_CENTERING_V1_START */
+
+/*
+  Correccion exclusivamente geometrica.
+
+  PROBLEMA:
+  Los stages responsive se hacen mas pequenos, pero el wrapper del
+  RenderizadorAvatar conserva su size real. Un scale() solo modifica
+  la representacion visual, no el tamano de la caja de layout.
+  Por eso el avatar terminaba desplazado hacia derecha/abajo.
+
+  SOLUCION:
+  El halo y el avatar comparten exactamente el mismo centro:
+      left: 50%;
+      top: 50%;
+      translate(-50%, -50%)
+
+  Se conservan TODOS los sizes y escalas ya aprobados.
+  No se modifica .fcc-avatar-atomic globalmente.
+*/
+
+/* =========================================================
+   1. TARJETAS DE PROFESORES
+   Render real: 240px.
+   Stage: 240 / 210 / 180 / 150 segun viewport.
+   ========================================================= */
+
+.profesores-card .profesores-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 240px !important;
+  height: 240px !important;
+  z-index: 4 !important;
+  transform:
+    translate(-50%, -50%)
+    scale(1) !important;
+  transform-origin: center center !important;
+}
+
+@media (min-width: 768px) and (max-width: 1399px) {
+  .profesores-card .profesores-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.875) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .profesores-card .profesores-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.75) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .profesores-card .profesores-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.625) !important;
+  }
+}
+
+/* =========================================================
+   2. MODALES DE ESTUDIANTES
+   Ranking / Amigos / Top 5 usan render real de 300px.
+   ========================================================= */
+
+.ranking-profile-header .ranking-avatar-render,
+.amigos-profile-header .amigos-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 300px !important;
+  height: 300px !important;
+  z-index: 4 !important;
+  transform:
+    translate(-50%, -50%)
+    scale(1) !important;
+  transform-origin: center center !important;
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.86) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.80) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .ranking-profile-header .ranking-avatar-render,
+  .amigos-profile-header .amigos-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.66) !important;
+  }
+}
+
+/* =========================================================
+   3. MODAL DE PROFESOR
+   Render real aprobado: 320px.
+   Stage: 320 / 268 / hasta 230.
+   ========================================================= */
+
+.profesores-modal-header .profesores-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 320px !important;
+  height: 320px !important;
+  z-index: 4 !important;
+  transform:
+    translate(-50%, -50%)
+    scale(1) !important;
+  transform-origin: center center !important;
+}
+
+@media (min-width: 641px) and (max-width: 768px) {
+  .profesores-modal-header .profesores-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.84) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .profesores-modal-header .profesores-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.72) !important;
+  }
+}
+
+/* =========================================================
+   4. RANKING GLOBAL
+   Mantiene los tamanos distintos por posicion.
+   Solo centra el renderer cuando el stage se reduce.
+   ========================================================= */
+
+.ranking-row .ranking-avatar-render,
+.ranking-user-card .ranking-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--ranking-avatar-size) !important;
+  height: var(--ranking-avatar-size) !important;
+  z-index: 4 !important;
+  transform:
+    translate(-50%, -50%)
+    scale(1) !important;
+  transform-origin: center center !important;
+}
+
+@media (max-width: 640px) {
+  .ranking-row.is-first .ranking-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.78) !important;
+  }
+
+  .ranking-row.is-second .ranking-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.79) !important;
+  }
+
+  .ranking-row.is-third .ranking-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.79) !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.82) !important;
+  }
+
+  .ranking-user-card .ranking-avatar-render {
+    transform:
+      translate(-50%, -50%)
+      scale(.79) !important;
+  }
+}
+
+/* =========================================================
+   5. MODAL DE CURSO
+   Render real aprobado: 240px.
+   El RenderizadorAvatar es hijo directo del stage.
+   ========================================================= */
+
+.fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform:
+    translate(-50%, -50%)
+    scale(1) !important;
+  transform-origin: center center !important;
+}
+
+@media (max-width: 640px) {
+  .fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+    transform:
+      translate(-50%, -50%)
+      scale(.75) !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .fcc-course-modal-profesor-avatar > .fcc-avatar-atomic {
+    transform:
+      translate(-50%, -50%)
+      scale(.625) !important;
+  }
+}
+
+/*
+  NO SE TOCAN:
+  - tarjetas normales de Amigos: stage y renderer ya comparten size;
+  - Top 5 dashboard: ya usa absolute + translateX(-50%);
+  - Perfil estudiante/profesor: ya tiene anclaje propio aprobado;
+  - Analiticas: ya centra .fcc-avatar-atomic explicitamente;
+  - Editor de avatar.
+*/
+
+/* FCC_RESPONSIVE_AVATAR_CENTERING_V1_END */
+
+/* FCC_RANKING_GEOMETRY_STABLE_V1_START */
+
+/*
+  Ranking:
+  - Top 4+ y la posicion propia conservan el anclaje inferior aprobado.
+  - Top 1, 2 y 3 usan el centro geometrico exacto del halo.
+
+  No se modifica ningun size, texto, medalla, badge o layout.
+*/
+
+.ranking-row .ranking-avatar-stage,
+.ranking-user-card .ranking-avatar-stage {
+  position: relative !important;
+  display: grid !important;
+  place-items: end center !important;
+  overflow: visible !important;
+}
+
+/* Base aprobada para Top 4+ y posicion propia. */
+.ranking-row .ranking-avatar-render,
+.ranking-user-card .ranking-avatar-render {
+  position: absolute !important;
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: 0 !important;
+  inset: auto auto 0 50% !important;
+
+  width: var(--ranking-avatar-size) !important;
+  height: var(--ranking-avatar-size) !important;
+
+  display: grid !important;
+  place-items: center !important;
+  justify-self: auto !important;
+  align-self: auto !important;
+
+  z-index: 4 !important;
+  pointer-events: none !important;
+
+  transform: translateX(-50%) scale(1) !important;
+  transform-origin: center bottom !important;
+}
+
+/*
+  TOP 1-3:
+  El halo vive en el centro del stage, asi que estos avatares tambien.
+  Esto elimina la deriva vertical producida por escalar desde bottom.
+*/
+.ranking-row.is-first .ranking-avatar-render,
+.ranking-row.is-second .ranking-avatar-render,
+.ranking-row.is-third .ranking-avatar-render {
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: 50% auto auto 50% !important;
+
+  transform: translate(-50%, -50%) scale(1) !important;
+  transform-origin: center center !important;
+}
+
+/* Se conservan exactamente las escalas responsive aprobadas. */
+@media (max-width: 640px) {
+  .ranking-row.is-first .ranking-avatar-render {
+    transform: translate(-50%, -50%) scale(.78) !important;
+  }
+
+  .ranking-row.is-second .ranking-avatar-render {
+    transform: translate(-50%, -50%) scale(.79) !important;
+  }
+
+  .ranking-row.is-third .ranking-avatar-render {
+    transform: translate(-50%, -50%) scale(.79) !important;
+  }
+
+  .ranking-row:not(.is-first):not(.is-second):not(.is-third)
+    .ranking-avatar-render {
+    transform: translateX(-50%) scale(.82) !important;
+  }
+
+  .ranking-user-card .ranking-avatar-render {
+    transform: translateX(-50%) scale(.79) !important;
+  }
+}
+
+/* FCC_RANKING_GEOMETRY_STABLE_V1_END */

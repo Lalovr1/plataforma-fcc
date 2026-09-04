@@ -5,7 +5,7 @@
  * acceso al perfil y accesos rápidos académicos.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -63,6 +63,11 @@ export default function TarjetaUsuario({
   const [avatar, setAvatar] = useState<AvatarConfig>(
     avatarConfig ?? defaultConfig,
   );
+
+  /* FCC_USER_CARD_SAFE_AVATAR_BOUNDS_V1 */
+  const tarjetaUsuarioRef = useRef<HTMLDivElement | null>(null);
+  const avatarStageRef = useRef<HTMLDivElement | null>(null);
+  const avatarRenderRef = useRef<HTMLDivElement | null>(null);
 
   const [accionAbierta, setAccionAbierta] = useState<AccionRapida | null>(null);
   const [accionPreparando, setAccionPreparando] =
@@ -278,6 +283,235 @@ export default function TarjetaUsuario({
   useEffect(() => {
     if (avatarConfig) setAvatar(avatarConfig);
   }, [avatarConfig]);
+
+  useLayoutEffect(() => {
+    const tarjeta = tarjetaUsuarioRef.current;
+    const stage = avatarStageRef.current;
+    const render = avatarRenderRef.current;
+
+    if (!tarjeta || !stage || !render) return;
+
+    let frame: number | null = null;
+
+    const recalcularLimites = () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+
+        /*
+          Quitamos solamente nuestras correcciones inline para poder leer
+          nuevamente los valores CSS aprobados para el breakpoint actual.
+          Esto ocurre dentro del mismo frame, antes del siguiente paint.
+        */
+        render.style.removeProperty("bottom");
+        render.style.removeProperty("transform");
+        render.style.removeProperty("transform-origin");
+
+        const tarjetaRect = tarjeta.getBoundingClientRect();
+        const stageRect = stage.getBoundingClientRect();
+        const stageStyle = window.getComputedStyle(stage);
+        const renderStyle = window.getComputedStyle(render);
+
+        const escalaCss = Number.parseFloat(
+          stageStyle.getPropertyValue("--fcc-user-avatar-render-scale")
+        );
+        const escalaDeseada =
+          Number.isFinite(escalaCss) && escalaCss > 0
+            ? escalaCss
+            : 1;
+
+        const bottomCss = Number.parseFloat(renderStyle.bottom);
+        const bottomDeseado = Number.isFinite(bottomCss)
+          ? bottomCss
+          : 0;
+
+        /*
+          offsetWidth/offsetHeight ignoran transform, por lo que representan
+          el lienzo real (actualmente 300x300) y no su tamano visual.
+        */
+        const anchoBase = render.offsetWidth || 300;
+        const altoBase = render.offsetHeight || 300;
+
+        if (
+          tarjetaRect.width <= 0 ||
+          tarjetaRect.height <= 0 ||
+          stageRect.width <= 0 ||
+          stageRect.height <= 0 ||
+          anchoBase <= 0 ||
+          altoBase <= 0
+        ) {
+          return;
+        }
+
+        /*
+          Margen pequeno y proporcional. En pantallas normales no altera
+          la escala porque el avatar ya cabe; solo actua ante overflow real.
+        */
+        const margen = Math.min(
+          16,
+          Math.max(8, tarjetaRect.height * 0.025)
+        );
+
+        const limiteSuperior = tarjetaRect.top + margen;
+        const limiteInferior = tarjetaRect.bottom - margen;
+        const limiteIzquierdo = tarjetaRect.left + margen;
+        const limiteDerecho = tarjetaRect.right - margen;
+
+        /*
+          bottom negativo significa que el avatar se baja respecto al stage.
+          Conservamos ese desplazamiento mientras siga dentro de la tarjeta.
+        */
+        const anclaInferiorDeseada =
+          stageRect.bottom - bottomDeseado;
+
+        const anclaInferiorSegura = Math.min(
+          anclaInferiorDeseada,
+          limiteInferior
+        );
+
+        const bottomSeguro =
+          stageRect.bottom - anclaInferiorSegura;
+
+        const altoDisponible = Math.max(
+          0,
+          anclaInferiorSegura - limiteSuperior
+        );
+
+        const escalaMaximaVertical =
+          altoDisponible / altoBase;
+
+        /*
+          Tambien protegemos los laterales aunque el problema observado
+          sea vertical. El eje X sigue siendo exactamente el centro del stage.
+        */
+        const centroX =
+          stageRect.left + stageRect.width / 2;
+
+        const medioAnchoDisponible = Math.max(
+          0,
+          Math.min(
+            centroX - limiteIzquierdo,
+            limiteDerecho - centroX
+          )
+        );
+
+        const escalaMaximaHorizontal =
+          (medioAnchoDisponible * 2) / anchoBase;
+
+        const escalaSegura = Math.max(
+          0,
+          Math.min(
+            escalaDeseada,
+            escalaMaximaVertical,
+            escalaMaximaHorizontal
+          )
+        );
+
+        render.style.setProperty(
+          "bottom",
+          String(bottomSeguro) + "px",
+          "important"
+        );
+        render.style.setProperty(
+          "transform",
+          "translateX(-50%) scale(" + String(escalaSegura) + ")",
+          "important"
+        );
+        render.style.setProperty(
+          "transform-origin",
+          "center bottom",
+          "important"
+        );
+        /*
+          FCC_USER_CARD_AVATAR_FADE_INLINE_V3_SUBTLE
+
+          El degradado se aplica al MISMO wrapper que SafeBounds mueve
+          y escala. Al ser inline + important, ningun breakpoint posterior
+          puede quitarlo.
+        */
+        const mascaraAvatar = [
+          "linear-gradient(",
+          "to bottom,",
+          "#000 0%,",
+          "#000 89%,",
+          "rgba(0, 0, 0, 0.98) 92%,",
+          "rgba(0, 0, 0, 0.90) 95%,",
+          "rgba(0, 0, 0, 0.62) 97%,",
+          "rgba(0, 0, 0, 0.28) 99%,",
+          "transparent 100%",
+          ")",
+        ].join(" ");
+
+        render.style.setProperty(
+          "-webkit-mask-image",
+          mascaraAvatar,
+          "important"
+        );
+        render.style.setProperty(
+          "mask-image",
+          mascaraAvatar,
+          "important"
+        );
+        render.style.setProperty(
+          "-webkit-mask-size",
+          "100% 100%",
+          "important"
+        );
+        render.style.setProperty(
+          "mask-size",
+          "100% 100%",
+          "important"
+        );
+        render.style.setProperty(
+          "-webkit-mask-repeat",
+          "no-repeat",
+          "important"
+        );
+        render.style.setProperty(
+          "mask-repeat",
+          "no-repeat",
+          "important"
+        );
+        render.style.setProperty(
+          "-webkit-mask-position",
+          "center center",
+          "important"
+        );
+        render.style.setProperty(
+          "mask-position",
+          "center center",
+          "important"
+        );
+      });
+    };
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(recalcularLimites)
+        : null;
+
+    observer?.observe(tarjeta);
+    observer?.observe(stage);
+
+    window.addEventListener("resize", recalcularLimites);
+    recalcularLimites();
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", recalcularLimites);
+
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+
+      render.style.removeProperty("bottom");
+      render.style.removeProperty("transform");
+      render.style.removeProperty("transform-origin");
+    };
+  }, []);
 
   useEffect(() => {
     if (!accionAbierta) return;
@@ -1747,6 +1981,7 @@ export default function TarjetaUsuario({
       `}</style>
 
       <div
+        ref={tarjetaUsuarioRef}
         className="fcc-user-card"
         style={{
           pointerEvents: tutorialActivo ? "none" : "auto",
@@ -1757,10 +1992,16 @@ export default function TarjetaUsuario({
         <span className="fcc-user-tech-node node-3" />
 
         <div className="fcc-user-card-content">
-          <div className="fcc-user-avatar-stage">
+          <div
+            ref={avatarStageRef}
+            className="fcc-user-avatar-stage"
+          >
             <span className="fcc-avatar-orbit" />
 
-            <div className="fcc-avatar-render">
+            <div
+              ref={avatarRenderRef}
+              className="fcc-avatar-render"
+            >
               <RenderizadorAvatar config={avatar} size={300} />
             </div>
           </div>

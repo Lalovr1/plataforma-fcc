@@ -1171,11 +1171,21 @@ export default function EditorContenidoCurso({
     }
   };
 
+  const contenidoCreacionEstaVacio = (html: string) => {
+    const normalizado = html
+      .replace(/&nbsp;/gi, " ")
+      .replace(/<br\s*\/?>/gi, "")
+      .replace(/<p(?:\s[^>]*)?>\s*<\/p>/gi, "")
+      .replace(/\s+/g, "");
+
+    return normalizado.length === 0;
+  };
+
   const hayCambiosCreacionContenido = () =>
     Boolean(
       titulo.trim() ||
       intro.trim() ||
-      contenidoPrincipal.trim() ||
+      !contenidoCreacionEstaVacio(contenidoPrincipal) ||
       file
     );
 

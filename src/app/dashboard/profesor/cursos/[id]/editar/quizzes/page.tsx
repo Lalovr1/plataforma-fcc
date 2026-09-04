@@ -16,6 +16,11 @@ import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 
 
+type SalidaPendienteQuiz =
+  | { tipo: "menu" }
+  | { tipo: "navegar"; destino: string }
+  | { tipo: "logout" };
+
 type CursoCache = {
   timestamp: number;
   profesorId: string;
@@ -56,6 +61,8 @@ export default function EditarQuizzesCursoPage() {
   const [hayCambiosEditor, setHayCambiosEditor] = useState(false);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const [guardandoSalida, setGuardandoSalida] = useState(false);
+  const [salidaPendiente, setSalidaPendiente] =
+    useState<SalidaPendienteQuiz | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,10 +120,96 @@ export default function EditarQuizzesCursoPage() {
     []
   );
 
+  const limpiarMarcaQuizGlobal = () => {
+    if (typeof window === "undefined") return;
+
+    if ((window as any).__fccQuizEdicionActiva?.cursoId === id) {
+      delete (window as any).__fccQuizEdicionActiva;
+    }
+  };
+
+  const ejecutarSalida = (pendiente: SalidaPendienteQuiz) => {
+    limpiarMarcaQuizGlobal();
+
+    if (pendiente.tipo === "logout") {
+      window.dispatchEvent(
+        new CustomEvent("fcc:quiz-edicion-salida-confirmada", {
+          detail: { accion: "logout" },
+        })
+      );
+      return;
+    }
+
+    if (pendiente.tipo === "navegar") {
+      router.push(pendiente.destino);
+      return;
+    }
+
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !id) return;
+
+    if (hayCambiosEditor) {
+      (window as any).__fccQuizEdicionActiva = {
+        cursoId: id,
+      };
+      return;
+    }
+
+    limpiarMarcaQuizGlobal();
+  }, [hayCambiosEditor, id]);
+
+  useEffect(() => {
+    const handleSolicitudSalida = (event: Event) => {
+      if (
+        !navigationGuardRef.current.dirty ||
+        guardandoSalida
+      ) {
+        return;
+      }
+
+      const detail = (event as CustomEvent).detail ?? {};
+
+      if (detail.accion === "logout") {
+        setSalidaPendiente({ tipo: "logout" });
+      } else if (detail.destino) {
+        setSalidaPendiente({
+          tipo: "navegar",
+          destino: String(detail.destino),
+        });
+      } else {
+        return;
+      }
+
+      setConfirmarSalida(true);
+    };
+
+    window.addEventListener(
+      "fcc:quiz-edicion-solicitar-salida",
+      handleSolicitudSalida
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fcc:quiz-edicion-solicitar-salida",
+        handleSolicitudSalida
+      );
+    };
+  }, [guardandoSalida]);
+
+  useEffect(() => {
+    return () => {
+      limpiarMarcaQuizGlobal();
+    };
+  }, [id]);
+
   const volverAlMenu = () => {
     if (guardandoSalida) return;
 
-    if (hayCambiosEditor) {
+    if (navigationGuardRef.current.dirty) {
+      setSalidaPendiente({ tipo: "menu" });
       setConfirmarSalida(true);
       return;
     }
@@ -124,14 +217,30 @@ export default function EditarQuizzesCursoPage() {
     router.push(`/dashboard/profesor/cursos/${id}/editar`);
   };
 
+  const continuarEditando = () => {
+    if (guardandoSalida) return;
+
+    setConfirmarSalida(false);
+    setSalidaPendiente(null);
+  };
+
   const descartarYSalir = () => {
+    if (guardandoSalida) return;
+
+    const pendiente =
+      salidaPendiente ?? ({ tipo: "menu" } as const);
+
     navigationGuardRef.current.discard();
     setConfirmarSalida(false);
-    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+    setSalidaPendiente(null);
+    ejecutarSalida(pendiente);
   };
 
   const guardarYSalir = async () => {
     if (guardandoSalida) return;
+
+    const pendiente =
+      salidaPendiente ?? ({ tipo: "menu" } as const);
 
     setGuardandoSalida(true);
 
@@ -140,7 +249,8 @@ export default function EditarQuizzesCursoPage() {
       if (!guardado) return;
 
       setConfirmarSalida(false);
-      router.push(`/dashboard/profesor/cursos/${id}/editar`);
+      setSalidaPendiente(null);
+      ejecutarSalida(pendiente);
     } finally {
       setGuardandoSalida(false);
     }
@@ -494,10 +604,16 @@ export default function EditarQuizzesCursoPage() {
 
       <ConfirmarSalidaEdicion
         open={confirmarSalida}
-        titulo="¿Volver al menú del curso?"
-        descripcion="Hay cambios sin guardar en los quizzes. Puedes seguir editando, descartarlos o guardarlos antes de volver."
+        titulo={
+          salidaPendiente?.tipo === "logout"
+            ? "¿Cerrar sesión?"
+            : salidaPendiente?.tipo === "navegar"
+              ? "¿Salir de los quizzes del curso?"
+              : "¿Volver al menú del curso?"
+        }
+        descripcion="Hay cambios sin guardar en los quizzes. Puedes seguir editando, descartarlos o guardarlos antes de salir."
         guardando={guardandoSalida}
-        onContinuar={() => setConfirmarSalida(false)}
+        onContinuar={continuarEditando}
         onDescartar={descartarYSalir}
         onGuardar={guardarYSalir}
       />

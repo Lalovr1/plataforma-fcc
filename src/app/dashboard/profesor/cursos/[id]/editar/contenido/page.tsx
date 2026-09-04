@@ -16,6 +16,12 @@ import ConfirmarSalidaEdicion from "@/components/ConfirmarSalidaEdicion";
 import { ArrowLeft, BookOpen } from "lucide-react";
 
 
+type SalidaPendienteContenido =
+  | { tipo: "menu" }
+  | { tipo: "atras" }
+  | { tipo: "navegar"; destino: string }
+  | { tipo: "logout" };
+
 type CursoCache = {
   timestamp: number;
   profesorId: string;
@@ -56,6 +62,14 @@ export default function EditarContenidoCursoPage() {
   const [hayCambiosEditor, setHayCambiosEditor] = useState(false);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
   const [guardandoSalida, setGuardandoSalida] = useState(false);
+  const [salidaPendiente, setSalidaPendiente] =
+    useState<SalidaPendienteContenido | null>(null);
+  const historyGuardActivoRef = useRef(false);
+  const ignorarPopstateRef = useRef(false);
+  const permitirSiguientePopstateRef = useRef(false);
+  const salidaAutorizadaRef = useRef(false);
+  const salidaTrasLimpiarHistorialRef =
+    useRef<SalidaPendienteContenido | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,10 +127,306 @@ export default function EditarContenidoCursoPage() {
     []
   );
 
+  const limpiarMarcaContenidoGlobal = () => {
+    if (typeof window === "undefined") return;
+
+    if ((window as any).__fccContenidoEdicionActiva?.cursoId === id) {
+      delete (window as any).__fccContenidoEdicionActiva;
+    }
+  };
+
+  const limpiarMarcadoresHistorialActual = (state?: unknown) => {
+    if (typeof window === "undefined") return;
+
+    const limpio = {
+      ...((state && typeof state === "object" ? state : window.history.state) ??
+        {}),
+    } as Record<string, unknown>;
+
+    delete limpio.fccContenidoBase;
+    delete limpio.fccContenidoGuard;
+
+    window.history.replaceState(limpio, "", window.location.href);
+  };
+
+  const ejecutarSalidaPendiente = (pendiente: SalidaPendienteContenido) => {
+    limpiarMarcaContenidoGlobal();
+
+    if (pendiente.tipo === "atras") {
+      permitirSiguientePopstateRef.current = true;
+      window.history.back();
+      return;
+    }
+
+    if (pendiente.tipo === "logout") {
+      window.dispatchEvent(
+        new CustomEvent("fcc:contenido-salida-confirmada", {
+          detail: { accion: "logout" },
+        })
+      );
+      return;
+    }
+
+    if (pendiente.tipo === "navegar") {
+      router.push(pendiente.destino);
+      return;
+    }
+
+    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+  };
+
+  const retirarBarreraYEjecutar = (pendiente: SalidaPendienteContenido) => {
+    salidaAutorizadaRef.current = true;
+    salidaTrasLimpiarHistorialRef.current = pendiente;
+
+    if (historyGuardActivoRef.current) {
+      if (typeof window !== "undefined") {
+        (window as any).__fccContenidoEdicionActiva = {
+          cursoId: id,
+          limpiandoHistorial: true,
+        };
+      }
+
+      ignorarPopstateRef.current = true;
+      historyGuardActivoRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    salidaTrasLimpiarHistorialRef.current = null;
+    salidaAutorizadaRef.current = false;
+    ejecutarSalidaPendiente(pendiente);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !id) return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (permitirSiguientePopstateRef.current) {
+        permitirSiguientePopstateRef.current = false;
+        return;
+      }
+
+      if (ignorarPopstateRef.current) {
+        ignorarPopstateRef.current = false;
+        limpiarMarcadoresHistorialActual(event.state);
+
+        const pendiente = salidaTrasLimpiarHistorialRef.current;
+        salidaTrasLimpiarHistorialRef.current = null;
+        salidaAutorizadaRef.current = false;
+
+        if (pendiente) {
+          ejecutarSalidaPendiente(pendiente);
+        } else if (!navigationGuardRef.current.dirty) {
+          limpiarMarcaContenidoGlobal();
+        }
+
+        return;
+      }
+
+      if (
+        navigationGuardRef.current.dirty &&
+        !salidaAutorizadaRef.current &&
+        event.state?.fccContenidoBase === id
+      ) {
+        const guardState = {
+          ...(event.state ?? {}),
+          fccContenidoGuard: id,
+        };
+
+        delete guardState.fccContenidoBase;
+
+        window.history.pushState(
+          guardState,
+          "",
+          window.location.href
+        );
+
+        historyGuardActivoRef.current = true;
+        setSalidaPendiente({ tipo: "atras" });
+        setConfirmarSalida(true);
+        return;
+      }
+
+      historyGuardActivoRef.current =
+        event.state?.fccContenidoGuard === id;
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [id, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !id) return;
+
+    if (hayCambiosEditor) {
+      (window as any).__fccContenidoEdicionActiva = {
+        cursoId: id,
+      };
+
+      if (window.history.state?.fccContenidoGuard === id) {
+        historyGuardActivoRef.current = true;
+        return;
+      }
+
+      const baseState = {
+        ...(window.history.state ?? {}),
+      };
+
+      delete baseState.fccContenidoBase;
+      delete baseState.fccContenidoGuard;
+
+      window.history.replaceState(
+        {
+          ...baseState,
+          fccContenidoBase: id,
+        },
+        "",
+        window.location.href
+      );
+
+      window.history.pushState(
+        {
+          ...baseState,
+          fccContenidoGuard: id,
+        },
+        "",
+        window.location.href
+      );
+
+      historyGuardActivoRef.current = true;
+      return;
+    }
+
+    if (
+      historyGuardActivoRef.current &&
+      !salidaAutorizadaRef.current
+    ) {
+      (window as any).__fccContenidoEdicionActiva = {
+        cursoId: id,
+        limpiandoHistorial: true,
+      };
+
+      ignorarPopstateRef.current = true;
+      historyGuardActivoRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    if (!salidaAutorizadaRef.current) {
+      limpiarMarcaContenidoGlobal();
+    }
+  }, [hayCambiosEditor, id]);
+
+  useEffect(() => {
+    const handleSolicitudSalida = (event: Event) => {
+      if (
+        !navigationGuardRef.current.dirty ||
+        salidaAutorizadaRef.current ||
+        guardandoSalida
+      ) {
+        return;
+      }
+
+      const detail = (event as CustomEvent).detail ?? {};
+
+      if (detail.accion === "logout") {
+        setSalidaPendiente({ tipo: "logout" });
+      } else if (detail.destino) {
+        setSalidaPendiente({
+          tipo: "navegar",
+          destino: String(detail.destino),
+        });
+      } else {
+        return;
+      }
+
+      setConfirmarSalida(true);
+    };
+
+    window.addEventListener(
+      "fcc:contenido-solicitar-salida",
+      handleSolicitudSalida
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fcc:contenido-solicitar-salida",
+        handleSolicitudSalida
+      );
+    };
+  }, [guardandoSalida]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !hayCambiosEditor) return;
+
+    const handleInternalLink = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey ||
+        guardandoSalida
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const enlace = target.closest<HTMLAnchorElement>("a[href]");
+      if (!enlace) return;
+      if (enlace.target && enlace.target !== "_self") return;
+      if (enlace.hasAttribute("download")) return;
+
+      let destino: URL;
+
+      try {
+        destino = new URL(enlace.href, window.location.href);
+      } catch {
+        return;
+      }
+
+      if (destino.origin !== window.location.origin) return;
+
+      const actual = new URL(window.location.href);
+      const destinoCompleto = `${destino.pathname}${destino.search}${destino.hash}`;
+      const actualCompleto = `${actual.pathname}${actual.search}${actual.hash}`;
+
+      if (destinoCompleto === actualCompleto) return;
+
+      event.preventDefault();
+
+      setSalidaPendiente({
+        tipo: "navegar",
+        destino: destinoCompleto,
+      });
+      setConfirmarSalida(true);
+    };
+
+    document.addEventListener("click", handleInternalLink, true);
+
+    return () => {
+      document.removeEventListener("click", handleInternalLink, true);
+    };
+  }, [hayCambiosEditor, guardandoSalida]);
+
+  useEffect(() => {
+    return () => {
+      limpiarMarcaContenidoGlobal();
+    };
+  }, [id]);
+
   const volverAlMenu = () => {
     if (guardandoSalida) return;
 
-    if (hayCambiosEditor) {
+    if (navigationGuardRef.current.dirty) {
+      setSalidaPendiente({ tipo: "menu" });
       setConfirmarSalida(true);
       return;
     }
@@ -124,23 +434,48 @@ export default function EditarContenidoCursoPage() {
     router.push(`/dashboard/profesor/cursos/${id}/editar`);
   };
 
+  const continuarEditando = () => {
+    if (guardandoSalida) return;
+    setConfirmarSalida(false);
+    setSalidaPendiente(null);
+  };
+
   const descartarYSalir = () => {
+    if (guardandoSalida) return;
+
+    const pendiente =
+      salidaPendiente ?? ({ tipo: "menu" } as const);
+
+    salidaAutorizadaRef.current = true;
+    salidaTrasLimpiarHistorialRef.current = pendiente;
     navigationGuardRef.current.discard();
     setConfirmarSalida(false);
-    router.push(`/dashboard/profesor/cursos/${id}/editar`);
+    setSalidaPendiente(null);
+    retirarBarreraYEjecutar(pendiente);
   };
 
   const guardarYSalir = async () => {
     if (guardandoSalida) return;
 
+    const pendiente =
+      salidaPendiente ?? ({ tipo: "menu" } as const);
+
+    salidaAutorizadaRef.current = true;
+    salidaTrasLimpiarHistorialRef.current = pendiente;
     setGuardandoSalida(true);
 
     try {
       const guardado = await navigationGuardRef.current.save();
-      if (!guardado) return;
+
+      if (!guardado) {
+        salidaAutorizadaRef.current = false;
+        salidaTrasLimpiarHistorialRef.current = null;
+        return;
+      }
 
       setConfirmarSalida(false);
-      router.push(`/dashboard/profesor/cursos/${id}/editar`);
+      setSalidaPendiente(null);
+      retirarBarreraYEjecutar(pendiente);
     } finally {
       setGuardandoSalida(false);
     }
@@ -491,10 +826,16 @@ export default function EditarContenidoCursoPage() {
 
       <ConfirmarSalidaEdicion
         open={confirmarSalida}
-        titulo="¿Volver al menú del curso?"
-        descripcion="Hay cambios sin guardar en el contenido del curso. Puedes seguir editando, descartarlos o guardarlos antes de volver."
+        titulo={
+          salidaPendiente?.tipo === "menu"
+            ? "¿Volver al menú del curso?"
+            : salidaPendiente?.tipo === "logout"
+              ? "¿Cerrar sesión?"
+              : "¿Salir del editor de contenido?"
+        }
+        descripcion="Hay cambios sin guardar en el contenido del curso. Puedes seguir editando, descartarlos o guardarlos antes de salir."
         guardando={guardandoSalida}
-        onContinuar={() => setConfirmarSalida(false)}
+        onContinuar={continuarEditando}
         onDescartar={descartarYSalir}
         onGuardar={guardarYSalir}
       />

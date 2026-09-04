@@ -923,38 +923,51 @@ export default function ProfesorRanking() {
           }
 
           .ranking-row {
-            grid-template-columns: 1fr;
-            justify-items: center;
-            gap: 8px;
-            min-height: 176px;
-            padding: 18px 16px 16px;
-            text-align: center;
+            grid-template-columns:
+              54px
+              auto
+              minmax(0, 1fr)
+              max-content;
+            grid-template-areas: "medal avatar identity points";
+            align-items: center;
+            justify-items: stretch;
+            column-gap: 10px;
+            row-gap: 5px;
+            min-height: 132px;
+            padding: 12px 14px;
+            text-align: left;
           }
 
           .ranking-row .ranking-medal {
-            position: absolute;
-            left: 18px;
-            top: 50%;
-            z-index: 3;
-            transform: translateY(-50%);
+            position: static;
+            grid-area: medal;
+            justify-self: start;
+            transform: none;
             min-width: 54px;
             min-height: 50px;
           }
 
           .ranking-row .ranking-avatar-stage {
+            grid-area: avatar;
             justify-self: center;
+            align-self: center;
           }
 
           .ranking-row .ranking-name {
-            max-width: min(100%, 320px);
-            justify-self: center;
-            text-align: center;
+            grid-area: identity;
+            min-width: 0;
+            max-width: 100%;
+            justify-self: stretch;
+            text-align: left;
+            overflow-wrap: anywhere;
           }
 
           .ranking-row .ranking-points {
+            grid-area: points;
             grid-column: auto;
-            justify-self: center;
-            text-align: center;
+            justify-self: end;
+            align-self: center;
+            text-align: right;
           }
 
           .ranking-profile-header {
@@ -963,6 +976,28 @@ export default function ProfesorRanking() {
             text-align: center;
             padding-right: 0;
             padding-top: 18px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .ranking-row {
+            grid-template-columns:
+              48px
+              auto
+              minmax(0, 1fr);
+            grid-template-areas:
+              "medal avatar identity"
+              "medal avatar points";
+            column-gap: 8px;
+            row-gap: 4px;
+            min-height: 126px;
+            padding: 11px 12px;
+          }
+
+          .ranking-row .ranking-points {
+            justify-self: start;
+            align-self: start;
+            text-align: left;
           }
         }
       `}</style>

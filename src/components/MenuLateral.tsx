@@ -119,10 +119,26 @@ export default function MenuLateral({ rol }: Props) {
       "fcc:quiz-salida-confirmada",
       handleSalidaConfirmada
     );
+    window.addEventListener(
+      "fcc:contenido-salida-confirmada",
+      handleSalidaConfirmada
+    );
+    window.addEventListener(
+      "fcc:quiz-edicion-salida-confirmada",
+      handleSalidaConfirmada
+    );
 
     return () => {
       window.removeEventListener(
         "fcc:quiz-salida-confirmada",
+        handleSalidaConfirmada
+      );
+      window.removeEventListener(
+        "fcc:contenido-salida-confirmada",
+        handleSalidaConfirmada
+      );
+      window.removeEventListener(
+        "fcc:quiz-edicion-salida-confirmada",
         handleSalidaConfirmada
       );
     };
@@ -154,6 +170,40 @@ export default function MenuLateral({ rol }: Props) {
 
     window.dispatchEvent(
       new CustomEvent("fcc:quiz-solicitar-salida", { detail })
+    );
+
+    return true;
+  }
+
+  function hayEdicionQuizActiva() {
+    if (typeof window === "undefined") return false;
+    return Boolean((window as any).__fccQuizEdicionActiva?.cursoId);
+  }
+
+  function solicitarSalidaEdicionQuiz(
+    detail: { accion: "navegar"; destino: string } | { accion: "logout" }
+  ) {
+    if (!hayEdicionQuizActiva()) return false;
+
+    window.dispatchEvent(
+      new CustomEvent("fcc:quiz-edicion-solicitar-salida", { detail })
+    );
+
+    return true;
+  }
+
+  function hayEdicionContenidoActiva() {
+    if (typeof window === "undefined") return false;
+    return Boolean((window as any).__fccContenidoEdicionActiva?.cursoId);
+  }
+
+  function solicitarSalidaContenido(
+    detail: { accion: "navegar"; destino: string } | { accion: "logout" }
+  ) {
+    if (!hayEdicionContenidoActiva()) return false;
+
+    window.dispatchEvent(
+      new CustomEvent("fcc:contenido-solicitar-salida", { detail })
     );
 
     return true;
@@ -238,6 +288,14 @@ export default function MenuLateral({ rol }: Props) {
   }
 
   async function cerrarSesion() {
+    if (solicitarSalidaContenido({ accion: "logout" })) {
+      return;
+    }
+
+    if (solicitarSalidaEdicionQuiz({ accion: "logout" })) {
+      return;
+    }
+
     if (solicitarSalidaQuiz({ accion: "logout" })) {
       return;
     }
@@ -259,6 +317,28 @@ export default function MenuLateral({ rol }: Props) {
             event.shiftKey ||
             event.altKey
           ) {
+            return;
+          }
+
+          if (
+            solicitarSalidaContenido({
+              accion: "navegar",
+              destino: item.href,
+            })
+          ) {
+            event.preventDefault();
+            setMenuAbierto(false);
+            return;
+          }
+
+          if (
+            solicitarSalidaEdicionQuiz({
+              accion: "navegar",
+              destino: item.href,
+            })
+          ) {
+            event.preventDefault();
+            setMenuAbierto(false);
             return;
           }
 
