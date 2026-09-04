@@ -596,14 +596,15 @@ export default function RegisterPage() {
             font-size: 0.7rem;
           }
         }
-/* FCC_AUTH_MOBILE_COMPACT_V2
-           Movil: compacta el formulario y convierte la propia vista en
-           contenedor desplazable si el teclado, un error o los campos BUAP
-           superan la altura disponible. */
+/* FCC_AUTH_MOBILE_COMPACT_V3
+           La pagina solo desplaza cuando la tarjeta de registro supera
+           la altura visible. Los circulos/fondos quedan anclados al viewport
+           y centrados exactamente con la tarjeta cuando esta cabe. */
         @media (max-width: 640px) {
           .register-page {
             height: 100dvh;
             min-height: 100dvh;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -614,12 +615,30 @@ export default function RegisterPage() {
             -webkit-overflow-scrolling: touch;
             padding: 10px 12px;
             scroll-padding-block: 10px;
+            isolation: isolate;
+          }
+
+          .register-page::before {
+            position: fixed;
+            z-index: 0;
+          }
+
+          .register-page::after {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 0;
           }
 
           .register-card {
+            position: relative;
+            z-index: 2;
             flex: 0 0 auto;
+            box-sizing: border-box;
             width: min(100%, 400px);
             margin-block: auto;
+            overflow: hidden;
             border-radius: 24px;
             padding: 14px;
           }

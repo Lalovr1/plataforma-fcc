@@ -610,13 +610,14 @@ export default function ResetPasswordPage() {
             font-size: 0.72rem;
           }
         }
-/* FCC_AUTH_MOBILE_COMPACT_V2
-           Movil: mantiene Reset Password compacto y con scroll interno
-           de emergencia sin alterar el layout de escritorio. */
+/* FCC_AUTH_MOBILE_COMPACT_V3
+           Reset Password queda centrado sin scroll residual.
+           Solo hay desplazamiento si la propia tarjeta ya no cabe. */
         @media (max-width: 640px) {
           .reset-page {
             height: 100dvh;
             min-height: 100dvh;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -627,12 +628,30 @@ export default function ResetPasswordPage() {
             -webkit-overflow-scrolling: touch;
             padding: 10px 12px;
             scroll-padding-block: 10px;
+            isolation: isolate;
+          }
+
+          .reset-page::before {
+            position: fixed;
+            z-index: 0;
+          }
+
+          .reset-page::after {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 0;
           }
 
           .reset-card {
+            position: relative;
+            z-index: 2;
             flex: 0 0 auto;
+            box-sizing: border-box;
             width: min(100%, 400px);
             margin-block: auto;
+            overflow: hidden;
             border-radius: 24px;
             padding: 14px;
           }

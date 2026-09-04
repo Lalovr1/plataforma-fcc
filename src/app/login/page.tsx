@@ -759,13 +759,16 @@ export default function LoginPage() {
             font-size: 0.8rem;
           }
         }
-/* FCC_AUTH_MOBILE_COMPACT_V2
-           Movil: interfaz compacta + scroll interno solo cuando haga falta.
-           No toca el comportamiento de escritorio ni el overflow global del dashboard. */
+/* FCC_AUTH_MOBILE_COMPACT_V3
+           La vista ocupa exactamente el viewport (padding incluido).
+           Los fondos decorativos son fixed para que NUNCA creen scroll.
+           La tarjeta queda centrada y el scroll solo aparece si su contenido
+           realmente supera la altura visible. */
         @media (max-width: 640px) {
           .login-page {
             height: 100dvh;
             min-height: 100dvh;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -776,13 +779,31 @@ export default function LoginPage() {
             -webkit-overflow-scrolling: touch;
             padding: 10px 12px;
             scroll-padding-block: 10px;
+            isolation: isolate;
+          }
+
+          .login-page::before {
+            position: fixed;
+            z-index: 0;
+          }
+
+          .login-page::after {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 0;
           }
 
           .login-card {
+            position: relative;
+            z-index: 2;
             flex: 0 0 auto;
+            box-sizing: border-box;
             width: min(100%, 400px);
             max-height: none;
             margin-block: auto;
+            overflow: hidden;
             border-radius: 24px;
             padding: 14px;
           }
